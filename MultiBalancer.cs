@@ -37,6 +37,8 @@ namespace PRoConEvents
 using EventType = PRoCon.Core.Events.EventType;
 using CapturableEvent = PRoCon.Core.Events.CapturableEvents;
 
+public enum PresetItems { Normal, Aggressive, Passive, Intensify, Retain };
+
 public class MultiBalancer : PRoConPluginAPI, IPRoConPluginInterface
 {
 
@@ -63,7 +65,17 @@ private Dictionary<String,PerModeSettings> fPerMode = null;
 
 private int DebugLevel;
 private bool QuietMode;
+private int MaxSlots;
+private int MaxSwitchesStrong;
+private int MaxSwitchesWeak;
+private double FirstMinutesBalancerDisabled;
+private double FirstMinutesAnySwitchingAllowed;
+private bool Enable2SlotReserve;
+private bool Enable_recruit_Command;
+private PresetItems Preset;
+
 private String ShowInLog; // command line to show info in plugin.log
+private bool LogChat;
 
 /* Constructor */
 
@@ -94,10 +106,38 @@ public MultiBalancer() {
     fPerMode = new Dictionary<String,PerModeSettings>();
     
     /* Settings */
-    
+
+    /* ===== SECTION 1 - Settings ===== */
+
     DebugLevel = 2;
     QuietMode = false;
+    MaxSlots = 64;
+    MaxSwitchesStrong = 1;
+    MaxSwitchesWeak = 2;
+    FirstMinutesBalancerDisabled = 5.0;
+    FirstMinutesAnySwitchingAllowed = 5.0;
+    Enable2SlotReserve = false;
+    Enable_recruit_Command = false;
+    Preset = PresetItems.Normal;
+    
+    /* ===== SECTION 2 - Exclusions ===== */
+
+    /* ===== SECTION 3 - Presets ===== */
+
+    /* ===== SECTION 4 - Server Activity Setttings ===== */
+
+    /* ===== SECTION 5 - Round Phase Setttings ===== */
+
+    /* ===== SECTION 6 - TBD ===== */
+
+    /* ===== SECTION 7 - TBD ===== */
+
+    /* ===== SECTION 8 - Per-Mode Settings ===== */
+
+    /* ===== SECTION 9 - Debug Settings ===== */
+
     ShowInLog = String.Empty;
+    LogChat = true;
 }
 
 /* Types */
@@ -213,9 +253,44 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
     List<CPluginVariable> lstReturn = new List<CPluginVariable>();
 
     try {
+        /* ===== SECTION 1 - Settings ===== */
+        
         lstReturn.Add(new CPluginVariable("1 - Settings|Debug Level", DebugLevel.GetType(), DebugLevel));
 
         lstReturn.Add(new CPluginVariable("1 - Settings|Quiet Mode", QuietMode.GetType(), QuietMode));
+
+        lstReturn.Add(new CPluginVariable("1 - Settings|Max Slots", MaxSlots.GetType(), MaxSlots));
+
+        lstReturn.Add(new CPluginVariable("1 - Settings|Max Switches: Strong", MaxSwitchesStrong.GetType(), MaxSwitchesStrong));
+
+        lstReturn.Add(new CPluginVariable("1 - Settings|Max Switches: Weak", MaxSwitchesWeak.GetType(), MaxSwitchesWeak));
+
+        lstReturn.Add(new CPluginVariable("1 - Settings|First Minutes Balancer Disabled", FirstMinutesBalancerDisabled.GetType(), FirstMinutesBalancerDisabled));
+
+        lstReturn.Add(new CPluginVariable("1 - Settings|First Minutes Any Switching Allowed", FirstMinutesAnySwitchingAllowed.GetType(), FirstMinutesAnySwitchingAllowed));
+
+        lstReturn.Add(new CPluginVariable("1 - Settings|Enable 2 Slot Reserve", Enable2SlotReserve.GetType(), Enable2SlotReserve));
+
+        lstReturn.Add(new CPluginVariable("1 - Settings|Enable _recruit_ Command", Enable_recruit_Command.GetType(), Enable_recruit_Command));
+
+        String var_name = "1 - Settings|Preset";
+        String var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(PresetItems))) + ")";
+        
+        lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(PresetItems), Preset)));
+
+        /* ===== SECTION 2 - Exclusions ===== */
+
+        /* ===== SECTION 3 - Server Activity Setttings ===== */
+
+        /* ===== SECTION 4 - Round Phase Setttings ===== */
+
+        /* ===== SECTION 5 - TBD ===== */
+
+        /* ===== SECTION 6 - TBD ===== */
+
+        /* ===== SECTION 7 - TBD ===== */
+
+        /* ===== SECTION 8 - Per-Mode Settings ===== */
 
         List<String> simpleModes = GetSimplifiedModes();
 
@@ -228,12 +303,16 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
                 oneSet = fPerMode[sm];
             }
 
-            lstReturn.Add(new CPluginVariable("3 - Settings for " + sm + "|" + sm + ": " + "Min Tickets Percentage", oneSet.MinTicketsPercentage.GetType(), oneSet.MinTicketsPercentage));
+            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Min Tickets Percentage", oneSet.MinTicketsPercentage.GetType(), oneSet.MinTicketsPercentage));
 
-            lstReturn.Add(new CPluginVariable("3 - Settings for " + sm + "|" + sm + ": " + "Go Aggressive", oneSet.GoAggressive.GetType(), oneSet.GoAggressive));
+            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Go Aggressive", oneSet.GoAggressive.GetType(), oneSet.GoAggressive));
         }
 
+        /* ===== SECTION 9 - Debug Settings ===== */
+
         lstReturn.Add(new CPluginVariable("9 - Debugging|Show In Log", ShowInLog.GetType(), ShowInLog));
+
+        lstReturn.Add(new CPluginVariable("9 - Settings|Log Chat", LogChat.GetType(), LogChat));
 
 
     } catch (Exception e) {
@@ -261,7 +340,7 @@ public void SetPluginVariable(String strVariable, String strValue) {
 
         BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
 
-        String propertyName = tmp.Replace(" ", "");
+        String propertyName = Regex.Replace(tmp, @"[\s:;,'\-]", String.Empty); //tmp.Replace(" ", "");
 
         FieldInfo field = this.GetType().GetField(propertyName, flags);
         
@@ -270,7 +349,14 @@ public void SetPluginVariable(String strVariable, String strValue) {
 
         if (!tmp.Contains("Settings for") && field != null) {
             fieldType = field.GetValue(this).GetType();
-            if (fEasyTypeDict.ContainsValue(fieldType)) {
+            if (strVariable.Contains("Preset")) {
+                fieldType = typeof(PresetItems);
+                try {
+                    Preset = (PresetItems)Enum.Parse(fieldType, strValue);
+                } catch (Exception e) {
+                    ConsoleException(e.ToString());
+                }
+            } else if (fEasyTypeDict.ContainsValue(fieldType)) {
                 field.SetValue(this, TypeDescriptor.GetConverter(fieldType).ConvertFromString(strValue));
             } else if (fListStrDict.ContainsValue(fieldType)) {
                 field.SetValue(this, new List<string>(CPluginVariable.DecodeStringArray(strValue)));
