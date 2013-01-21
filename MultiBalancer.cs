@@ -37,7 +37,7 @@ namespace PRoConEvents
 using EventType = PRoCon.Core.Events.EventType;
 using CapturableEvent = PRoCon.Core.Events.CapturableEvents;
 
-public enum PresetItems { Normal, Aggressive, Passive, Intensify, Retain };
+public enum PresetItems { Normal, Aggressive, Passive, Intensify, Retain, Custom };
 
 public class MultiBalancer : PRoConPluginAPI, IPRoConPluginInterface
 {
@@ -73,6 +73,11 @@ private double FirstMinutesAnySwitchingAllowed;
 private bool Enable2SlotReserve;
 private bool Enable_recruit_Command;
 private PresetItems Preset;
+
+private double LowPopulationTicketPercentageToUnstack;
+private double LowPopulationScorePercentageToUnstack;
+private double HighPopulationTicketPercentageToUnstack;
+private double HighPopulationScorePercentageToUnstack;
 
 private String ShowInLog; // command line to show info in plugin.log
 private bool LogChat;
@@ -122,7 +127,12 @@ public MultiBalancer() {
     
     /* ===== SECTION 2 - Exclusions ===== */
 
-    /* ===== SECTION 3 - Presets ===== */
+    /* ===== SECTION 3 - Server Population ===== */
+
+    LowPopulationTicketPercentageToUnstack = 120.0;
+    LowPopulationScorePercentageToUnstack = 120.0;
+    HighPopulationTicketPercentageToUnstack = 120.0;
+    HighPopulationScorePercentageToUnstack = 120.0;
 
     /* ===== SECTION 4 - Server Activity Setttings ===== */
 
@@ -280,7 +290,15 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
         /* ===== SECTION 2 - Exclusions ===== */
 
-        /* ===== SECTION 3 - Server Activity Setttings ===== */
+        /* ===== SECTION 3 - Server Population Setttings ===== */
+
+        lstReturn.Add(new CPluginVariable("3 - High/Low Population Settings|Low Population: Ticket Percentage To Unstack", LowPopulationTicketPercentageToUnstack.GetType(), LowPopulationTicketPercentageToUnstack));
+
+        lstReturn.Add(new CPluginVariable("3 - High/Low Population Settings|Low Population: Score Percentage To Unstack", LowPopulationScorePercentageToUnstack.GetType(), LowPopulationScorePercentageToUnstack));
+
+        lstReturn.Add(new CPluginVariable("3 - High/Low Population Settings|High Population: Ticket Percentage To Unstack", HighPopulationTicketPercentageToUnstack.GetType(), HighPopulationTicketPercentageToUnstack));
+
+        lstReturn.Add(new CPluginVariable("3 - High/Low Population Settings|High Population: Score Percentage To Unstack", HighPopulationScorePercentageToUnstack.GetType(), HighPopulationScorePercentageToUnstack));
 
         /* ===== SECTION 4 - Round Phase Setttings ===== */
 
