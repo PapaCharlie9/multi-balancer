@@ -39,6 +39,10 @@ using CapturableEvent = PRoCon.Core.Events.CapturableEvents;
 
 public enum PresetItems { Standard, Aggressive, Passive, Intensify, Retain, None };
 
+public enum BalanceSpeed { Stop, Slow, Adaptive, Fast };
+
+public enum DefineStrong { RoundScore, RoundKDR, RoundKills };
+
 public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
 {
 
@@ -50,9 +54,100 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
     public class PerModeSettings {
         public PerModeSettings() {}
         
-        public double MinTicketsPercentage = 10.0;
-        public int GoAggressive = 0;
+        public PerModeSettings(String simplifiedModeName) {
+            DetermineStrongPlayersBy = DefineStrong.RoundScore;
+            
+            switch (simplifiedModeName) {
+                case "Conquest":
+                    MaxPlayers = 64;
+                    EstimatedMaxTickets = 300;
+                    DefinitionOfHighPopulationPlayers = 48;
+                    DefinitionOfLowPopulationPlayers = 16;
+                    DefinitionOfEarlyPhaseTickets = 240;
+                    DefinitionOfLatePhaseTickets = 60;
+                    break;
+                case "Rush":
+                    MaxPlayers = 32;
+                    EstimatedMaxTickets = 75;
+                    DefinitionOfHighPopulationPlayers = 24;
+                    DefinitionOfLowPopulationPlayers = 8;
+                    DefinitionOfEarlyPhaseTickets = 60;
+                    DefinitionOfLatePhaseTickets = 15;
+                    break;
+                case "Scavenger":
+                    MaxPlayers = 64;
+                    EstimatedMaxTickets = 300;
+                    DefinitionOfHighPopulationPlayers = 48;
+                    DefinitionOfLowPopulationPlayers = 16;
+                    DefinitionOfEarlyPhaseTickets = 240;
+                    DefinitionOfLatePhaseTickets = 60;
+                    break;
+                case "Squad Deathmatch":
+                    MaxPlayers = 16;
+                    EstimatedMaxTickets = 100;
+                    DefinitionOfHighPopulationPlayers = 14;
+                    DefinitionOfLowPopulationPlayers = 8;
+                    DefinitionOfEarlyPhaseTickets = 80;
+                    DefinitionOfLatePhaseTickets = 20;
+                    break;
+                case "Squad Rush":
+                    MaxPlayers = 8;
+                    EstimatedMaxTickets = 20;
+                    DefinitionOfHighPopulationPlayers = 6;
+                    DefinitionOfLowPopulationPlayers = 4;
+                    DefinitionOfEarlyPhaseTickets = 18;
+                    DefinitionOfLatePhaseTickets = 2;
+                    break;
+                case "Tank Superiority":
+                    MaxPlayers = 64;
+                    EstimatedMaxTickets = 200;
+                    DefinitionOfHighPopulationPlayers = 48;
+                    DefinitionOfLowPopulationPlayers = 16;
+                    DefinitionOfEarlyPhaseTickets = 160;
+                    DefinitionOfLatePhaseTickets = 40;
+                    break;
+                case "Team Deathmatch":
+                    MaxPlayers = 64;
+                    EstimatedMaxTickets = 100;
+                    DefinitionOfHighPopulationPlayers = 48;
+                    DefinitionOfLowPopulationPlayers = 16;
+                    DefinitionOfEarlyPhaseTickets = 80;
+                    DefinitionOfLatePhaseTickets = 20;
+                    break;
+                default:
+                    break;
+            }
+        }
+        
+        public int MaxPlayers = 64; // will be corrected later
+        public int EstimatedMaxTickets = 100; // will be corrected later
+        public DefineStrong DetermineStrongPlayersBy = DefineStrong.RoundScore;
+        public double DefinitionOfHighPopulationPlayers = 48;
+        public double DefinitionOfLowPopulationPlayers = 16;
+        public double DefinitionOfEarlyPhaseTickets = 80;
+        public double DefinitionOfLatePhaseTickets = 20;
+        
+        //public double MinTicketsPercentage = 10.0; // TBD
+        public int GoAggressive = 0; // TBD
     }
+
+
+    public class PlayerStats {
+        public PlayerStats() {}
+        
+        public DateTime FirstSpawnTimestamp;
+        public DateTime RoundStartTimestamp;
+        public String Tag;
+        public int Score;
+        public int Kills;
+        public int Deaths;
+        public int Rounds; // incremented OnRoundOverPlayers
+        
+        public int ScoreTotal; // not including current round
+        public int KillsTotal; // not including current round
+        public int DeathsTotal; // not including current round
+    }
+
 
 private bool fIsEnabled;
 private Dictionary<String,String> fModeToSimple = null;
@@ -72,12 +167,42 @@ private double FirstMinutesBalancerDisabled;
 private double FirstMinutesAnySwitchingAllowed;
 private bool Enable2SlotReserve;
 private bool Enable_recruit_Command;
+private bool EnableExclusionsWhenBalancingNewPlayers;
+private bool EnableWhitelistingOfReservedSlotsList;
+private String[] Whitelist;
+private String[] Blacklist;
 private PresetItems Preset;
 
+private bool OnWhitelist;
+private bool TopScorers;
+private bool SameClanTagsInSquad;
+private bool ClanTagFetchPending;
+private double MinutesSinceFirstSpawn;
+
 private double LowPopulationTicketPercentageToUnstack;
-private double LowPopulationScorePercentageToUnstack;
+private double MediumPopulationTicketPercentageToUnstack;
 private double HighPopulationTicketPercentageToUnstack;
-private double HighPopulationScorePercentageToUnstack;
+private BalanceSpeed LowPopulationBalanceSpeed;
+private BalanceSpeed MediumPopulationBalanceSpeed;
+private BalanceSpeed HighPopulationBalanceSpeed;
+
+private double EarlyPhaseTicketPercentageToUnstack;
+private double MidPhaseTicketPercentageToUnstack;
+private double LatePhaseTicketPercentageToUnstack;
+private BalanceSpeed EarlyPhaseBalanceSpeed;
+private BalanceSpeed MidPhaseBalanceSpeed;
+private BalanceSpeed LatePhaseBalanceSpeed;
+
+private String ChatMovedForBalance;
+private String YellMovedForBalance;
+private String ChatMovedToUnstack;
+private String YellMovedToUnstack;
+private String ChatDetectedSwitchToWinningTeam;
+private String YellDetectedSwitchToWinningTeam;
+private String ChatDetectedSwitchToLosingTeam;
+private String YellDetectedSwitchToLosingTeam;
+private String ChatAfterUnswitching;
+private String YellAfterUnswitching;
 
 private String ShowInLog; // command line to show info in plugin.log
 private bool LogChat;
@@ -115,7 +240,7 @@ public MULTIbalancer() {
     /* ===== SECTION 1 - Settings ===== */
 
     DebugLevel = 2;
-    QuietMode = false;
+    QuietMode = false; // false: chat is global, true: chat is private. Yells are always private
     MaxSlots = 64;
     MaxSwitchesStrong = 1;
     MaxSwitchesWeak = 2;
@@ -123,23 +248,53 @@ public MULTIbalancer() {
     FirstMinutesAnySwitchingAllowed = 5.0;
     Enable2SlotReserve = false;
     Enable_recruit_Command = false;
+    EnableExclusionsWhenBalancingNewPlayers = false;
+    EnableWhitelistingOfReservedSlotsList = true;
+    Whitelist = new String[] {"[-- name, tag, or EA_GUID --]"};
+    Blacklist = new String[] {"[-- name, tag, or EA_GUID --]"};
     Preset = PresetItems.Standard;
-    //Whitelist = String[];
-    //Blacklist = String[];
     
     /* ===== SECTION 2 - Exclusions ===== */
+    
+    OnWhitelist = true;
+    TopScorers = true;
+    SameClanTagsInSquad = true;
+    ClanTagFetchPending = true;
+    MinutesSinceFirstSpawn = 5.0;
 
     /* ===== SECTION 3 - Server Population ===== */
 
     LowPopulationTicketPercentageToUnstack = 120.0;
-    LowPopulationScorePercentageToUnstack = 120.0;
+    MediumPopulationTicketPercentageToUnstack = 120.0;
     HighPopulationTicketPercentageToUnstack = 120.0;
-    HighPopulationScorePercentageToUnstack = 120.0;
 
-    /* ===== SECTION 4 - Server Activity Setttings ===== */
+    LowPopulationBalanceSpeed = BalanceSpeed.Adaptive;
+    MediumPopulationBalanceSpeed = BalanceSpeed.Adaptive;
+    HighPopulationBalanceSpeed = BalanceSpeed.Slow;
 
-    /* ===== SECTION 5 - Round Phase Setttings ===== */
+    /* ===== SECTION 4 - Round Phase Settings ===== */
 
+    EarlyPhaseTicketPercentageToUnstack = 120.0;
+    MidPhaseTicketPercentageToUnstack = 120.0;
+    LatePhaseTicketPercentageToUnstack = 0.0;
+
+    EarlyPhaseBalanceSpeed = BalanceSpeed.Adaptive;
+    MidPhaseBalanceSpeed = BalanceSpeed.Adaptive;
+    LatePhaseBalanceSpeed = BalanceSpeed.Slow;
+
+    /* ===== SECTION 5 - Messages ===== */
+    
+    ChatMovedForBalance = "*** MOVED %p_n% for balance ...";
+    YellMovedForBalance = "Moved %p_n% for balance ...";
+    ChatMovedToUnstack = "*** MOVED %p_n% to unstack teams ...";
+    YellMovedToUnstack = "Moved %p_n% to unstack teams ...";
+    ChatDetectedSwitchToWinningTeam = "%p_n%, the %o_t% needs your help, sending you back ...";
+    YellDetectedSwitchToWinningTeam = "The %o_t% needs your help, sending you back!";
+    ChatDetectedSwitchToLosingTeam = "%p_n%, thanks for helping out the %n_t%!";
+    YellDetectedSwitchToLosingTeam = "Thanks for helping out the %n_t%!";
+    ChatAfterUnswitching = "%p_n%, please stay on the %n_t% for the rest of this round";
+    YellAfterUnswitching = "Please stay on the %n_t% for the rest of this round";
+    
     /* ===== SECTION 6 - TBD ===== */
 
     /* ===== SECTION 7 - TBD ===== */
@@ -285,6 +440,14 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
         lstReturn.Add(new CPluginVariable("1 - Settings|Enable _recruit_ Command", Enable_recruit_Command.GetType(), Enable_recruit_Command));
 
+        lstReturn.Add(new CPluginVariable("1 - Settings|Enable Exclusions When Balancing New Players", EnableExclusionsWhenBalancingNewPlayers.GetType(), EnableExclusionsWhenBalancingNewPlayers));
+
+        lstReturn.Add(new CPluginVariable("1 - Settings|Enable Whitelisting Of Reserved Slots List", EnableWhitelistingOfReservedSlotsList.GetType(), EnableWhitelistingOfReservedSlotsList));
+
+        lstReturn.Add(new CPluginVariable("1 - Settings|Whitelist", Whitelist.GetType(), Whitelist));
+
+        lstReturn.Add(new CPluginVariable("1 - Settings|Blacklist", Blacklist.GetType(), Blacklist));
+
         String var_name = "1 - Settings|Preset";
         String var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(PresetItems))) + ")";
         
@@ -292,19 +455,83 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
         /* ===== SECTION 2 - Exclusions ===== */
 
+        lstReturn.Add(new CPluginVariable("2 - Exclusions|On Whitelist", OnWhitelist.GetType(), OnWhitelist));
+
+        lstReturn.Add(new CPluginVariable("2 - Exclusions|Top Scorers", TopScorers.GetType(), TopScorers));
+
+        lstReturn.Add(new CPluginVariable("2 - Exclusions|Same Clan Tags In Squad", SameClanTagsInSquad.GetType(), SameClanTagsInSquad));
+
+        lstReturn.Add(new CPluginVariable("2 - Exclusions|Clan Tag Fetch Pending", ClanTagFetchPending.GetType(), ClanTagFetchPending));
+
+        lstReturn.Add(new CPluginVariable("2 - Exclusions|Minutes Since First Spawn", MinutesSinceFirstSpawn.GetType(), MinutesSinceFirstSpawn));
+
         /* ===== SECTION 3 - Server Population Setttings ===== */
 
-        lstReturn.Add(new CPluginVariable("3 - High/Low Population Settings|Low Population: Ticket Percentage To Unstack", LowPopulationTicketPercentageToUnstack.GetType(), LowPopulationTicketPercentageToUnstack));
+        lstReturn.Add(new CPluginVariable("3 - Population Settings|Low Population: Ticket Percentage To Unstack", LowPopulationTicketPercentageToUnstack.GetType(), LowPopulationTicketPercentageToUnstack));
 
-        lstReturn.Add(new CPluginVariable("3 - High/Low Population Settings|Low Population: Score Percentage To Unstack", LowPopulationScorePercentageToUnstack.GetType(), LowPopulationScorePercentageToUnstack));
+        lstReturn.Add(new CPluginVariable("3 - Population Settings|Medium Population: Ticket Percentage To Unstack", MediumPopulationTicketPercentageToUnstack.GetType(), MediumPopulationTicketPercentageToUnstack));
 
-        lstReturn.Add(new CPluginVariable("3 - High/Low Population Settings|High Population: Ticket Percentage To Unstack", HighPopulationTicketPercentageToUnstack.GetType(), HighPopulationTicketPercentageToUnstack));
+        lstReturn.Add(new CPluginVariable("3 - Population Settings|High Population: Ticket Percentage To Unstack", HighPopulationTicketPercentageToUnstack.GetType(), HighPopulationTicketPercentageToUnstack));
 
-        lstReturn.Add(new CPluginVariable("3 - High/Low Population Settings|High Population: Score Percentage To Unstack", HighPopulationScorePercentageToUnstack.GetType(), HighPopulationScorePercentageToUnstack));
+        var_name = "3 - Population Settings|Low Population: Balance Speed";
+        var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(BalanceSpeed))) + ")";
+        
+        lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(BalanceSpeed), LowPopulationBalanceSpeed)));
+
+        var_name = "3 - Population Settings|Medium Population: Balance Speed";
+        var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(BalanceSpeed))) + ")";
+        
+        lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(BalanceSpeed), MediumPopulationBalanceSpeed)));
+
+        var_name = "3 - Population Settings|High Population: Balance Speed";
+        var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(BalanceSpeed))) + ")";
+        
+        lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(BalanceSpeed), HighPopulationBalanceSpeed)));
 
         /* ===== SECTION 4 - Round Phase Setttings ===== */
 
-        /* ===== SECTION 5 - TBD ===== */
+        lstReturn.Add(new CPluginVariable("4 - Round Phase Settings|Early Phase: Ticket Percentage To Unstack", EarlyPhaseTicketPercentageToUnstack.GetType(), EarlyPhaseTicketPercentageToUnstack));
+
+        lstReturn.Add(new CPluginVariable("4 - Round Phase Settings|Mid Phase: Ticket Percentage To Unstack", MidPhaseTicketPercentageToUnstack.GetType(), MidPhaseTicketPercentageToUnstack));
+
+        lstReturn.Add(new CPluginVariable("4 - Round Phase Settings|Late Phase: Ticket Percentage To Unstack", LatePhaseTicketPercentageToUnstack.GetType(), LatePhaseTicketPercentageToUnstack));
+
+        var_name = "4 - Round Phase Settings|Early Phase: Balance Speed";
+        var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(BalanceSpeed))) + ")";
+        
+        lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(BalanceSpeed), EarlyPhaseBalanceSpeed)));
+
+        var_name = "4 - Round Phase Settings|Mid Phase: Balance Speed";
+        var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(BalanceSpeed))) + ")";
+        
+        lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(BalanceSpeed), MidPhaseBalanceSpeed)));
+
+        var_name = "4 - Round Phase Settings|Late Phase: Balance Speed";
+        var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(BalanceSpeed))) + ")";
+        
+        lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(BalanceSpeed), LatePhaseBalanceSpeed)));
+
+        /* ===== SECTION 5 - Messages ===== */
+        
+        lstReturn.Add(new CPluginVariable("5 - Messages|Chat: Moved For Balance", ChatMovedForBalance.GetType(), ChatMovedForBalance));
+        
+        lstReturn.Add(new CPluginVariable("5 - Messages|Yell: Moved For Balance", YellMovedForBalance.GetType(), YellMovedForBalance));
+        
+        lstReturn.Add(new CPluginVariable("5 - Messages|Chat: Moved To Unstack", ChatMovedToUnstack.GetType(), ChatMovedToUnstack));
+        
+        lstReturn.Add(new CPluginVariable("5 - Messages|Yell: Moved To Unstack", YellMovedToUnstack.GetType(), YellMovedToUnstack));
+        
+        lstReturn.Add(new CPluginVariable("5 - Messages|Chat: Detected Switch To Winning Team", ChatDetectedSwitchToWinningTeam.GetType(), ChatDetectedSwitchToWinningTeam));
+        
+        lstReturn.Add(new CPluginVariable("5 - Messages|Yell: Detected Switch To Winning Team", YellDetectedSwitchToWinningTeam.GetType(), YellDetectedSwitchToWinningTeam));
+        
+        lstReturn.Add(new CPluginVariable("5 - Messages|Chat: Detected Switch To Losing Team", ChatDetectedSwitchToLosingTeam.GetType(), ChatDetectedSwitchToLosingTeam));
+        
+        lstReturn.Add(new CPluginVariable("5 - Messages|Yell: Detected Switch To Losing Team", YellDetectedSwitchToLosingTeam.GetType(), YellDetectedSwitchToLosingTeam));
+        
+        lstReturn.Add(new CPluginVariable("5 - Messages|Chat: After Unswitching", ChatAfterUnswitching.GetType(), ChatAfterUnswitching));
+        
+        lstReturn.Add(new CPluginVariable("5 - Messages|Yell: After Unswitching", YellAfterUnswitching.GetType(), YellAfterUnswitching));
 
         /* ===== SECTION 6 - TBD ===== */
 
@@ -317,15 +544,34 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         foreach (String sm in simpleModes) {
             PerModeSettings oneSet = null;
             if (!fPerMode.ContainsKey(sm)) {
-                oneSet = new PerModeSettings();
+                oneSet = new PerModeSettings(sm);
                 fPerMode[sm] = oneSet;
             } else {
                 oneSet = fPerMode[sm];
             }
 
+            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Max Players", oneSet.MaxPlayers.GetType(), oneSet.MaxPlayers));
+
+            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Estimated Max Tickets", oneSet.EstimatedMaxTickets.GetType(), oneSet.EstimatedMaxTickets));
+
+            var_name = "8 - Settings for " + sm + "|" + sm + ": " + "Determine Strong Players By";
+            var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(DefineStrong))) + ")";
+
+            lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(DefineStrong), oneSet.DetermineStrongPlayersBy)));
+
+            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of High Population: Players >=", oneSet.DefinitionOfHighPopulationPlayers.GetType(), oneSet.DefinitionOfHighPopulationPlayers));
+
+            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Low Population: Players <=", oneSet.DefinitionOfLowPopulationPlayers.GetType(), oneSet.DefinitionOfLowPopulationPlayers));
+
+            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Early Phase: Tickets >=", oneSet.DefinitionOfEarlyPhaseTickets.GetType(), oneSet.DefinitionOfEarlyPhaseTickets));
+
+            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Late Phase: Tickets <=", oneSet.DefinitionOfLatePhaseTickets.GetType(), oneSet.DefinitionOfLatePhaseTickets));
+
+            /*
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Min Tickets Percentage", oneSet.MinTicketsPercentage.GetType(), oneSet.MinTicketsPercentage));
 
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Go Aggressive", oneSet.GoAggressive.GetType(), oneSet.GoAggressive));
+            */
         }
 
         /* ===== SECTION 9 - Debug Settings ===== */
@@ -360,7 +606,7 @@ public void SetPluginVariable(String strVariable, String strValue) {
 
         BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
 
-        String propertyName = Regex.Replace(tmp, @"[\s:;,'\-]", String.Empty); //tmp.Replace(" ", "");
+        String propertyName = Regex.Replace(tmp, @"[\s:;,'\-<>=]", String.Empty);
 
         FieldInfo field = this.GetType().GetField(propertyName, flags);
         
@@ -373,6 +619,13 @@ public void SetPluginVariable(String strVariable, String strValue) {
                 fieldType = typeof(PresetItems);
                 try {
                     Preset = (PresetItems)Enum.Parse(fieldType, strValue);
+                } catch (Exception e) {
+                    ConsoleException(e.ToString());
+                }
+            } else if (strVariable.Contains("Balance Speed")) {
+                fieldType = typeof(BalanceSpeed);
+                try {
+                    field.SetValue(this, (BalanceSpeed)Enum.Parse(fieldType, strValue));
                 } catch (Exception e) {
                     ConsoleException(e.ToString());
                 }
@@ -396,7 +649,7 @@ public void SetPluginVariable(String strVariable, String strValue) {
                 String perModeName = m.Groups[2].Value.Replace(" ","");
                 
                 if (!fPerMode.ContainsKey(mode)) {
-                    fPerMode[mode] = new PerModeSettings();
+                    fPerMode[mode] = new PerModeSettings(mode);
                 }
                 PerModeSettings pms = fPerMode[mode];
                 
@@ -414,29 +667,23 @@ public void SetPluginVariable(String strVariable, String strValue) {
                         } else {
                             field.SetValue(pms, false);
                         }
+                    } else if (strVariable.Contains("Strong")) {
+                        fieldType = typeof(DefineStrong);
+                        try {
+                            field.SetValue(pms, (DefineStrong)Enum.Parse(fieldType, strValue));
+                        } catch (Exception e) {
+                            ConsoleException(e.ToString());
+                        }
                     }
                 } else {
                     DebugWrite("field is null", 3);
                 }
-                /*
-                switch (perModeName) {
-                    case "Min Tickets":
-                        if (!Double.TryParse(strValue, out pms.MinTicketsPercentage)) {
-                            ConsoleError("Bogus setting for " + strVariable + " ? " + strValue);
-                        }
-                        break;
-                    case "Go Aggressive":
-                        if (!Int32.TryParse(strValue, out pms.GoAggressive)) {
-                            ConsoleError("Bogus setting for " + strVariable + " ? " + strValue);
-                        }
-                        break;
-                }
-                */
             }
         }
     } catch (System.Exception e) {
         ConsoleException(e.ToString());
     } finally {
+        // TBD: Validate() function needed here!
         // Validate all values and correct if needed
         
         if (!String.IsNullOrEmpty(ShowInLog)) {
@@ -450,8 +697,26 @@ public void SetPluginVariable(String strVariable, String strValue) {
             
             ShowInLog = String.Empty;
         }
-    }
 
+                
+        /*
+        switch (perModeName) {
+            case "Min Tickets":
+                if (!Double.TryParse(strValue, out pms.MinTicketsPercentage)) {
+                    ConsoleError("Bogus setting for " + strVariable + " ? " + strValue);
+                }
+                break;
+            case "Go Aggressive":
+                if (!Int32.TryParse(strValue, out pms.GoAggressive)) {
+                    ConsoleError("Bogus setting for " + strVariable + " ? " + strValue);
+                }
+                break;
+        }
+        */
+        
+        // Update Preset value based on current settings
+        // UpdatePresetValue(); // TBD
+    }
 }
 
 
