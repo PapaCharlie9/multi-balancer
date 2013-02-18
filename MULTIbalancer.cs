@@ -1,4 +1,4 @@
-/* MultiBalancer.cs
+/* MULTIbalancer.cs
 
 by PapaCharlie9@gmail.com
 
@@ -39,7 +39,7 @@ using CapturableEvent = PRoCon.Core.Events.CapturableEvents;
 
 public enum PresetItems { Standard, Aggressive, Passive, Intensify, Retain, None };
 
-public class MultiBalancer : PRoConPluginAPI, IPRoConPluginInterface
+public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
 {
 
 /* Inherited:
@@ -84,7 +84,7 @@ private bool LogChat;
 
 /* Constructor */
 
-public MultiBalancer() {
+public MULTIbalancer() {
     /* Private members */
     fIsEnabled = false;
     fModeToSimple = new Dictionary<String,String>();
@@ -589,7 +589,7 @@ public List<String> GetSimplifiedModes() {
 }
 
 
-} // end MultiBalancer
+} // end MULTIbalancer
 
 } // end namespace PRoConEvents
 

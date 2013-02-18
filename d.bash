@@ -1,2 +1,2 @@
-echo cp -f MultiBalancer.cs ~/procon/Plugins/BF3/MultiBalancer.cs 
-cp -f MultiBalancer.cs ~/procon/Plugins/BF3/MultiBalancer.cs
+echo cp -f MULTIbalancer.cs ~/procon/Plugins/BF3/MULTIbalancer.cs 
+cp -f MULTIbalancer.cs ~/procon/Plugins/BF3/MULTIbalancer.cs
