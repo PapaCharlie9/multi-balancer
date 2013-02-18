@@ -37,7 +37,7 @@ namespace PRoConEvents
 using EventType = PRoCon.Core.Events.EventType;
 using CapturableEvent = PRoCon.Core.Events.CapturableEvents;
 
-public enum PresetItems { Normal, Aggressive, Passive, Intensify, Retain, Custom };
+public enum PresetItems { Standard, Aggressive, Passive, Intensify, Retain, None };
 
 public class MultiBalancer : PRoConPluginAPI, IPRoConPluginInterface
 {
@@ -123,7 +123,9 @@ public MultiBalancer() {
     FirstMinutesAnySwitchingAllowed = 5.0;
     Enable2SlotReserve = false;
     Enable_recruit_Command = false;
-    Preset = PresetItems.Normal;
+    Preset = PresetItems.Standard;
+    //Whitelist = String[];
+    //Blacklist = String[];
     
     /* ===== SECTION 2 - Exclusions ===== */
 
@@ -216,11 +218,11 @@ public void ServerCommand(params String[] args)
 
 
 public String GetPluginName() {
-    return "MULTI-balancer";
+    return "MULTIbalancer";
 }
 
 public String GetPluginVersion() {
-    return "0.0.0.1";
+    return "0.0.0.2";
 }
 
 public String GetPluginAuthor() {
