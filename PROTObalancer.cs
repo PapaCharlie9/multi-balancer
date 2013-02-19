@@ -1,4 +1,4 @@
-/* MULTIbalancer.cs
+/* PROTObalancer.cs
 
 by PapaCharlie9@gmail.com
 
@@ -43,7 +43,7 @@ public enum BalanceSpeed { Stop, Slow, Adaptive, Fast };
 
 public enum DefineStrong { RoundScore, RoundKDR, RoundKills };
 
-public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
+public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
 {
 
 /* Inherited:
@@ -163,11 +163,10 @@ private bool QuietMode;
 private int MaxSlots;
 private int MaxSwitchesStrong;
 private int MaxSwitchesWeak;
-private double FirstMinutesBalancerDisabled;
 private double FirstMinutesAnySwitchingAllowed;
 private bool Enable2SlotReserve;
-private bool Enable_recruit_Command;
-private bool EnableExclusionsWhenBalancingNewPlayers;
+private bool EnablerecruitCommand;
+private bool EnableExclusionsWhenAssigningNewPlayersToTeams;
 private bool EnableWhitelistingOfReservedSlotsList;
 private String[] Whitelist;
 private String[] Blacklist;
@@ -209,7 +208,7 @@ private bool LogChat;
 
 /* Constructor */
 
-public MULTIbalancer() {
+public PROTObalancer() {
     /* Private members */
     fIsEnabled = false;
     fModeToSimple = new Dictionary<String,String>();
@@ -244,11 +243,10 @@ public MULTIbalancer() {
     MaxSlots = 64;
     MaxSwitchesStrong = 1;
     MaxSwitchesWeak = 2;
-    FirstMinutesBalancerDisabled = 5.0;
     FirstMinutesAnySwitchingAllowed = 5.0;
     Enable2SlotReserve = false;
-    Enable_recruit_Command = false;
-    EnableExclusionsWhenBalancingNewPlayers = false;
+    EnablerecruitCommand = false;
+    EnableExclusionsWhenAssigningNewPlayersToTeams = false;
     EnableWhitelistingOfReservedSlotsList = true;
     Whitelist = new String[] {"[-- name, tag, or EA_GUID --]"};
     Blacklist = new String[] {"[-- name, tag, or EA_GUID --]"};
@@ -284,16 +282,16 @@ public MULTIbalancer() {
 
     /* ===== SECTION 5 - Messages ===== */
     
-    ChatMovedForBalance = "*** MOVED %p_n% for balance ...";
-    YellMovedForBalance = "Moved %p_n% for balance ...";
-    ChatMovedToUnstack = "*** MOVED %p_n% to unstack teams ...";
-    YellMovedToUnstack = "Moved %p_n% to unstack teams ...";
-    ChatDetectedSwitchToWinningTeam = "%p_n%, the %o_t% needs your help, sending you back ...";
-    YellDetectedSwitchToWinningTeam = "The %o_t% needs your help, sending you back!";
-    ChatDetectedSwitchToLosingTeam = "%p_n%, thanks for helping out the %n_t%!";
-    YellDetectedSwitchToLosingTeam = "Thanks for helping out the %n_t%!";
-    ChatAfterUnswitching = "%p_n%, please stay on the %n_t% for the rest of this round";
-    YellAfterUnswitching = "Please stay on the %n_t% for the rest of this round";
+    ChatMovedForBalance = "*** MOVED %name% for balance ...";
+    YellMovedForBalance = "Moved %name% for balance ...";
+    ChatMovedToUnstack = "*** MOVED %name% to unstack teams ...";
+    YellMovedToUnstack = "Moved %name% to unstack teams ...";
+    ChatDetectedSwitchToWinningTeam = "%name%, the %fromTeam% needs your help, sending you back ...";
+    YellDetectedSwitchToWinningTeam = "The %fromTeam% needs your help, sending you back!";
+    ChatDetectedSwitchToLosingTeam = "%name%, thanks for helping out the %toTeam%!";
+    YellDetectedSwitchToLosingTeam = "Thanks for helping out the %toTeam%!";
+    ChatAfterUnswitching = "%name%, please stay on the %toTeam% for the rest of this round";
+    YellAfterUnswitching = "Please stay on the %toTeam% for the rest of this round";
     
     /* ===== SECTION 6 - TBD ===== */
 
@@ -373,7 +371,7 @@ public void ServerCommand(params String[] args)
 
 
 public String GetPluginName() {
-    return "MULTIbalancer";
+    return "PROTObalancer";
 }
 
 public String GetPluginVersion() {
@@ -413,15 +411,13 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
         lstReturn.Add(new CPluginVariable("1 - Settings|Max Switches: Weak", MaxSwitchesWeak.GetType(), MaxSwitchesWeak));
 
-        lstReturn.Add(new CPluginVariable("1 - Settings|First Minutes Balancer Disabled", FirstMinutesBalancerDisabled.GetType(), FirstMinutesBalancerDisabled));
-
         lstReturn.Add(new CPluginVariable("1 - Settings|First Minutes Any Switching Allowed", FirstMinutesAnySwitchingAllowed.GetType(), FirstMinutesAnySwitchingAllowed));
 
         lstReturn.Add(new CPluginVariable("1 - Settings|Enable 2 Slot Reserve", Enable2SlotReserve.GetType(), Enable2SlotReserve));
 
-        lstReturn.Add(new CPluginVariable("1 - Settings|Enable _recruit_ Command", Enable_recruit_Command.GetType(), Enable_recruit_Command));
+        lstReturn.Add(new CPluginVariable("1 - Settings|Enable @#!recruit Command", EnablerecruitCommand.GetType(), EnablerecruitCommand));
 
-        lstReturn.Add(new CPluginVariable("1 - Settings|Enable Exclusions When Balancing New Players", EnableExclusionsWhenBalancingNewPlayers.GetType(), EnableExclusionsWhenBalancingNewPlayers));
+        lstReturn.Add(new CPluginVariable("1 - Settings|Enable Exclusions When Assigning New Players To Teams", EnableExclusionsWhenAssigningNewPlayersToTeams.GetType(), EnableExclusionsWhenAssigningNewPlayersToTeams));
 
         lstReturn.Add(new CPluginVariable("1 - Settings|Enable Whitelisting Of Reserved Slots List", EnableWhitelistingOfReservedSlotsList.GetType(), EnableWhitelistingOfReservedSlotsList));
 
@@ -587,7 +583,7 @@ public void SetPluginVariable(String strVariable, String strValue) {
 
         BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
 
-        String propertyName = Regex.Replace(tmp, @"[\s:;,'\-<>=]", String.Empty);
+        String propertyName = Regex.Replace(tmp, @"[^a-zA-Z_0-9]", String.Empty);
 
         FieldInfo field = this.GetType().GetField(propertyName, flags);
         
@@ -881,13 +877,13 @@ private const String HTML_DOC = @"
 <h2>Development</h2>
 <p>TBD</p>
 <h3>Changelog</h3>
-<blockquote><h4>1.0.0.0 (10-JAN-2013)</h4>
+<blockquote><h4>0.0.0.1 (10-JAN-2013)</h4>
     - initial version<br/>
 </blockquote>
 ";
 
 
-} // end MULTIbalancer
+} // end PROTObalancer
 
 } // end namespace PRoConEvents
 
