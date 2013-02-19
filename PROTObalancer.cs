@@ -33,15 +33,53 @@ using PRoCon.Core.Maps;
 namespace PRoConEvents
 {
 
-//Aliases
+/* Aliases */
+
 using EventType = PRoCon.Core.Events.EventType;
 using CapturableEvent = PRoCon.Core.Events.CapturableEvents;
+
+/* Enums */
 
 public enum PresetItems { Standard, Aggressive, Passive, Intensify, Retain, None };
 
 public enum BalanceSpeed { Stop, Slow, Adaptive, Fast };
 
 public enum DefineStrong { RoundScore, RoundKDR, RoundKills };
+
+/* Classes */
+
+static class PROTObalancerUtils {
+    public static bool IsEqual(PROTObalancer lhs, PresetItems preset) {
+        PROTObalancer rhs = new PROTObalancer(preset);
+        return (lhs.CheckForEquality(rhs));
+    }
+    
+    public static void UpdateSettingsForPreset(PROTObalancer lhs, PresetItems preset) {
+        PROTObalancer rhs = new PROTObalancer(preset);
+
+        lhs.OnWhitelist = rhs.OnWhitelist;
+        lhs.TopScorers = rhs.TopScorers;
+        lhs.SameClanTagsInSquad = rhs.SameClanTagsInSquad;
+        lhs.ClanTagFetchPending = rhs.ClanTagFetchPending;
+        lhs.MinutesSinceFirstSpawn = rhs.MinutesSinceFirstSpawn;
+
+        lhs.LowPopulationTicketPercentageToUnstack = rhs.LowPopulationTicketPercentageToUnstack;
+        lhs.MediumPopulationTicketPercentageToUnstack = rhs.MediumPopulationTicketPercentageToUnstack;
+        lhs.HighPopulationTicketPercentageToUnstack = rhs.HighPopulationTicketPercentageToUnstack;
+
+        lhs.LowPopulationBalanceSpeed = rhs.LowPopulationBalanceSpeed;
+        lhs.MediumPopulationBalanceSpeed = rhs.MediumPopulationBalanceSpeed;
+        lhs.HighPopulationBalanceSpeed = rhs.HighPopulationBalanceSpeed;
+
+        lhs.EarlyPhaseTicketPercentageToUnstack = rhs.EarlyPhaseTicketPercentageToUnstack;
+        lhs.MidPhaseTicketPercentageToUnstack = rhs.MidPhaseTicketPercentageToUnstack;
+        lhs.LatePhaseTicketPercentageToUnstack = rhs.LatePhaseTicketPercentageToUnstack;
+
+        lhs.EarlyPhaseBalanceSpeed = rhs.EarlyPhaseBalanceSpeed;
+        lhs.MidPhaseBalanceSpeed = rhs.MidPhaseBalanceSpeed;
+        lhs.LatePhaseBalanceSpeed = rhs.LatePhaseBalanceSpeed;
+    }
+} // end PROTObalancerUtils
 
 public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
 {
@@ -129,7 +167,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         
         //public double MinTicketsPercentage = 10.0; // TBD
         public int GoAggressive = 0; // TBD
-    }
+    } // end PerModeSettings
 
 
     public class PlayerStats {
@@ -146,7 +184,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         public int ScoreTotal; // not including current round
         public int KillsTotal; // not including current round
         public int DeathsTotal; // not including current round
-    }
+    } // end PlayerStats
 
 
 private bool fIsEnabled;
@@ -158,53 +196,53 @@ private Dictionary<String,PerModeSettings> fPerMode = null;
 
 /* Settings */
 
-private int DebugLevel;
-private bool QuietMode;
-private int MaxSlots;
-private int MaxSwitchesStrong;
-private int MaxSwitchesWeak;
-private double FirstMinutesAnySwitchingAllowed;
-private bool Enable2SlotReserve;
-private bool EnablerecruitCommand;
-private bool EnableExclusionsWhenAssigningNewPlayersToTeams;
-private bool EnableWhitelistingOfReservedSlotsList;
-private String[] Whitelist;
-private String[] Blacklist;
-private PresetItems Preset;
+public int DebugLevel;
+public bool QuietMode;
+public int MaxSlots;
+public int MaxSwitchesStrong;
+public int MaxSwitchesWeak;
+public double FirstMinutesAnySwitchingAllowed;
+public bool Enable2SlotReserve;
+public bool EnablerecruitCommand;
+public bool EnableExclusionsWhenAssigningNewPlayersToTeams;
+public bool EnableWhitelistingOfReservedSlotsList;
+public String[] Whitelist;
+public String[] Blacklist;
+public PresetItems Preset;
 
-private bool OnWhitelist;
-private bool TopScorers;
-private bool SameClanTagsInSquad;
-private bool ClanTagFetchPending;
-private double MinutesSinceFirstSpawn;
+public bool OnWhitelist;
+public bool TopScorers;
+public bool SameClanTagsInSquad;
+public bool ClanTagFetchPending;
+public double MinutesSinceFirstSpawn;
 
-private double LowPopulationTicketPercentageToUnstack;
-private double MediumPopulationTicketPercentageToUnstack;
-private double HighPopulationTicketPercentageToUnstack;
-private BalanceSpeed LowPopulationBalanceSpeed;
-private BalanceSpeed MediumPopulationBalanceSpeed;
-private BalanceSpeed HighPopulationBalanceSpeed;
+public double LowPopulationTicketPercentageToUnstack;
+public double MediumPopulationTicketPercentageToUnstack;
+public double HighPopulationTicketPercentageToUnstack;
+public BalanceSpeed LowPopulationBalanceSpeed;
+public BalanceSpeed MediumPopulationBalanceSpeed;
+public BalanceSpeed HighPopulationBalanceSpeed;
 
-private double EarlyPhaseTicketPercentageToUnstack;
-private double MidPhaseTicketPercentageToUnstack;
-private double LatePhaseTicketPercentageToUnstack;
-private BalanceSpeed EarlyPhaseBalanceSpeed;
-private BalanceSpeed MidPhaseBalanceSpeed;
-private BalanceSpeed LatePhaseBalanceSpeed;
+public double EarlyPhaseTicketPercentageToUnstack;
+public double MidPhaseTicketPercentageToUnstack;
+public double LatePhaseTicketPercentageToUnstack;
+public BalanceSpeed EarlyPhaseBalanceSpeed;
+public BalanceSpeed MidPhaseBalanceSpeed;
+public BalanceSpeed LatePhaseBalanceSpeed;
 
-private String ChatMovedForBalance;
-private String YellMovedForBalance;
-private String ChatMovedToUnstack;
-private String YellMovedToUnstack;
-private String ChatDetectedSwitchToWinningTeam;
-private String YellDetectedSwitchToWinningTeam;
-private String ChatDetectedSwitchToLosingTeam;
-private String YellDetectedSwitchToLosingTeam;
-private String ChatAfterUnswitching;
-private String YellAfterUnswitching;
+public String ChatMovedForBalance;
+public String YellMovedForBalance;
+public String ChatMovedToUnstack;
+public String YellMovedToUnstack;
+public String ChatDetectedSwitchToWinningTeam;
+public String YellDetectedSwitchToWinningTeam;
+public String ChatDetectedSwitchToLosingTeam;
+public String YellDetectedSwitchToLosingTeam;
+public String ChatAfterUnswitching;
+public String YellAfterUnswitching;
 
-private String ShowInLog; // command line to show info in plugin.log
-private bool LogChat;
+public String ShowInLog; // command line to show info in plugin.log
+public bool LogChat;
 
 /* Constructor */
 
@@ -303,6 +341,50 @@ public PROTObalancer() {
 
     ShowInLog = String.Empty;
     LogChat = true;
+}
+
+public PROTObalancer(PresetItems preset) : this() {
+    switch (preset) {
+        case PresetItems.Standard:
+            break;
+
+        case PresetItems.Aggressive:
+
+            OnWhitelist = true;
+            TopScorers = false;
+            SameClanTagsInSquad = false;
+            ClanTagFetchPending = false;
+            MinutesSinceFirstSpawn = 0.0;
+
+            LowPopulationTicketPercentageToUnstack = 110.0;
+            MediumPopulationTicketPercentageToUnstack = 110.0;
+            HighPopulationTicketPercentageToUnstack = 110.0;
+
+            LowPopulationBalanceSpeed = BalanceSpeed.Fast;
+            MediumPopulationBalanceSpeed = BalanceSpeed.Fast;
+            HighPopulationBalanceSpeed = BalanceSpeed.Fast;
+
+            EarlyPhaseTicketPercentageToUnstack = 110.0;
+            MidPhaseTicketPercentageToUnstack = 110.0;
+            LatePhaseTicketPercentageToUnstack = 110.0;
+
+            EarlyPhaseBalanceSpeed = BalanceSpeed.Fast;
+            MidPhaseBalanceSpeed = BalanceSpeed.Fast;
+            LatePhaseBalanceSpeed = BalanceSpeed.Fast;
+            
+            break;
+
+        case PresetItems.Passive:
+            break;
+        case PresetItems.Intensify:
+            break;
+        case PresetItems.Retain:
+            break;
+        case PresetItems.None:
+            break;
+        default:
+            break;
+    }
 }
 
 /* Types */
@@ -424,6 +506,8 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         lstReturn.Add(new CPluginVariable("1 - Settings|Whitelist", Whitelist.GetType(), Whitelist));
 
         lstReturn.Add(new CPluginVariable("1 - Settings|Blacklist", Blacklist.GetType(), Blacklist));
+        
+        UpdatePresetValue();
 
         String var_name = "1 - Settings|Preset";
         String var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(PresetItems))) + ")";
@@ -570,6 +654,7 @@ public List<CPluginVariable> GetPluginVariables() {
 }
 
 public void SetPluginVariable(String strVariable, String strValue) {
+    bool isPresetVar = false;
 
     DebugWrite(strVariable + " <- " + strValue, 3);
 
@@ -596,6 +681,7 @@ public void SetPluginVariable(String strVariable, String strValue) {
                 fieldType = typeof(PresetItems);
                 try {
                     Preset = (PresetItems)Enum.Parse(fieldType, strValue);
+                    isPresetVar = true;
                 } catch (Exception e) {
                     ConsoleException(e.ToString());
                 }
@@ -691,8 +777,13 @@ public void SetPluginVariable(String strVariable, String strValue) {
         }
         */
         
-        // Update Preset value based on current settings
-        // UpdatePresetValue(); // TBD
+        if (isPresetVar) {
+            // Update other settings based on new preset value
+            PROTObalancerUtils.UpdateSettingsForPreset(this, Preset);
+        } else {
+            // Update Preset value based on current settings
+            UpdatePresetValue();
+        }
     }
 }
 
@@ -791,7 +882,7 @@ public override void OnLevelStarted() { }
 public override void OnLevelLoaded(String mapFileName, String Gamemode, int roundsPlayed, int roundsTotal) { } // BF3
 
 
-/* ===== */
+/* ========================================== */
 
 public List<String> GetSimplifiedModes() {
     List<String> r = new List<String>();
@@ -829,6 +920,48 @@ public List<String> GetSimplifiedModes() {
 
     return r;
 }
+
+public bool CheckForEquality(PROTObalancer rhs) {
+    return (this.OnWhitelist == rhs.OnWhitelist
+     && this.TopScorers == rhs.TopScorers
+     && this.SameClanTagsInSquad == rhs.SameClanTagsInSquad
+     && this.ClanTagFetchPending == rhs.ClanTagFetchPending
+     && this.MinutesSinceFirstSpawn == rhs.MinutesSinceFirstSpawn
+     && this.LowPopulationTicketPercentageToUnstack == rhs.LowPopulationTicketPercentageToUnstack
+     && this.MediumPopulationTicketPercentageToUnstack == rhs.MediumPopulationTicketPercentageToUnstack
+     && this.HighPopulationTicketPercentageToUnstack == rhs.HighPopulationTicketPercentageToUnstack
+     && this.LowPopulationBalanceSpeed == rhs.LowPopulationBalanceSpeed
+     && this.MediumPopulationBalanceSpeed == rhs.MediumPopulationBalanceSpeed
+     && this.HighPopulationBalanceSpeed == rhs.HighPopulationBalanceSpeed
+     && this.EarlyPhaseTicketPercentageToUnstack == rhs.EarlyPhaseTicketPercentageToUnstack
+     && this.MidPhaseTicketPercentageToUnstack == rhs.MidPhaseTicketPercentageToUnstack
+     && this.LatePhaseTicketPercentageToUnstack == rhs.LatePhaseTicketPercentageToUnstack
+     && this.EarlyPhaseBalanceSpeed == rhs.EarlyPhaseBalanceSpeed
+     && this.MidPhaseBalanceSpeed == rhs.MidPhaseBalanceSpeed
+     && this.LatePhaseBalanceSpeed == rhs.LatePhaseBalanceSpeed
+    );
+}
+
+
+public void UpdatePresetValue() {
+    Preset = PresetItems.None;
+    
+    // Check for Standard
+    if (PROTObalancerUtils.IsEqual(this, PresetItems.Standard)) {
+        Preset = PresetItems.Standard;
+        return;
+    }
+    
+    // Check for Aggressive
+    if (PROTObalancerUtils.IsEqual(this, PresetItems.Aggressive)) {
+        Preset = PresetItems.Aggressive;
+        return;
+    }
+    
+    //... TBD
+}
+
+
 
 
 
