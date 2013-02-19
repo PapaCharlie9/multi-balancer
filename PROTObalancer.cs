@@ -40,11 +40,13 @@ using CapturableEvent = PRoCon.Core.Events.CapturableEvents;
 
 /* Enums */
 
-public enum PresetItems { Standard, Aggressive, Passive, Intensify, Retain, None };
+public enum PresetItems { Standard, Aggressive, Passive, Intensify, Retain, BalanceOnly, UnstackOnly, None };
 
 public enum BalanceSpeed { Stop, Slow, Adaptive, Fast };
 
 public enum DefineStrong { RoundScore, RoundKDR, RoundKills };
+
+public enum ResolveConflictBy { Phase, Population };
 
 /* Classes */
 
@@ -94,6 +96,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         
         public PerModeSettings(String simplifiedModeName) {
             DetermineStrongPlayersBy = DefineStrong.RoundScore;
+            ResolveConflictsByPrioritizing = ResolveConflictBy.Phase;
             
             switch (simplifiedModeName) {
                 case "Conquest":
@@ -160,6 +163,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         public int MaxPlayers = 64; // will be corrected later
         public int EstimatedMaxTickets = 100; // will be corrected later
         public DefineStrong DetermineStrongPlayersBy = DefineStrong.RoundScore;
+        public ResolveConflictBy ResolveConflictsByPrioritizing = ResolveConflictBy.Phase;
         public double DefinitionOfHighPopulationPlayers = 48;
         public double DefinitionOfLowPopulationPlayers = 16;
         public double DefinitionOfEarlyPhaseTickets = 80;
@@ -296,7 +300,7 @@ public PROTObalancer() {
     TopScorers = true;
     SameClanTagsInSquad = true;
     ClanTagFetchPending = true;
-    MinutesSinceFirstSpawn = 5.0;
+    MinutesSinceFirstSpawn = 15.0;
 
     /* ===== SECTION 3 - Server Population ===== */
 
@@ -316,7 +320,7 @@ public PROTObalancer() {
 
     EarlyPhaseBalanceSpeed = BalanceSpeed.Adaptive;
     MidPhaseBalanceSpeed = BalanceSpeed.Adaptive;
-    LatePhaseBalanceSpeed = BalanceSpeed.Slow;
+    LatePhaseBalanceSpeed = BalanceSpeed.Stop;
 
     /* ===== SECTION 5 - Messages ===== */
     
@@ -375,11 +379,135 @@ public PROTObalancer(PresetItems preset) : this() {
             break;
 
         case PresetItems.Passive:
+
+            OnWhitelist = true;
+            TopScorers = true;
+            SameClanTagsInSquad = true;
+            ClanTagFetchPending = true;
+            MinutesSinceFirstSpawn = 30.0;
+
+            LowPopulationTicketPercentageToUnstack = 0.0;
+            MediumPopulationTicketPercentageToUnstack = 200.0;
+            HighPopulationTicketPercentageToUnstack = 200.0;
+
+            LowPopulationBalanceSpeed = BalanceSpeed.Slow;
+            MediumPopulationBalanceSpeed = BalanceSpeed.Slow;
+            HighPopulationBalanceSpeed = BalanceSpeed.Slow;
+
+            EarlyPhaseTicketPercentageToUnstack = 0.0;
+            MidPhaseTicketPercentageToUnstack = 200.0;
+            LatePhaseTicketPercentageToUnstack = 0.0;
+
+            EarlyPhaseBalanceSpeed = BalanceSpeed.Slow;
+            MidPhaseBalanceSpeed = BalanceSpeed.Slow;
+            LatePhaseBalanceSpeed = BalanceSpeed.Stop;
+            
             break;
+
         case PresetItems.Intensify:
+
+            OnWhitelist = true;
+            TopScorers = true;
+            SameClanTagsInSquad = false;
+            ClanTagFetchPending = true;
+            MinutesSinceFirstSpawn = 15.0;
+
+            LowPopulationTicketPercentageToUnstack = 110.0;
+            MediumPopulationTicketPercentageToUnstack = 120.0;
+            HighPopulationTicketPercentageToUnstack = 120.0;
+
+            LowPopulationBalanceSpeed = BalanceSpeed.Adaptive;
+            MediumPopulationBalanceSpeed = BalanceSpeed.Adaptive;
+            HighPopulationBalanceSpeed = BalanceSpeed.Slow;
+
+            EarlyPhaseTicketPercentageToUnstack = 110.0;
+            MidPhaseTicketPercentageToUnstack = 120.0;
+            LatePhaseTicketPercentageToUnstack = 0.0;
+
+            EarlyPhaseBalanceSpeed = BalanceSpeed.Adaptive;
+            MidPhaseBalanceSpeed = BalanceSpeed.Adaptive;
+            LatePhaseBalanceSpeed = BalanceSpeed.Stop;
+            
             break;
+
         case PresetItems.Retain:
+
+            OnWhitelist = true;
+            TopScorers = true;
+            SameClanTagsInSquad = true;
+            ClanTagFetchPending = true;
+            MinutesSinceFirstSpawn = 15.0;
+
+            LowPopulationTicketPercentageToUnstack = 0.0;
+            MediumPopulationTicketPercentageToUnstack = 0.0;
+            HighPopulationTicketPercentageToUnstack = 150.0;
+
+            LowPopulationBalanceSpeed = BalanceSpeed.Stop;
+            MediumPopulationBalanceSpeed = BalanceSpeed.Slow;
+            HighPopulationBalanceSpeed = BalanceSpeed.Adaptive;
+
+            EarlyPhaseTicketPercentageToUnstack = 150.0;
+            MidPhaseTicketPercentageToUnstack = 200.0;
+            LatePhaseTicketPercentageToUnstack = 0.0;
+
+            EarlyPhaseBalanceSpeed = BalanceSpeed.Slow;
+            MidPhaseBalanceSpeed = BalanceSpeed.Slow;
+            LatePhaseBalanceSpeed = BalanceSpeed.Stop;
+            
             break;
+
+        case PresetItems.BalanceOnly:
+
+            OnWhitelist = true;
+            TopScorers = true;
+            SameClanTagsInSquad = true;
+            ClanTagFetchPending = true;
+            MinutesSinceFirstSpawn = 15.0;
+
+            LowPopulationTicketPercentageToUnstack = 0.0;
+            MediumPopulationTicketPercentageToUnstack = 0.0;
+            HighPopulationTicketPercentageToUnstack = 0.0;
+
+            LowPopulationBalanceSpeed = BalanceSpeed.Adaptive;
+            MediumPopulationBalanceSpeed = BalanceSpeed.Adaptive;
+            HighPopulationBalanceSpeed = BalanceSpeed.Slow;
+
+            EarlyPhaseTicketPercentageToUnstack = 0.0;
+            MidPhaseTicketPercentageToUnstack = 0.0;
+            LatePhaseTicketPercentageToUnstack = 0.0;
+
+            EarlyPhaseBalanceSpeed = BalanceSpeed.Adaptive;
+            MidPhaseBalanceSpeed = BalanceSpeed.Adaptive;
+            LatePhaseBalanceSpeed = BalanceSpeed.Stop;
+            
+            break;
+
+        case PresetItems.UnstackOnly:
+
+            OnWhitelist = true;
+            TopScorers = true;
+            SameClanTagsInSquad = true;
+            ClanTagFetchPending = true;
+            MinutesSinceFirstSpawn = 15.0;
+
+            LowPopulationTicketPercentageToUnstack = 120.0;
+            MediumPopulationTicketPercentageToUnstack = 120.0;
+            HighPopulationTicketPercentageToUnstack = 120.0;
+
+            LowPopulationBalanceSpeed = BalanceSpeed.Stop;
+            MediumPopulationBalanceSpeed = BalanceSpeed.Stop;
+            HighPopulationBalanceSpeed = BalanceSpeed.Stop;
+
+            EarlyPhaseTicketPercentageToUnstack = 120.0;
+            MidPhaseTicketPercentageToUnstack = 120.0;
+            LatePhaseTicketPercentageToUnstack = 0.0;
+
+            EarlyPhaseBalanceSpeed = BalanceSpeed.Stop;
+            MidPhaseBalanceSpeed = BalanceSpeed.Stop;
+            LatePhaseBalanceSpeed = BalanceSpeed.Stop;
+            
+            break;
+
         case PresetItems.None:
             break;
         default:
@@ -619,6 +747,11 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
             var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(DefineStrong))) + ")";
 
             lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(DefineStrong), oneSet.DetermineStrongPlayersBy)));
+
+            var_name = "8 - Settings for " + sm + "|" + sm + ": " + "Resolve Conflicts By Prioritizing";
+            var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(ResolveConflictBy))) + ")";
+
+            lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(ResolveConflictBy), oneSet.ResolveConflictsByPrioritizing)));
 
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of High Population: Players >=", oneSet.DefinitionOfHighPopulationPlayers.GetType(), oneSet.DefinitionOfHighPopulationPlayers));
 
@@ -944,7 +1077,7 @@ public bool CheckForEquality(PROTObalancer rhs) {
 
 
 public void UpdatePresetValue() {
-    Preset = PresetItems.None;
+    Preset = PresetItems.None;  // backstop value
     
     // Check for Standard
     if (PROTObalancerUtils.IsEqual(this, PresetItems.Standard)) {
@@ -958,7 +1091,36 @@ public void UpdatePresetValue() {
         return;
     }
     
-    //... TBD
+    // Check for Passive
+    if (PROTObalancerUtils.IsEqual(this, PresetItems.Passive)) {
+        Preset = PresetItems.Passive;
+        return;
+    }
+    
+    // Check for Intensify
+    if (PROTObalancerUtils.IsEqual(this, PresetItems.Intensify)) {
+        Preset = PresetItems.Intensify;
+        return;
+    }
+    
+    // Check for Retain
+    if (PROTObalancerUtils.IsEqual(this, PresetItems.Retain)) {
+        Preset = PresetItems.Retain;
+        return;
+    }
+    
+    // Check for BalanceOnly
+    if (PROTObalancerUtils.IsEqual(this, PresetItems.BalanceOnly)) {
+        Preset = PresetItems.BalanceOnly;
+        return;
+    }
+    
+    // Check for UnstackOnly
+    if (PROTObalancerUtils.IsEqual(this, PresetItems.UnstackOnly)) {
+        Preset = PresetItems.UnstackOnly;
+        return;
+    }
+
 }
 
 
