@@ -42,46 +42,11 @@ using CapturableEvent = PRoCon.Core.Events.CapturableEvents;
 
 public enum PresetItems { Standard, Aggressive, Passive, Intensify, Retain, BalanceOnly, UnstackOnly, None };
 
-public enum BalanceSpeed { Stop, Slow, Adaptive, Fast };
+public enum Speed { Click_Here_For_Speed_Names, Stop, Slow, Adaptive, Fast };
 
 public enum DefineStrong { RoundScore, RoundKDR, RoundKills };
 
-public enum ResolveConflictBy { Phase, Population };
-
 /* Classes */
-
-static class PROTObalancerUtils {
-    public static bool IsEqual(PROTObalancer lhs, PresetItems preset) {
-        PROTObalancer rhs = new PROTObalancer(preset);
-        return (lhs.CheckForEquality(rhs));
-    }
-    
-    public static void UpdateSettingsForPreset(PROTObalancer lhs, PresetItems preset) {
-        PROTObalancer rhs = new PROTObalancer(preset);
-
-        lhs.OnWhitelist = rhs.OnWhitelist;
-        lhs.TopScorers = rhs.TopScorers;
-        lhs.SameClanTagsInSquad = rhs.SameClanTagsInSquad;
-        lhs.ClanTagFetchPending = rhs.ClanTagFetchPending;
-        lhs.MinutesSinceFirstSpawn = rhs.MinutesSinceFirstSpawn;
-
-        lhs.LowPopulationTicketPercentageToUnstack = rhs.LowPopulationTicketPercentageToUnstack;
-        lhs.MediumPopulationTicketPercentageToUnstack = rhs.MediumPopulationTicketPercentageToUnstack;
-        lhs.HighPopulationTicketPercentageToUnstack = rhs.HighPopulationTicketPercentageToUnstack;
-
-        lhs.LowPopulationBalanceSpeed = rhs.LowPopulationBalanceSpeed;
-        lhs.MediumPopulationBalanceSpeed = rhs.MediumPopulationBalanceSpeed;
-        lhs.HighPopulationBalanceSpeed = rhs.HighPopulationBalanceSpeed;
-
-        lhs.EarlyPhaseTicketPercentageToUnstack = rhs.EarlyPhaseTicketPercentageToUnstack;
-        lhs.MidPhaseTicketPercentageToUnstack = rhs.MidPhaseTicketPercentageToUnstack;
-        lhs.LatePhaseTicketPercentageToUnstack = rhs.LatePhaseTicketPercentageToUnstack;
-
-        lhs.EarlyPhaseBalanceSpeed = rhs.EarlyPhaseBalanceSpeed;
-        lhs.MidPhaseBalanceSpeed = rhs.MidPhaseBalanceSpeed;
-        lhs.LatePhaseBalanceSpeed = rhs.LatePhaseBalanceSpeed;
-    }
-} // end PROTObalancerUtils
 
 public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
 {
@@ -96,7 +61,6 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         
         public PerModeSettings(String simplifiedModeName) {
             DetermineStrongPlayersBy = DefineStrong.RoundScore;
-            ResolveConflictsByPrioritizing = ResolveConflictBy.Phase;
             
             switch (simplifiedModeName) {
                 case "Conquest":
@@ -163,7 +127,6 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         public int MaxPlayers = 64; // will be corrected later
         public int EstimatedMaxTickets = 100; // will be corrected later
         public DefineStrong DetermineStrongPlayersBy = DefineStrong.RoundScore;
-        public ResolveConflictBy ResolveConflictsByPrioritizing = ResolveConflictBy.Phase;
         public double DefinitionOfHighPopulationPlayers = 48;
         public double DefinitionOfLowPopulationPlayers = 16;
         public double DefinitionOfEarlyPhaseTickets = 80;
@@ -220,19 +183,13 @@ public bool SameClanTagsInSquad;
 public bool ClanTagFetchPending;
 public double MinutesSinceFirstSpawn;
 
-public double LowPopulationTicketPercentageToUnstack;
-public double MediumPopulationTicketPercentageToUnstack;
-public double HighPopulationTicketPercentageToUnstack;
-public BalanceSpeed LowPopulationBalanceSpeed;
-public BalanceSpeed MediumPopulationBalanceSpeed;
-public BalanceSpeed HighPopulationBalanceSpeed;
-
-public double EarlyPhaseTicketPercentageToUnstack;
-public double MidPhaseTicketPercentageToUnstack;
-public double LatePhaseTicketPercentageToUnstack;
-public BalanceSpeed EarlyPhaseBalanceSpeed;
-public BalanceSpeed MidPhaseBalanceSpeed;
-public BalanceSpeed LatePhaseBalanceSpeed;
+public double[] EarlyPhaseTicketPercentageToUnstack;
+public double[] MidPhaseTicketPercentageToUnstack;
+public double[] LatePhaseTicketPercentageToUnstack;
+public Speed SpellingOfSpeedNamesReminder;
+public Speed[] EarlyPhaseBalanceSpeed;
+public Speed[] MidPhaseBalanceSpeed;
+public Speed[] LatePhaseBalanceSpeed;
 
 public String ChatMovedForBalance;
 public String YellMovedForBalance;
@@ -302,25 +259,18 @@ public PROTObalancer() {
     ClanTagFetchPending = true;
     MinutesSinceFirstSpawn = 15.0;
 
-    /* ===== SECTION 3 - Server Population ===== */
 
-    LowPopulationTicketPercentageToUnstack = 120.0;
-    MediumPopulationTicketPercentageToUnstack = 120.0;
-    HighPopulationTicketPercentageToUnstack = 120.0;
+    /* ===== SECTION 3 - Round Phase & Population Settings ===== */
 
-    LowPopulationBalanceSpeed = BalanceSpeed.Adaptive;
-    MediumPopulationBalanceSpeed = BalanceSpeed.Adaptive;
-    HighPopulationBalanceSpeed = BalanceSpeed.Slow;
+    EarlyPhaseTicketPercentageToUnstack = new double[3]         {  0,120,120};
+    MidPhaseTicketPercentageToUnstack = new double[3]           {  0,120,120};
+    LatePhaseTicketPercentageToUnstack = new double[3]          {  0,  0,  0};
+    
+    SpellingOfSpeedNamesReminder = Speed.Click_Here_For_Speed_Names;
 
-    /* ===== SECTION 4 - Round Phase Settings ===== */
-
-    EarlyPhaseTicketPercentageToUnstack = 120.0;
-    MidPhaseTicketPercentageToUnstack = 120.0;
-    LatePhaseTicketPercentageToUnstack = 0.0;
-
-    EarlyPhaseBalanceSpeed = BalanceSpeed.Adaptive;
-    MidPhaseBalanceSpeed = BalanceSpeed.Adaptive;
-    LatePhaseBalanceSpeed = BalanceSpeed.Stop;
+    EarlyPhaseBalanceSpeed = new Speed[3]           { Speed.Adaptive, Speed.Adaptive, Speed.Adaptive};
+    MidPhaseBalanceSpeed = new Speed[3]             { Speed.Adaptive, Speed.Adaptive, Speed.Adaptive};
+    LatePhaseBalanceSpeed = new Speed[3]            {     Speed.Stop,     Speed.Stop,     Speed.Stop};
 
     /* ===== SECTION 5 - Messages ===== */
     
@@ -350,6 +300,12 @@ public PROTObalancer() {
 public PROTObalancer(PresetItems preset) : this() {
     switch (preset) {
         case PresetItems.Standard:
+         // EarlyPhaseTicketPercentageToUnstack = new double[3]     {  0,120,120};
+         // MidPhaseTicketPercentageToUnstack = new double[3]       {  0,120,120};
+         // LatePhaseTicketPercentageToUnstack = new double[3]      {  0,  0,  0};
+         // EarlyPhaseBalanceSpeed = new Speed[3]   { Speed.Adaptive, Speed.Adaptive, Speed.Adaptive};
+         // MidPhaseBalanceSpeed = new Speed[3]     { Speed.Adaptive, Speed.Adaptive, Speed.Adaptive};
+         // LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Stop,     Speed.Stop,     Speed.Stop};
             break;
 
         case PresetItems.Aggressive:
@@ -360,21 +316,13 @@ public PROTObalancer(PresetItems preset) : this() {
             ClanTagFetchPending = false;
             MinutesSinceFirstSpawn = 0.0;
 
-            LowPopulationTicketPercentageToUnstack = 110.0;
-            MediumPopulationTicketPercentageToUnstack = 110.0;
-            HighPopulationTicketPercentageToUnstack = 110.0;
+            EarlyPhaseTicketPercentageToUnstack = new double[3]     {110,110,110};
+            MidPhaseTicketPercentageToUnstack = new double[3]       {110,110,110};
+            LatePhaseTicketPercentageToUnstack = new double[3]      {110,110,110};
 
-            LowPopulationBalanceSpeed = BalanceSpeed.Fast;
-            MediumPopulationBalanceSpeed = BalanceSpeed.Fast;
-            HighPopulationBalanceSpeed = BalanceSpeed.Fast;
-
-            EarlyPhaseTicketPercentageToUnstack = 110.0;
-            MidPhaseTicketPercentageToUnstack = 110.0;
-            LatePhaseTicketPercentageToUnstack = 110.0;
-
-            EarlyPhaseBalanceSpeed = BalanceSpeed.Fast;
-            MidPhaseBalanceSpeed = BalanceSpeed.Fast;
-            LatePhaseBalanceSpeed = BalanceSpeed.Fast;
+            EarlyPhaseBalanceSpeed = new Speed[3]   {     Speed.Fast,     Speed.Fast,     Speed.Fast};
+            MidPhaseBalanceSpeed = new Speed[3]     {     Speed.Fast,     Speed.Fast,     Speed.Fast};
+            LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Fast,     Speed.Fast,     Speed.Fast};
             
             break;
 
@@ -386,21 +334,13 @@ public PROTObalancer(PresetItems preset) : this() {
             ClanTagFetchPending = true;
             MinutesSinceFirstSpawn = 30.0;
 
-            LowPopulationTicketPercentageToUnstack = 0.0;
-            MediumPopulationTicketPercentageToUnstack = 200.0;
-            HighPopulationTicketPercentageToUnstack = 200.0;
+            EarlyPhaseTicketPercentageToUnstack = new double[3]     {  0,  0,200};
+            MidPhaseTicketPercentageToUnstack = new double[3]       {  0,200,200};
+            LatePhaseTicketPercentageToUnstack = new double[3]      {  0,  0,  0};
 
-            LowPopulationBalanceSpeed = BalanceSpeed.Slow;
-            MediumPopulationBalanceSpeed = BalanceSpeed.Slow;
-            HighPopulationBalanceSpeed = BalanceSpeed.Slow;
-
-            EarlyPhaseTicketPercentageToUnstack = 0.0;
-            MidPhaseTicketPercentageToUnstack = 200.0;
-            LatePhaseTicketPercentageToUnstack = 0.0;
-
-            EarlyPhaseBalanceSpeed = BalanceSpeed.Slow;
-            MidPhaseBalanceSpeed = BalanceSpeed.Slow;
-            LatePhaseBalanceSpeed = BalanceSpeed.Stop;
+            EarlyPhaseBalanceSpeed = new Speed[3]   {     Speed.Slow,     Speed.Slow,     Speed.Slow};
+            MidPhaseBalanceSpeed = new Speed[3]     {     Speed.Slow,     Speed.Slow,     Speed.Slow};
+            LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Stop,     Speed.Stop,     Speed.Stop};
             
             break;
 
@@ -412,21 +352,14 @@ public PROTObalancer(PresetItems preset) : this() {
             ClanTagFetchPending = true;
             MinutesSinceFirstSpawn = 15.0;
 
-            LowPopulationTicketPercentageToUnstack = 110.0;
-            MediumPopulationTicketPercentageToUnstack = 120.0;
-            HighPopulationTicketPercentageToUnstack = 120.0;
+            EarlyPhaseTicketPercentageToUnstack = new double[3]     {110,120,120};
+            MidPhaseTicketPercentageToUnstack = new double[3]       {120,120,120};
+            LatePhaseTicketPercentageToUnstack = new double[3]      {  0,  0,  0};
 
-            LowPopulationBalanceSpeed = BalanceSpeed.Adaptive;
-            MediumPopulationBalanceSpeed = BalanceSpeed.Adaptive;
-            HighPopulationBalanceSpeed = BalanceSpeed.Slow;
-
-            EarlyPhaseTicketPercentageToUnstack = 110.0;
-            MidPhaseTicketPercentageToUnstack = 120.0;
-            LatePhaseTicketPercentageToUnstack = 0.0;
-
-            EarlyPhaseBalanceSpeed = BalanceSpeed.Adaptive;
-            MidPhaseBalanceSpeed = BalanceSpeed.Adaptive;
-            LatePhaseBalanceSpeed = BalanceSpeed.Stop;
+            // TBD: Needs Speed.OverBalance (similar to Fast, but puts more players on losing team)
+            EarlyPhaseBalanceSpeed = new Speed[3]   { Speed.Adaptive, Speed.Adaptive, Speed.Adaptive};
+            MidPhaseBalanceSpeed = new Speed[3]     { Speed.Adaptive, Speed.Adaptive, Speed.Adaptive};
+            LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Stop,     Speed.Stop,     Speed.Stop};
             
             break;
 
@@ -438,21 +371,13 @@ public PROTObalancer(PresetItems preset) : this() {
             ClanTagFetchPending = true;
             MinutesSinceFirstSpawn = 15.0;
 
-            LowPopulationTicketPercentageToUnstack = 0.0;
-            MediumPopulationTicketPercentageToUnstack = 0.0;
-            HighPopulationTicketPercentageToUnstack = 150.0;
+            EarlyPhaseTicketPercentageToUnstack = new double[3]     {  0,  0,150};
+            MidPhaseTicketPercentageToUnstack = new double[3]       {  0,150,200};
+            LatePhaseTicketPercentageToUnstack = new double[3]      {  0,  0,  0};
 
-            LowPopulationBalanceSpeed = BalanceSpeed.Stop;
-            MediumPopulationBalanceSpeed = BalanceSpeed.Slow;
-            HighPopulationBalanceSpeed = BalanceSpeed.Adaptive;
-
-            EarlyPhaseTicketPercentageToUnstack = 150.0;
-            MidPhaseTicketPercentageToUnstack = 200.0;
-            LatePhaseTicketPercentageToUnstack = 0.0;
-
-            EarlyPhaseBalanceSpeed = BalanceSpeed.Slow;
-            MidPhaseBalanceSpeed = BalanceSpeed.Slow;
-            LatePhaseBalanceSpeed = BalanceSpeed.Stop;
+            EarlyPhaseBalanceSpeed = new Speed[3]   {     Speed.Slow, Speed.Adaptive,     Speed.Slow};
+            MidPhaseBalanceSpeed = new Speed[3]     {     Speed.Slow, Speed.Adaptive,     Speed.Slow};
+            LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Stop,     Speed.Stop,     Speed.Stop};
             
             break;
 
@@ -464,21 +389,13 @@ public PROTObalancer(PresetItems preset) : this() {
             ClanTagFetchPending = true;
             MinutesSinceFirstSpawn = 15.0;
 
-            LowPopulationTicketPercentageToUnstack = 0.0;
-            MediumPopulationTicketPercentageToUnstack = 0.0;
-            HighPopulationTicketPercentageToUnstack = 0.0;
+            EarlyPhaseTicketPercentageToUnstack = new double[3]     {  0,  0,  0};
+            MidPhaseTicketPercentageToUnstack = new double[3]       {  0,  0,  0};
+            LatePhaseTicketPercentageToUnstack = new double[3]      {  0,  0,  0};
 
-            LowPopulationBalanceSpeed = BalanceSpeed.Adaptive;
-            MediumPopulationBalanceSpeed = BalanceSpeed.Adaptive;
-            HighPopulationBalanceSpeed = BalanceSpeed.Slow;
-
-            EarlyPhaseTicketPercentageToUnstack = 0.0;
-            MidPhaseTicketPercentageToUnstack = 0.0;
-            LatePhaseTicketPercentageToUnstack = 0.0;
-
-            EarlyPhaseBalanceSpeed = BalanceSpeed.Adaptive;
-            MidPhaseBalanceSpeed = BalanceSpeed.Adaptive;
-            LatePhaseBalanceSpeed = BalanceSpeed.Stop;
+            EarlyPhaseBalanceSpeed = new Speed[3]   { Speed.Adaptive, Speed.Adaptive, Speed.Adaptive};
+            MidPhaseBalanceSpeed = new Speed[3]     { Speed.Adaptive, Speed.Adaptive, Speed.Adaptive};
+            LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Stop,     Speed.Stop,     Speed.Stop};
             
             break;
 
@@ -490,21 +407,13 @@ public PROTObalancer(PresetItems preset) : this() {
             ClanTagFetchPending = true;
             MinutesSinceFirstSpawn = 15.0;
 
-            LowPopulationTicketPercentageToUnstack = 120.0;
-            MediumPopulationTicketPercentageToUnstack = 120.0;
-            HighPopulationTicketPercentageToUnstack = 120.0;
+            EarlyPhaseTicketPercentageToUnstack = new double[3]     {120,120,120};
+            MidPhaseTicketPercentageToUnstack = new double[3]       {120,120,120};
+            LatePhaseTicketPercentageToUnstack = new double[3]      {  0,  0,  0};
 
-            LowPopulationBalanceSpeed = BalanceSpeed.Stop;
-            MediumPopulationBalanceSpeed = BalanceSpeed.Stop;
-            HighPopulationBalanceSpeed = BalanceSpeed.Stop;
-
-            EarlyPhaseTicketPercentageToUnstack = 120.0;
-            MidPhaseTicketPercentageToUnstack = 120.0;
-            LatePhaseTicketPercentageToUnstack = 0.0;
-
-            EarlyPhaseBalanceSpeed = BalanceSpeed.Stop;
-            MidPhaseBalanceSpeed = BalanceSpeed.Stop;
-            LatePhaseBalanceSpeed = BalanceSpeed.Stop;
+            EarlyPhaseBalanceSpeed = new Speed[3]   {     Speed.Stop,     Speed.Stop,     Speed.Stop};
+            MidPhaseBalanceSpeed = new Speed[3]     {     Speed.Stop,     Speed.Slow,     Speed.Stop};
+            LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Stop,     Speed.Stop,     Speed.Stop};
             
             break;
 
@@ -654,51 +563,24 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
         lstReturn.Add(new CPluginVariable("2 - Exclusions|Minutes Since First Spawn", MinutesSinceFirstSpawn.GetType(), MinutesSinceFirstSpawn));
 
-        /* ===== SECTION 3 - Server Population Setttings ===== */
-
-        lstReturn.Add(new CPluginVariable("3 - Population Settings|Low Population: Ticket Percentage To Unstack", LowPopulationTicketPercentageToUnstack.GetType(), LowPopulationTicketPercentageToUnstack));
-
-        lstReturn.Add(new CPluginVariable("3 - Population Settings|Medium Population: Ticket Percentage To Unstack", MediumPopulationTicketPercentageToUnstack.GetType(), MediumPopulationTicketPercentageToUnstack));
-
-        lstReturn.Add(new CPluginVariable("3 - Population Settings|High Population: Ticket Percentage To Unstack", HighPopulationTicketPercentageToUnstack.GetType(), HighPopulationTicketPercentageToUnstack));
-
-        var_name = "3 - Population Settings|Low Population: Balance Speed";
-        var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(BalanceSpeed))) + ")";
+        /* ===== SECTION 3 - Round Phase & Population Setttings ===== */
         
-        lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(BalanceSpeed), LowPopulationBalanceSpeed)));
+        lstReturn.Add(new CPluginVariable("3 - Round Phase and Population Settings|Early Phase: Ticket Percentage To Unstack (Low, Med, High population)", typeof(String), PROTObalancerUtils.ArrayToString(EarlyPhaseTicketPercentageToUnstack)));
 
-        var_name = "3 - Population Settings|Medium Population: Balance Speed";
-        var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(BalanceSpeed))) + ")";
+        lstReturn.Add(new CPluginVariable("3 - Round Phase and Population Settings|Mid Phase: Ticket Percentage To Unstack (Low, Med, High population)", typeof(String), PROTObalancerUtils.ArrayToString(MidPhaseTicketPercentageToUnstack)));
+
+        lstReturn.Add(new CPluginVariable("3 - Round Phase and Population Settings|Late Phase: Ticket Percentage To Unstack (Low, Med, High population)", typeof(String), PROTObalancerUtils.ArrayToString(LatePhaseTicketPercentageToUnstack)));
         
-        lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(BalanceSpeed), MediumPopulationBalanceSpeed)));
+        var_name = "3 - Round Phase and Population Settings|Spelling Of Speed Names Reminder";
+        var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(Speed))) + ")";
 
-        var_name = "3 - Population Settings|High Population: Balance Speed";
-        var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(BalanceSpeed))) + ")";
-        
-        lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(BalanceSpeed), HighPopulationBalanceSpeed)));
+        lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(Speed), SpellingOfSpeedNamesReminder)));
 
-        /* ===== SECTION 4 - Round Phase Setttings ===== */
+        lstReturn.Add(new CPluginVariable("3 - Round Phase and Population Settings|Early Phase: Balance Speed (Low, Med, High population)", typeof(String), PROTObalancerUtils.ArrayToString(EarlyPhaseBalanceSpeed)));
 
-        lstReturn.Add(new CPluginVariable("4 - Round Phase Settings|Early Phase: Ticket Percentage To Unstack", EarlyPhaseTicketPercentageToUnstack.GetType(), EarlyPhaseTicketPercentageToUnstack));
+        lstReturn.Add(new CPluginVariable("3 - Round Phase and Population Settings|Mid Phase: Balance Speed (Low, Med, High population)", typeof(String), PROTObalancerUtils.ArrayToString(MidPhaseBalanceSpeed)));
 
-        lstReturn.Add(new CPluginVariable("4 - Round Phase Settings|Mid Phase: Ticket Percentage To Unstack", MidPhaseTicketPercentageToUnstack.GetType(), MidPhaseTicketPercentageToUnstack));
-
-        lstReturn.Add(new CPluginVariable("4 - Round Phase Settings|Late Phase: Ticket Percentage To Unstack", LatePhaseTicketPercentageToUnstack.GetType(), LatePhaseTicketPercentageToUnstack));
-
-        var_name = "4 - Round Phase Settings|Early Phase: Balance Speed";
-        var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(BalanceSpeed))) + ")";
-        
-        lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(BalanceSpeed), EarlyPhaseBalanceSpeed)));
-
-        var_name = "4 - Round Phase Settings|Mid Phase: Balance Speed";
-        var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(BalanceSpeed))) + ")";
-        
-        lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(BalanceSpeed), MidPhaseBalanceSpeed)));
-
-        var_name = "4 - Round Phase Settings|Late Phase: Balance Speed";
-        var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(BalanceSpeed))) + ")";
-        
-        lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(BalanceSpeed), LatePhaseBalanceSpeed)));
+        lstReturn.Add(new CPluginVariable("3 - Round Phase and Population Settings|Late Phase: Balance Speed (Low, Med, High population)", typeof(String), PROTObalancerUtils.ArrayToString(LatePhaseBalanceSpeed)));
 
         /* ===== SECTION 5 - Messages ===== */
         
@@ -748,11 +630,6 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
             lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(DefineStrong), oneSet.DetermineStrongPlayersBy)));
 
-            var_name = "8 - Settings for " + sm + "|" + sm + ": " + "Resolve Conflicts By Prioritizing";
-            var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(ResolveConflictBy))) + ")";
-
-            lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(ResolveConflictBy), oneSet.ResolveConflictsByPrioritizing)));
-
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of High Population: Players >=", oneSet.DefinitionOfHighPopulationPlayers.GetType(), oneSet.DefinitionOfHighPopulationPlayers));
 
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Low Population: Players <=", oneSet.DefinitionOfLowPopulationPlayers.GetType(), oneSet.DefinitionOfLowPopulationPlayers));
@@ -788,6 +665,7 @@ public List<CPluginVariable> GetPluginVariables() {
 
 public void SetPluginVariable(String strVariable, String strValue) {
     bool isPresetVar = false;
+    bool isReminderVar = false;
 
     DebugWrite(strVariable + " <- " + strValue, 3);
 
@@ -797,6 +675,9 @@ public void SetPluginVariable(String strVariable, String strValue) {
         if (pipeIndex >= 0) {
             pipeIndex++;
             tmp = strVariable.Substring(pipeIndex, strVariable.Length - pipeIndex);
+        }
+        if (tmp.Contains("(Low, Med, High population)")) {
+            tmp = tmp.Replace("(Low, Med, High population)", String.Empty);
         }
 
         BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
@@ -810,7 +691,7 @@ public void SetPluginVariable(String strVariable, String strValue) {
 
         if (!tmp.Contains("Settings for") && field != null) {
             fieldType = field.GetValue(this).GetType();
-            if (strVariable.Contains("Preset")) {
+            if (tmp.Contains("Preset")) {
                 fieldType = typeof(PresetItems);
                 try {
                     Preset = (PresetItems)Enum.Parse(fieldType, strValue);
@@ -818,10 +699,29 @@ public void SetPluginVariable(String strVariable, String strValue) {
                 } catch (Exception e) {
                     ConsoleException(e.ToString());
                 }
-            } else if (strVariable.Contains("Balance Speed")) {
-                fieldType = typeof(BalanceSpeed);
+            } else if (tmp.Contains("Spelling Of Speed Names Reminder")) {
+                fieldType = typeof(Speed);
                 try {
-                    field.SetValue(this, (BalanceSpeed)Enum.Parse(fieldType, strValue));
+                    field.SetValue(this, (Speed)Enum.Parse(fieldType, strValue));
+                    isReminderVar = true;
+                } catch (Exception e) {
+                    ConsoleException(e.ToString());
+                }
+            } else if (tmp.Contains("Balance Speed")) {
+                fieldType = typeof(Speed[]);
+                try {
+                    // Parse the list into an array of enum vals
+                    Speed[] items = PROTObalancerUtils.ParseSpeedArray(strValue); // also validates
+                    field.SetValue(this, items);
+                } catch (Exception e) {
+                    ConsoleException(e.ToString());
+                }
+            } else if (tmp.Contains("Ticket Percentage To Unstack")) {
+                fieldType = typeof(double[]);
+                try {
+                    // Parse the list into an array of numbers
+                    double[] nums = PROTObalancerUtils.ParseNumArray(strValue); // also validates
+                    field.SetValue(this, nums);
                 } catch (Exception e) {
                     ConsoleException(e.ToString());
                 }
@@ -909,6 +809,11 @@ public void SetPluginVariable(String strVariable, String strValue) {
                 break;
         }
         */
+        
+        if (!isReminderVar) {
+            // Reset to show hint
+            SpellingOfSpeedNamesReminder = Speed.Click_Here_For_Speed_Names;
+        }
         
         if (isPresetVar) {
             // Update other settings based on new preset value
@@ -1060,18 +965,12 @@ public bool CheckForEquality(PROTObalancer rhs) {
      && this.SameClanTagsInSquad == rhs.SameClanTagsInSquad
      && this.ClanTagFetchPending == rhs.ClanTagFetchPending
      && this.MinutesSinceFirstSpawn == rhs.MinutesSinceFirstSpawn
-     && this.LowPopulationTicketPercentageToUnstack == rhs.LowPopulationTicketPercentageToUnstack
-     && this.MediumPopulationTicketPercentageToUnstack == rhs.MediumPopulationTicketPercentageToUnstack
-     && this.HighPopulationTicketPercentageToUnstack == rhs.HighPopulationTicketPercentageToUnstack
-     && this.LowPopulationBalanceSpeed == rhs.LowPopulationBalanceSpeed
-     && this.MediumPopulationBalanceSpeed == rhs.MediumPopulationBalanceSpeed
-     && this.HighPopulationBalanceSpeed == rhs.HighPopulationBalanceSpeed
-     && this.EarlyPhaseTicketPercentageToUnstack == rhs.EarlyPhaseTicketPercentageToUnstack
-     && this.MidPhaseTicketPercentageToUnstack == rhs.MidPhaseTicketPercentageToUnstack
-     && this.LatePhaseTicketPercentageToUnstack == rhs.LatePhaseTicketPercentageToUnstack
-     && this.EarlyPhaseBalanceSpeed == rhs.EarlyPhaseBalanceSpeed
-     && this.MidPhaseBalanceSpeed == rhs.MidPhaseBalanceSpeed
-     && this.LatePhaseBalanceSpeed == rhs.LatePhaseBalanceSpeed
+     && PROTObalancerUtils.EqualArrays(this.EarlyPhaseTicketPercentageToUnstack, rhs.EarlyPhaseTicketPercentageToUnstack)
+     && PROTObalancerUtils.EqualArrays(this.MidPhaseTicketPercentageToUnstack, rhs.MidPhaseTicketPercentageToUnstack)
+     && PROTObalancerUtils.EqualArrays(this.LatePhaseTicketPercentageToUnstack, rhs.LatePhaseTicketPercentageToUnstack)
+     && PROTObalancerUtils.EqualArrays(this.EarlyPhaseBalanceSpeed, rhs.EarlyPhaseBalanceSpeed)
+     && PROTObalancerUtils.EqualArrays(this.MidPhaseBalanceSpeed, rhs.MidPhaseBalanceSpeed)
+     && PROTObalancerUtils.EqualArrays(this.LatePhaseBalanceSpeed, rhs.LatePhaseBalanceSpeed)
     );
 }
 
@@ -1131,14 +1030,14 @@ public void UpdatePresetValue() {
 
 
 
+
+
+
+
+
+
+
 /* ========================================================================== */
-
-
-
-
-
-
-
 
 
 
@@ -1179,6 +1078,129 @@ private const String HTML_DOC = @"
 
 
 } // end PROTObalancer
+
+
+
+
+
+
+
+
+
+/* Utilities */
+
+
+static class PROTObalancerUtils {
+    public static bool IsEqual(PROTObalancer lhs, PresetItems preset) {
+        PROTObalancer rhs = new PROTObalancer(preset);
+        return (lhs.CheckForEquality(rhs));
+    }
+    
+    public static void UpdateSettingsForPreset(PROTObalancer lhs, PresetItems preset) {
+        PROTObalancer rhs = new PROTObalancer(preset);
+
+        lhs.OnWhitelist = rhs.OnWhitelist;
+        lhs.TopScorers = rhs.TopScorers;
+        lhs.SameClanTagsInSquad = rhs.SameClanTagsInSquad;
+        lhs.ClanTagFetchPending = rhs.ClanTagFetchPending;
+        lhs.MinutesSinceFirstSpawn = rhs.MinutesSinceFirstSpawn;
+
+        lhs.EarlyPhaseTicketPercentageToUnstack = rhs.EarlyPhaseTicketPercentageToUnstack;
+        lhs.MidPhaseTicketPercentageToUnstack = rhs.MidPhaseTicketPercentageToUnstack;
+        lhs.LatePhaseTicketPercentageToUnstack = rhs.LatePhaseTicketPercentageToUnstack;
+
+        lhs.EarlyPhaseBalanceSpeed = rhs.EarlyPhaseBalanceSpeed;
+        lhs.MidPhaseBalanceSpeed = rhs.MidPhaseBalanceSpeed;
+        lhs.LatePhaseBalanceSpeed = rhs.LatePhaseBalanceSpeed;
+    }
+    
+    public static bool EqualArrays(double[] lhs, double[] rhs) {
+        if (lhs == null && rhs == null) return true;
+        if (lhs == null || rhs == null) return false;
+        if (lhs.Length != rhs.Length) return false;
+        
+        for (int i = 0; i < lhs.Length; ++i) {
+            if (lhs[i] != rhs[i]) return false;
+        }
+        return true;
+    }
+
+    public static bool EqualArrays(Speed[] lhs, Speed[] rhs) {
+        if (lhs == null && rhs == null) return true;
+        if (lhs == null || rhs == null) return false;
+        if (lhs.Length != rhs.Length) return false;
+        
+        for (int i = 0; i < lhs.Length; ++i) {
+            if (lhs[i] != rhs[i]) return false;
+        }
+        return true;
+    }
+    
+    public static String ArrayToString(double[] a) {
+        String ret = String.Empty;
+        bool first = true;
+        if (a == null || a.Length == 0) return ret;
+        for (int i = 0; i < a.Length; ++i) {
+            if (first) {
+                ret = a[i].ToString("F0");
+                first = false;
+            } else {
+                ret = ret + ", " + a[i].ToString("F0");
+            }
+        }
+        return ret;
+    }
+
+    public static String ArrayToString(Speed[] a) {
+        String ret = String.Empty;
+        bool first = true;
+        if (a == null || a.Length == 0) return ret;
+        for (int i = 0; i < a.Length; ++i) {
+            if (first) {
+                ret = Enum.GetName(typeof(Speed), a[i]);
+                first = false;
+            } else {
+                ret = ret + ", " + Enum.GetName(typeof(Speed), a[i]);
+            }
+        }
+        return ret;
+    }
+
+    public static double[] ParseNumArray(String s) {
+        double[] nums = new double[3] {-1,-1,-1}; // -1 indicates a syntax error
+        if (String.IsNullOrEmpty(s)) return nums;
+        if (!s.Contains(",")) return nums;
+        String[] strs = s.Split(new Char[] {','});
+        if (strs.Length != 3) return nums;
+        for (int i = 0; i < nums.Length; ++i) {
+            bool parsedOk = Double.TryParse(strs[i], out nums[i]);
+            if (!parsedOk) {
+                nums[i] = -1;
+                return nums;
+            }
+        }
+        return nums;
+    }
+
+    public static Speed[] ParseSpeedArray(String s) {
+        Speed[] speeds = new Speed[3] {Speed.Click_Here_For_Speed_Names, Speed.Click_Here_For_Speed_Names, Speed.Click_Here_For_Speed_Names};
+        if (String.IsNullOrEmpty(s)) return speeds;
+        if (!s.Contains(",")) return speeds;
+        String[] strs = s.Split(new Char[] {','});
+        if (strs.Length != 3) return speeds;
+        for (int i = 0; i < speeds.Length; ++i) {
+            try {
+                speeds[i] = (Speed)Enum.Parse(typeof(Speed), strs[i]);
+            } catch (Exception e) {
+                // TBD log an error about a bogus value?
+                speeds[i] = Speed.Click_Here_For_Speed_Names;
+            }
+        }
+        return speeds;
+    }
+
+} // end PROTObalancerUtils
+
 
 } // end namespace PRoConEvents
 
