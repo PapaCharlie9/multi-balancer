@@ -61,6 +61,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         
         public PerModeSettings(String simplifiedModeName) {
             DetermineStrongPlayersBy = DefineStrong.RoundScore;
+            CheckTeamStackingAfterFirstMinutes = 10;
             
             switch (simplifiedModeName) {
                 case "Conquest":
@@ -126,6 +127,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         
         public int MaxPlayers = 64; // will be corrected later
         public int EstimatedMaxTickets = 100; // will be corrected later
+        public double CheckTeamStackingAfterFirstMinutes = 10;
         public DefineStrong DetermineStrongPlayersBy = DefineStrong.RoundScore;
         public double DefinitionOfHighPopulationPlayers = 48;
         public double DefinitionOfLowPopulationPlayers = 16;
@@ -165,13 +167,12 @@ private Dictionary<String,PerModeSettings> fPerMode = null;
 
 public int DebugLevel;
 public bool QuietMode;
-public int MaxSlots;
-public int MaxSwitchesStrong;
-public int MaxSwitchesWeak;
-public double FirstMinutesAnySwitchingAllowed;
+public int MaximumServerSize;
+public int MaxTeamSwitchesByStrongPlayers;
+public int MaxTeamSwitchesByWeakPlayers;
+public double UnlimitedTeamSwitchingDuringFirstMinutesOfRound;
 public bool Enable2SlotReserve;
 public bool EnablerecruitCommand;
-public bool EnableExclusionsWhenAssigningNewPlayersToTeams;
 public bool EnableWhitelistingOfReservedSlotsList;
 public String[] Whitelist;
 public String[] Blacklist;
@@ -180,7 +181,6 @@ public PresetItems Preset;
 public bool OnWhitelist;
 public bool TopScorers;
 public bool SameClanTagsInSquad;
-public bool ClanTagFetchPending;
 public double MinutesSinceFirstSpawn;
 
 public double[] EarlyPhaseTicketPercentageToUnstack;
@@ -239,13 +239,12 @@ public PROTObalancer() {
 
     DebugLevel = 2;
     QuietMode = false; // false: chat is global, true: chat is private. Yells are always private
-    MaxSlots = 64;
-    MaxSwitchesStrong = 1;
-    MaxSwitchesWeak = 2;
-    FirstMinutesAnySwitchingAllowed = 5.0;
+    MaximumServerSize = 64;
+    MaxTeamSwitchesByStrongPlayers = 1;
+    MaxTeamSwitchesByWeakPlayers = 2;
+    UnlimitedTeamSwitchingDuringFirstMinutesOfRound = 5.0;
     Enable2SlotReserve = false;
     EnablerecruitCommand = false;
-    EnableExclusionsWhenAssigningNewPlayersToTeams = false;
     EnableWhitelistingOfReservedSlotsList = true;
     Whitelist = new String[] {"[-- name, tag, or EA_GUID --]"};
     Blacklist = new String[] {"[-- name, tag, or EA_GUID --]"};
@@ -256,7 +255,6 @@ public PROTObalancer() {
     OnWhitelist = true;
     TopScorers = true;
     SameClanTagsInSquad = true;
-    ClanTagFetchPending = true;
     MinutesSinceFirstSpawn = 15.0;
 
 
@@ -313,7 +311,6 @@ public PROTObalancer(PresetItems preset) : this() {
             OnWhitelist = true;
             TopScorers = false;
             SameClanTagsInSquad = false;
-            ClanTagFetchPending = false;
             MinutesSinceFirstSpawn = 0.0;
 
             EarlyPhaseTicketPercentageToUnstack = new double[3]     {110,110,110};
@@ -331,7 +328,6 @@ public PROTObalancer(PresetItems preset) : this() {
             OnWhitelist = true;
             TopScorers = true;
             SameClanTagsInSquad = true;
-            ClanTagFetchPending = true;
             MinutesSinceFirstSpawn = 30.0;
 
             EarlyPhaseTicketPercentageToUnstack = new double[3]     {  0,  0,200};
@@ -349,7 +345,6 @@ public PROTObalancer(PresetItems preset) : this() {
             OnWhitelist = true;
             TopScorers = true;
             SameClanTagsInSquad = false;
-            ClanTagFetchPending = true;
             MinutesSinceFirstSpawn = 15.0;
 
             EarlyPhaseTicketPercentageToUnstack = new double[3]     {110,120,120};
@@ -368,7 +363,6 @@ public PROTObalancer(PresetItems preset) : this() {
             OnWhitelist = true;
             TopScorers = true;
             SameClanTagsInSquad = true;
-            ClanTagFetchPending = true;
             MinutesSinceFirstSpawn = 15.0;
 
             EarlyPhaseTicketPercentageToUnstack = new double[3]     {  0,  0,150};
@@ -386,7 +380,6 @@ public PROTObalancer(PresetItems preset) : this() {
             OnWhitelist = true;
             TopScorers = true;
             SameClanTagsInSquad = true;
-            ClanTagFetchPending = true;
             MinutesSinceFirstSpawn = 15.0;
 
             EarlyPhaseTicketPercentageToUnstack = new double[3]     {  0,  0,  0};
@@ -404,7 +397,6 @@ public PROTObalancer(PresetItems preset) : this() {
             OnWhitelist = true;
             TopScorers = true;
             SameClanTagsInSquad = true;
-            ClanTagFetchPending = true;
             MinutesSinceFirstSpawn = 15.0;
 
             EarlyPhaseTicketPercentageToUnstack = new double[3]     {120,120,120};
@@ -494,7 +486,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "0.0.0.2";
+    return "0.0.0.3";
 }
 
 public String GetPluginAuthor() {
@@ -524,19 +516,17 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
         lstReturn.Add(new CPluginVariable("1 - Settings|Quiet Mode", QuietMode.GetType(), QuietMode));
 
-        lstReturn.Add(new CPluginVariable("1 - Settings|Max Slots", MaxSlots.GetType(), MaxSlots));
+        lstReturn.Add(new CPluginVariable("1 - Settings|Maximum Server Size", MaximumServerSize.GetType(), MaximumServerSize));
 
-        lstReturn.Add(new CPluginVariable("1 - Settings|Max Switches: Strong", MaxSwitchesStrong.GetType(), MaxSwitchesStrong));
+        lstReturn.Add(new CPluginVariable("1 - Settings|Max Team Switches By Strong Players", MaxTeamSwitchesByStrongPlayers.GetType(), MaxTeamSwitchesByStrongPlayers));
 
-        lstReturn.Add(new CPluginVariable("1 - Settings|Max Switches: Weak", MaxSwitchesWeak.GetType(), MaxSwitchesWeak));
+        lstReturn.Add(new CPluginVariable("1 - Settings|Max Team Switches By Weak Players", MaxTeamSwitchesByWeakPlayers.GetType(), MaxTeamSwitchesByWeakPlayers));
 
-        lstReturn.Add(new CPluginVariable("1 - Settings|First Minutes Any Switching Allowed", FirstMinutesAnySwitchingAllowed.GetType(), FirstMinutesAnySwitchingAllowed));
+        lstReturn.Add(new CPluginVariable("1 - Settings|Unlimited Team Switching During First Minutes Of Round", UnlimitedTeamSwitchingDuringFirstMinutesOfRound.GetType(), UnlimitedTeamSwitchingDuringFirstMinutesOfRound));
 
         lstReturn.Add(new CPluginVariable("1 - Settings|Enable 2 Slot Reserve", Enable2SlotReserve.GetType(), Enable2SlotReserve));
 
         lstReturn.Add(new CPluginVariable("1 - Settings|Enable @#!recruit Command", EnablerecruitCommand.GetType(), EnablerecruitCommand));
-
-        lstReturn.Add(new CPluginVariable("1 - Settings|Enable Exclusions When Assigning New Players To Teams", EnableExclusionsWhenAssigningNewPlayersToTeams.GetType(), EnableExclusionsWhenAssigningNewPlayersToTeams));
 
         lstReturn.Add(new CPluginVariable("1 - Settings|Enable Whitelisting Of Reserved Slots List", EnableWhitelistingOfReservedSlotsList.GetType(), EnableWhitelistingOfReservedSlotsList));
 
@@ -558,8 +548,6 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         lstReturn.Add(new CPluginVariable("2 - Exclusions|Top Scorers", TopScorers.GetType(), TopScorers));
 
         lstReturn.Add(new CPluginVariable("2 - Exclusions|Same Clan Tags In Squad", SameClanTagsInSquad.GetType(), SameClanTagsInSquad));
-
-        lstReturn.Add(new CPluginVariable("2 - Exclusions|Clan Tag Fetch Pending", ClanTagFetchPending.GetType(), ClanTagFetchPending));
 
         lstReturn.Add(new CPluginVariable("2 - Exclusions|Minutes Since First Spawn", MinutesSinceFirstSpawn.GetType(), MinutesSinceFirstSpawn));
 
@@ -624,6 +612,8 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Max Players", oneSet.MaxPlayers.GetType(), oneSet.MaxPlayers));
 
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Estimated Max Tickets", oneSet.EstimatedMaxTickets.GetType(), oneSet.EstimatedMaxTickets));
+
+            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Check Team Stacking After First Minutes", oneSet.CheckTeamStackingAfterFirstMinutes.GetType(), oneSet.CheckTeamStackingAfterFirstMinutes));
 
             var_name = "8 - Settings for " + sm + "|" + sm + ": " + "Determine Strong Players By";
             var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(DefineStrong))) + ")";
@@ -963,7 +953,6 @@ public bool CheckForEquality(PROTObalancer rhs) {
     return (this.OnWhitelist == rhs.OnWhitelist
      && this.TopScorers == rhs.TopScorers
      && this.SameClanTagsInSquad == rhs.SameClanTagsInSquad
-     && this.ClanTagFetchPending == rhs.ClanTagFetchPending
      && this.MinutesSinceFirstSpawn == rhs.MinutesSinceFirstSpawn
      && PROTObalancerUtils.EqualArrays(this.EarlyPhaseTicketPercentageToUnstack, rhs.EarlyPhaseTicketPercentageToUnstack)
      && PROTObalancerUtils.EqualArrays(this.MidPhaseTicketPercentageToUnstack, rhs.MidPhaseTicketPercentageToUnstack)
@@ -1102,7 +1091,6 @@ static class PROTObalancerUtils {
         lhs.OnWhitelist = rhs.OnWhitelist;
         lhs.TopScorers = rhs.TopScorers;
         lhs.SameClanTagsInSquad = rhs.SameClanTagsInSquad;
-        lhs.ClanTagFetchPending = rhs.ClanTagFetchPending;
         lhs.MinutesSinceFirstSpawn = rhs.MinutesSinceFirstSpawn;
 
         lhs.EarlyPhaseTicketPercentageToUnstack = rhs.EarlyPhaseTicketPercentageToUnstack;
