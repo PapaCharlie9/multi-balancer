@@ -64,63 +64,86 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
             CheckTeamStackingAfterFirstMinutes = 10;
             
             switch (simplifiedModeName) {
-                case "Conquest":
+                case "Conq Small, Dom, Scav":
+                    MaxPlayers = 32;
+                    EstimatedMaxTickets = 200;
+                    DefinitionOfHighPopulationForPlayers = 28;
+                    DefinitionOfLowPopulationForPlayers = 8;
+                    DefinitionOfEarlyPhaseForTickets = 160;
+                    DefinitionOfLatePhaseForTickets = 40;
+                    break;
+                case "Conquest Large":
                     MaxPlayers = 64;
                     EstimatedMaxTickets = 300;
-                    DefinitionOfHighPopulationPlayers = 48;
-                    DefinitionOfLowPopulationPlayers = 16;
-                    DefinitionOfEarlyPhaseTickets = 240;
-                    DefinitionOfLatePhaseTickets = 60;
+                    DefinitionOfHighPopulationForPlayers = 48;
+                    DefinitionOfLowPopulationForPlayers = 16;
+                    DefinitionOfEarlyPhaseForTickets = 240;
+                    DefinitionOfLatePhaseForTickets = 60;
+                    break;
+                case "CTF":
+                    MaxPlayers = 64;
+                    EstimatedMaxTickets = 300;
+                    DefinitionOfHighPopulationForPlayers = 48;
+                    DefinitionOfLowPopulationForPlayers = 16;
+                    DefinitionOfEarlyPhaseForTickets = 240;
+                    DefinitionOfLatePhaseForTickets = 60;
                     break;
                 case "Rush":
                     MaxPlayers = 32;
                     EstimatedMaxTickets = 75;
-                    DefinitionOfHighPopulationPlayers = 24;
-                    DefinitionOfLowPopulationPlayers = 8;
-                    DefinitionOfEarlyPhaseTickets = 60;
-                    DefinitionOfLatePhaseTickets = 15;
-                    break;
-                case "Scavenger":
-                    MaxPlayers = 64;
-                    EstimatedMaxTickets = 300;
-                    DefinitionOfHighPopulationPlayers = 48;
-                    DefinitionOfLowPopulationPlayers = 16;
-                    DefinitionOfEarlyPhaseTickets = 240;
-                    DefinitionOfLatePhaseTickets = 60;
+                    DefinitionOfHighPopulationForPlayers = 24;
+                    DefinitionOfLowPopulationForPlayers = 8;
+                    DefinitionOfEarlyPhaseForTickets = 60;
+                    DefinitionOfLatePhaseForTickets = 15;
                     break;
                 case "Squad Deathmatch":
                     MaxPlayers = 16;
                     EstimatedMaxTickets = 100;
-                    DefinitionOfHighPopulationPlayers = 14;
-                    DefinitionOfLowPopulationPlayers = 8;
-                    DefinitionOfEarlyPhaseTickets = 80;
-                    DefinitionOfLatePhaseTickets = 20;
+                    DefinitionOfHighPopulationForPlayers = 14;
+                    DefinitionOfLowPopulationForPlayers = 8;
+                    DefinitionOfEarlyPhaseForTickets = 80;
+                    DefinitionOfLatePhaseForTickets = 20;
                     break;
-                case "Squad Rush":
-                    MaxPlayers = 8;
-                    EstimatedMaxTickets = 20;
-                    DefinitionOfHighPopulationPlayers = 6;
-                    DefinitionOfLowPopulationPlayers = 4;
-                    DefinitionOfEarlyPhaseTickets = 18;
-                    DefinitionOfLatePhaseTickets = 2;
-                    break;
-                case "Tank Superiority":
-                    MaxPlayers = 64;
+                case "Superiority":
+                    MaxPlayers = 24;
                     EstimatedMaxTickets = 200;
-                    DefinitionOfHighPopulationPlayers = 48;
-                    DefinitionOfLowPopulationPlayers = 16;
-                    DefinitionOfEarlyPhaseTickets = 160;
-                    DefinitionOfLatePhaseTickets = 40;
+                    DefinitionOfHighPopulationForPlayers = 48;
+                    DefinitionOfLowPopulationForPlayers = 16;
+                    DefinitionOfEarlyPhaseForTickets = 160;
+                    DefinitionOfLatePhaseForTickets = 40;
                     break;
                 case "Team Deathmatch":
                     MaxPlayers = 64;
                     EstimatedMaxTickets = 100;
-                    DefinitionOfHighPopulationPlayers = 48;
-                    DefinitionOfLowPopulationPlayers = 16;
-                    DefinitionOfEarlyPhaseTickets = 80;
-                    DefinitionOfLatePhaseTickets = 20;
+                    DefinitionOfHighPopulationForPlayers = 48;
+                    DefinitionOfLowPopulationForPlayers = 16;
+                    DefinitionOfEarlyPhaseForTickets = 80;
+                    DefinitionOfLatePhaseForTickets = 20;
                     break;
+                case "Squad Rush":
+                    MaxPlayers = 8;
+                    EstimatedMaxTickets = 20;
+                    DefinitionOfHighPopulationForPlayers = 6;
+                    DefinitionOfLowPopulationForPlayers = 4;
+                    DefinitionOfEarlyPhaseForTickets = 18;
+                    DefinitionOfLatePhaseForTickets = 2;
+                    break;
+                case "Gun Master":
+                    MaxPlayers = 32;
+                    EstimatedMaxTickets = 0;
+                    DefinitionOfHighPopulationForPlayers = 24;
+                    DefinitionOfLowPopulationForPlayers = 8;
+                    DefinitionOfEarlyPhaseForTickets = 0;
+                    DefinitionOfLatePhaseForTickets = 0;
+                    break;
+                case "Unknown or New Mode":
                 default:
+                    MaxPlayers = 32;
+                    EstimatedMaxTickets = 200;
+                    DefinitionOfHighPopulationForPlayers = 28;
+                    DefinitionOfLowPopulationForPlayers = 8;
+                    DefinitionOfEarlyPhaseForTickets = 160;
+                    DefinitionOfLatePhaseForTickets = 40;
                     break;
             }
         }
@@ -129,10 +152,10 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         public int EstimatedMaxTickets = 100; // will be corrected later
         public double CheckTeamStackingAfterFirstMinutes = 10;
         public DefineStrong DetermineStrongPlayersBy = DefineStrong.RoundScore;
-        public double DefinitionOfHighPopulationPlayers = 48;
-        public double DefinitionOfLowPopulationPlayers = 16;
-        public double DefinitionOfEarlyPhaseTickets = 80;
-        public double DefinitionOfLatePhaseTickets = 20;
+        public double DefinitionOfHighPopulationForPlayers = 48;
+        public double DefinitionOfLowPopulationForPlayers = 16;
+        public double DefinitionOfEarlyPhaseForTickets = 80;
+        public double DefinitionOfLatePhaseForTickets = 20;
         
         //public double MinTicketsPercentage = 10.0; // TBD
         public int GoAggressive = 0; // TBD
@@ -486,7 +509,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "0.0.0.3";
+    return "0.0.0.4";
 }
 
 public String GetPluginAuthor() {
@@ -498,7 +521,7 @@ public String GetPluginWebsite() {
 }
 
 public String GetPluginDescription() {
-    return HTML_DOC;
+    return PROTObalancerUtils.HTML_DOC;
 }
 
 
@@ -620,13 +643,13 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
             lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(DefineStrong), oneSet.DetermineStrongPlayersBy)));
 
-            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of High Population: Players >=", oneSet.DefinitionOfHighPopulationPlayers.GetType(), oneSet.DefinitionOfHighPopulationPlayers));
+            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of High Population For Players >=", oneSet.DefinitionOfHighPopulationForPlayers.GetType(), oneSet.DefinitionOfHighPopulationForPlayers));
 
-            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Low Population: Players <=", oneSet.DefinitionOfLowPopulationPlayers.GetType(), oneSet.DefinitionOfLowPopulationPlayers));
+            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Low Population For Players <=", oneSet.DefinitionOfLowPopulationForPlayers.GetType(), oneSet.DefinitionOfLowPopulationForPlayers));
 
-            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Early Phase: Tickets >=", oneSet.DefinitionOfEarlyPhaseTickets.GetType(), oneSet.DefinitionOfEarlyPhaseTickets));
+            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Early Phase For Tickets >=", oneSet.DefinitionOfEarlyPhaseForTickets.GetType(), oneSet.DefinitionOfEarlyPhaseForTickets));
 
-            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Late Phase: Tickets <=", oneSet.DefinitionOfLatePhaseTickets.GetType(), oneSet.DefinitionOfLatePhaseTickets));
+            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Late Phase For Tickets <=", oneSet.DefinitionOfLatePhaseForTickets.GetType(), oneSet.DefinitionOfLatePhaseForTickets));
 
             /*
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Min Tickets Percentage", oneSet.MinTicketsPercentage.GetType(), oneSet.MinTicketsPercentage));
@@ -679,7 +702,7 @@ public void SetPluginVariable(String strVariable, String strValue) {
         Type fieldType = null;
 
 
-        if (!tmp.Contains("Settings for") && field != null) {
+        if (!strVariable.Contains("Settings for") && field != null) {
             fieldType = field.GetValue(this).GetType();
             if (tmp.Contains("Preset")) {
                 fieldType = typeof(PresetItems);
@@ -732,7 +755,8 @@ public void SetPluginVariable(String strVariable, String strValue) {
             
             if (m.Success) {
                 String mode = m.Groups[1].Value;
-                String perModeName = m.Groups[2].Value.Replace(" ","");
+                String fieldPart = m.Groups[2].Value.Replace(" ","");
+                String perModeName = Regex.Replace(fieldPart, @"[^a-zA-Z_0-9]", String.Empty);
                 
                 if (!fPerMode.ContainsKey(mode)) {
                     fPerMode[mode] = new PerModeSettings(mode);
@@ -740,6 +764,8 @@ public void SetPluginVariable(String strVariable, String strValue) {
                 PerModeSettings pms = fPerMode[mode];
                 
                 field = pms.GetType().GetField(perModeName, flags);
+                
+                DebugWrite("Mode: " + mode + ", Field: " + perModeName + ", Value: " + strValue, 3);
                 
                 if (field != null) {
                     fieldType = field.GetValue(pms).GetType();
@@ -919,14 +945,37 @@ public List<String> GetSimplifiedModes() {
         List<CMap> raw = this.GetMapDefines();
         foreach (CMap m in raw) {
             String simple = null;
-            if (Regex.Match(m.GameMode, @"(?:Conquest|Assault)").Success) {
-                simple = "Conquest";
-            } else if (Regex.Match(m.GameMode, @"TDM").Success) {
-                simple = "Team Deathmatch";
-            } else if (Regex.Match(m.GameMode, @"Gun Master").Success) {
-                continue; // not supported
-            } else {
-                simple = m.GameMode;
+            switch (m.GameMode) {
+                case "Conquest Large":
+                case "Assault64":
+                    simple = "Conquest Large";
+                    break;
+                case "Conquest":
+                case "Assault":
+                case "Assault #2":
+                case "Conquest Domination":
+                case "Scavenger":
+                    simple = "Conq Small, Dom, Scav";
+                    break;
+                case "TDM":
+                case "TDM Close Quarters":
+                    simple = "Team Deathmatch";
+                    break;
+                case "Tank Superiority":
+                case "Air Superiority":
+                    simple = "Superiority";
+                    break;
+                case "Rush":
+                case "CTF":
+                case "Squad Deathmatch":
+                case "Gun Master":
+                case "Squad Rush":
+                    simple = m.GameMode;
+                    break;
+                default:
+                    simple = "Unknown or New Mode";
+                    break;
+                
             }
             if (fModeToSimple.ContainsKey(m.PlayList)) {
                 if (fModeToSimple[m.PlayList] != simple) {
@@ -941,10 +990,10 @@ public List<String> GetSimplifiedModes() {
     bool last = false;
     foreach (KeyValuePair<String,String> p in fModeToSimple) {
         if (r.Contains(p.Value)) continue;
-        if (p.Value == "Squad Rush") { last = true; continue; }
+        if (p.Value == "Unknown or New Mode") { last = true; continue; }
         r.Add(p.Value); // collect up all the simple GameMode names
     }
-    if (last) r.Add("Squad Rush"); // make sure this is last
+    if (last) r.Add("Unknown or New Mode"); // make sure this is last
 
     return r;
 }
@@ -1010,60 +1059,6 @@ public void UpdatePresetValue() {
     }
 
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* ========================================================================== */
-
-
-
-
-private const String HTML_DOC = @"
-<h1>Multi-Balancer &amp; Unstacker, including SQDM</h1>
-<p>For BF3, this plugin does live round team balancing and unstacking for all game modes, including Squad Deathmatch (SQDM).</p>
-
-<h2>THIS IS JUST A PROTOTYPE FOR FEEDBACK!</h2>
-<p>It doesn't do any balancing or unstacking, no matter what you change the settings to. It is completely safe to run on an active server. It sends no commands to the server.</p>
-
-<p><font color=#0000FF>The purpose of this prototype is to get feedback from users about the arrangement and usage of plugin settings. I'm interested in answers to these questions:</font></p>
-
-<ul>
-<li>What is your overall impression with the number and complexity of settings?</li>
-<li>What's missing?</li>
-<li>What should be added?</li>
-<li>Which names or values are confusing and need additional documentation to clarify?</li>
-<li>What should be changed to improve clarity?</li>
-</ul>
-
-<h2>Description</h2>
-<p>TBD</p>
-
-<h2>Commands</h2>
-<p>TBD</p>
-
-<h2>Settings</h2>
-<p>TBD</p>
-
-<h2>Development</h2>
-<p>TBD</p>
-<h3>Changelog</h3>
-<blockquote><h4>0.0.0.1 (10-JAN-2013)</h4>
-    - initial version<br/>
-</blockquote>
-";
 
 
 } // end PROTObalancer
@@ -1186,6 +1181,40 @@ static class PROTObalancerUtils {
         }
         return speeds;
     }
+
+    public const String HTML_DOC = @"
+<h1>Multi-Balancer &amp; Unstacker, including SQDM</h1>
+<p>For BF3, this plugin does live round team balancing and unstacking for all game modes, including Squad Deathmatch (SQDM).</p>
+
+<h2>THIS IS JUST A PROTOTYPE FOR FEEDBACK!</h2>
+<p>It doesn't do any balancing or unstacking, no matter what you change the settings to. It is completely safe to run on an active server. It sends no commands to the server.</p>
+
+<p><font color=#0000FF>The purpose of this prototype is to get feedback from users about the arrangement and usage of plugin settings. I'm interested in answers to these questions:</font></p>
+
+<ul>
+<li>What is your overall impression with the number and complexity of settings?</li>
+<li>What's missing?</li>
+<li>What should be added?</li>
+<li>Which names or values are confusing and need additional documentation to clarify?</li>
+<li>What should be changed to improve clarity?</li>
+</ul>
+
+<h2>Description</h2>
+<p>TBD</p>
+
+<h2>Commands</h2>
+<p>TBD</p>
+
+<h2>Settings</h2>
+<p>TBD</p>
+
+<h2>Development</h2>
+<p>TBD</p>
+<h3>Changelog</h3>
+<blockquote><h4>0.0.0.1 (10-JAN-2013)</h4>
+    - initial version<br/>
+</blockquote>
+";
 
 } // end PROTObalancerUtils
 
