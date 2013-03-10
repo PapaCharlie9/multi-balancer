@@ -61,12 +61,11 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         
         public PerModeSettings(String simplifiedModeName) {
             DetermineStrongPlayersBy = DefineStrong.RoundScore;
-            CheckTeamStackingAfterFirstMinutes = 10;
             
             switch (simplifiedModeName) {
                 case "Conq Small, Dom, Scav":
                     MaxPlayers = 32;
-                    EstimatedMaxTickets = 200;
+                    CheckTeamStackingAfterFirstMinutes = 10;
                     DefinitionOfHighPopulationForPlayers = 28;
                     DefinitionOfLowPopulationForPlayers = 8;
                     DefinitionOfEarlyPhaseForTickets = 160;
@@ -74,7 +73,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     break;
                 case "Conquest Large":
                     MaxPlayers = 64;
-                    EstimatedMaxTickets = 300;
+                    CheckTeamStackingAfterFirstMinutes = 10;
                     DefinitionOfHighPopulationForPlayers = 48;
                     DefinitionOfLowPopulationForPlayers = 16;
                     DefinitionOfEarlyPhaseForTickets = 240;
@@ -82,7 +81,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     break;
                 case "CTF":
                     MaxPlayers = 64;
-                    EstimatedMaxTickets = 300;
+                    CheckTeamStackingAfterFirstMinutes = 10;
                     DefinitionOfHighPopulationForPlayers = 48;
                     DefinitionOfLowPopulationForPlayers = 16;
                     DefinitionOfEarlyPhaseForTickets = 240;
@@ -90,7 +89,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     break;
                 case "Rush":
                     MaxPlayers = 32;
-                    EstimatedMaxTickets = 75;
+                    CheckTeamStackingAfterFirstMinutes = 10;
                     DefinitionOfHighPopulationForPlayers = 24;
                     DefinitionOfLowPopulationForPlayers = 8;
                     DefinitionOfEarlyPhaseForTickets = 60;
@@ -98,7 +97,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     break;
                 case "Squad Deathmatch":
                     MaxPlayers = 16;
-                    EstimatedMaxTickets = 100;
+                    CheckTeamStackingAfterFirstMinutes = 5;
                     DefinitionOfHighPopulationForPlayers = 14;
                     DefinitionOfLowPopulationForPlayers = 8;
                     DefinitionOfEarlyPhaseForTickets = 80;
@@ -106,7 +105,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     break;
                 case "Superiority":
                     MaxPlayers = 24;
-                    EstimatedMaxTickets = 200;
+                    CheckTeamStackingAfterFirstMinutes = 15;
                     DefinitionOfHighPopulationForPlayers = 48;
                     DefinitionOfLowPopulationForPlayers = 16;
                     DefinitionOfEarlyPhaseForTickets = 160;
@@ -114,7 +113,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     break;
                 case "Team Deathmatch":
                     MaxPlayers = 64;
-                    EstimatedMaxTickets = 100;
+                    CheckTeamStackingAfterFirstMinutes = 5;
                     DefinitionOfHighPopulationForPlayers = 48;
                     DefinitionOfLowPopulationForPlayers = 16;
                     DefinitionOfEarlyPhaseForTickets = 80;
@@ -122,7 +121,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     break;
                 case "Squad Rush":
                     MaxPlayers = 8;
-                    EstimatedMaxTickets = 20;
+                    CheckTeamStackingAfterFirstMinutes = 2;
                     DefinitionOfHighPopulationForPlayers = 6;
                     DefinitionOfLowPopulationForPlayers = 4;
                     DefinitionOfEarlyPhaseForTickets = 18;
@@ -130,7 +129,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     break;
                 case "Gun Master":
                     MaxPlayers = 32;
-                    EstimatedMaxTickets = 0;
+                    CheckTeamStackingAfterFirstMinutes = 2;
                     DefinitionOfHighPopulationForPlayers = 24;
                     DefinitionOfLowPopulationForPlayers = 8;
                     DefinitionOfEarlyPhaseForTickets = 0;
@@ -139,7 +138,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                 case "Unknown or New Mode":
                 default:
                     MaxPlayers = 32;
-                    EstimatedMaxTickets = 200;
+                    CheckTeamStackingAfterFirstMinutes = 10;
                     DefinitionOfHighPopulationForPlayers = 28;
                     DefinitionOfLowPopulationForPlayers = 8;
                     DefinitionOfEarlyPhaseForTickets = 160;
@@ -149,7 +148,6 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         }
         
         public int MaxPlayers = 64; // will be corrected later
-        public int EstimatedMaxTickets = 100; // will be corrected later
         public double CheckTeamStackingAfterFirstMinutes = 10;
         public DefineStrong DetermineStrongPlayersBy = DefineStrong.RoundScore;
         public double DefinitionOfHighPopulationForPlayers = 48;
@@ -189,7 +187,6 @@ private Dictionary<String,PerModeSettings> fPerMode = null;
 /* Settings */
 
 public int DebugLevel;
-public bool QuietMode;
 public int MaximumServerSize;
 public int MaxTeamSwitchesByStrongPlayers;
 public int MaxTeamSwitchesByWeakPlayers;
@@ -198,13 +195,16 @@ public bool Enable2SlotReserve;
 public bool EnablerecruitCommand;
 public bool EnableWhitelistingOfReservedSlotsList;
 public String[] Whitelist;
-public String[] Blacklist;
+public String[] DisperseEvenlyList;
 public PresetItems Preset;
 
 public bool OnWhitelist;
 public bool TopScorers;
 public bool SameClanTagsInSquad;
-public double MinutesSinceFirstSpawn;
+public double MinutesAfterJoining;
+public bool JoinedEarlyPhase;
+public bool JoinedMidPhase;
+public bool JoinedLatePhase;
 
 public double[] EarlyPhaseTicketPercentageToUnstack;
 public double[] MidPhaseTicketPercentageToUnstack;
@@ -214,6 +214,8 @@ public Speed[] EarlyPhaseBalanceSpeed;
 public Speed[] MidPhaseBalanceSpeed;
 public Speed[] LatePhaseBalanceSpeed;
 
+public bool QuietMode;
+public double YellDurationSeconds;
 public String ChatMovedForBalance;
 public String YellMovedForBalance;
 public String ChatMovedToUnstack;
@@ -224,6 +226,10 @@ public String ChatDetectedSwitchToLosingTeam;
 public String YellDetectedSwitchToLosingTeam;
 public String ChatAfterUnswitching;
 public String YellAfterUnswitching;
+public String ChatDetectedSwitchByDispersalPlayer;
+public String YellDetectedSwitchByDispersalPlayer;
+public String ChatAfterUnswitchingDispersalPlayer;
+public String YellAfterUnswitchingDispersalPlayer;
 
 public String ShowInLog; // command line to show info in plugin.log
 public bool LogChat;
@@ -261,7 +267,6 @@ public PROTObalancer() {
     /* ===== SECTION 1 - Settings ===== */
 
     DebugLevel = 2;
-    QuietMode = false; // false: chat is global, true: chat is private. Yells are always private
     MaximumServerSize = 64;
     MaxTeamSwitchesByStrongPlayers = 1;
     MaxTeamSwitchesByWeakPlayers = 2;
@@ -270,7 +275,7 @@ public PROTObalancer() {
     EnablerecruitCommand = false;
     EnableWhitelistingOfReservedSlotsList = true;
     Whitelist = new String[] {"[-- name, tag, or EA_GUID --]"};
-    Blacklist = new String[] {"[-- name, tag, or EA_GUID --]"};
+    DisperseEvenlyList = new String[] {"[-- name, tag, or EA_GUID --]"};
     Preset = PresetItems.Standard;
     
     /* ===== SECTION 2 - Exclusions ===== */
@@ -278,7 +283,10 @@ public PROTObalancer() {
     OnWhitelist = true;
     TopScorers = true;
     SameClanTagsInSquad = true;
-    MinutesSinceFirstSpawn = 15.0;
+    MinutesAfterJoining = 15;
+    JoinedEarlyPhase = true;
+    JoinedMidPhase = true;
+    JoinedLatePhase = false;
 
 
     /* ===== SECTION 3 - Round Phase & Population Settings ===== */
@@ -295,6 +303,8 @@ public PROTObalancer() {
 
     /* ===== SECTION 5 - Messages ===== */
     
+    QuietMode = false; // false: chat is global, true: chat is private. Yells are always private
+    YellDurationSeconds = 10;
     ChatMovedForBalance = "*** MOVED %name% for balance ...";
     YellMovedForBalance = "Moved %name% for balance ...";
     ChatMovedToUnstack = "*** MOVED %name% to unstack teams ...";
@@ -305,6 +315,10 @@ public PROTObalancer() {
     YellDetectedSwitchToLosingTeam = "Thanks for helping out the %toTeam%!";
     ChatAfterUnswitching = "%name%, please stay on the %toTeam% for the rest of this round";
     YellAfterUnswitching = "Please stay on the %toTeam% for the rest of this round";
+    ChatDetectedSwitchByDispersalPlayer = "%name% is on the list of players to split between teams";
+    YellDetectedSwitchByDispersalPlayer = "You're on the list of players to split between teams";
+    ChatAfterUnswitchingDispersalPlayer = "%name%, stay on the team you are assigned to";
+    YellAfterUnswitchingDispersalPlayer = "Stay on the team you are assigned to";
     
     /* ===== SECTION 6 - TBD ===== */
 
@@ -334,7 +348,10 @@ public PROTObalancer(PresetItems preset) : this() {
             OnWhitelist = true;
             TopScorers = false;
             SameClanTagsInSquad = false;
-            MinutesSinceFirstSpawn = 0.0;
+            MinutesAfterJoining = 0;
+            JoinedEarlyPhase = false;
+            JoinedMidPhase = false;
+            JoinedLatePhase = false;
 
             EarlyPhaseTicketPercentageToUnstack = new double[3]     {110,110,110};
             MidPhaseTicketPercentageToUnstack = new double[3]       {110,110,110};
@@ -351,7 +368,10 @@ public PROTObalancer(PresetItems preset) : this() {
             OnWhitelist = true;
             TopScorers = true;
             SameClanTagsInSquad = true;
-            MinutesSinceFirstSpawn = 30.0;
+            MinutesAfterJoining = 30;
+            JoinedEarlyPhase = true;
+            JoinedMidPhase = true;
+            JoinedLatePhase = true;
 
             EarlyPhaseTicketPercentageToUnstack = new double[3]     {  0,  0,200};
             MidPhaseTicketPercentageToUnstack = new double[3]       {  0,200,200};
@@ -368,7 +388,10 @@ public PROTObalancer(PresetItems preset) : this() {
             OnWhitelist = true;
             TopScorers = true;
             SameClanTagsInSquad = false;
-            MinutesSinceFirstSpawn = 15.0;
+            MinutesAfterJoining = 60;
+            JoinedEarlyPhase = false;
+            JoinedMidPhase = false;
+            JoinedLatePhase = true;
 
             EarlyPhaseTicketPercentageToUnstack = new double[3]     {110,120,120};
             MidPhaseTicketPercentageToUnstack = new double[3]       {120,120,120};
@@ -386,7 +409,10 @@ public PROTObalancer(PresetItems preset) : this() {
             OnWhitelist = true;
             TopScorers = true;
             SameClanTagsInSquad = true;
-            MinutesSinceFirstSpawn = 15.0;
+            MinutesAfterJoining = 30;
+            JoinedEarlyPhase = true;
+            JoinedMidPhase = true;
+            JoinedLatePhase = true;
 
             EarlyPhaseTicketPercentageToUnstack = new double[3]     {  0,  0,150};
             MidPhaseTicketPercentageToUnstack = new double[3]       {  0,150,200};
@@ -403,7 +429,10 @@ public PROTObalancer(PresetItems preset) : this() {
             OnWhitelist = true;
             TopScorers = true;
             SameClanTagsInSquad = true;
-            MinutesSinceFirstSpawn = 15.0;
+            MinutesAfterJoining = 15;
+            JoinedEarlyPhase = true;
+            JoinedMidPhase = true;
+            JoinedLatePhase = false;
 
             EarlyPhaseTicketPercentageToUnstack = new double[3]     {  0,  0,  0};
             MidPhaseTicketPercentageToUnstack = new double[3]       {  0,  0,  0};
@@ -420,7 +449,10 @@ public PROTObalancer(PresetItems preset) : this() {
             OnWhitelist = true;
             TopScorers = true;
             SameClanTagsInSquad = true;
-            MinutesSinceFirstSpawn = 15.0;
+            MinutesAfterJoining = 15;
+            JoinedEarlyPhase = true;
+            JoinedMidPhase = true;
+            JoinedLatePhase = false;
 
             EarlyPhaseTicketPercentageToUnstack = new double[3]     {120,120,120};
             MidPhaseTicketPercentageToUnstack = new double[3]       {120,120,120};
@@ -537,25 +569,27 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         
         lstReturn.Add(new CPluginVariable("1 - Settings|Debug Level", DebugLevel.GetType(), DebugLevel));
 
-        lstReturn.Add(new CPluginVariable("1 - Settings|Quiet Mode", QuietMode.GetType(), QuietMode));
-
         lstReturn.Add(new CPluginVariable("1 - Settings|Maximum Server Size", MaximumServerSize.GetType(), MaximumServerSize));
 
+/*
         lstReturn.Add(new CPluginVariable("1 - Settings|Max Team Switches By Strong Players", MaxTeamSwitchesByStrongPlayers.GetType(), MaxTeamSwitchesByStrongPlayers));
 
         lstReturn.Add(new CPluginVariable("1 - Settings|Max Team Switches By Weak Players", MaxTeamSwitchesByWeakPlayers.GetType(), MaxTeamSwitchesByWeakPlayers));
+*/
 
         lstReturn.Add(new CPluginVariable("1 - Settings|Unlimited Team Switching During First Minutes Of Round", UnlimitedTeamSwitchingDuringFirstMinutesOfRound.GetType(), UnlimitedTeamSwitchingDuringFirstMinutesOfRound));
 
+/*
         lstReturn.Add(new CPluginVariable("1 - Settings|Enable 2 Slot Reserve", Enable2SlotReserve.GetType(), Enable2SlotReserve));
 
         lstReturn.Add(new CPluginVariable("1 - Settings|Enable @#!recruit Command", EnablerecruitCommand.GetType(), EnablerecruitCommand));
+*/
 
         lstReturn.Add(new CPluginVariable("1 - Settings|Enable Whitelisting Of Reserved Slots List", EnableWhitelistingOfReservedSlotsList.GetType(), EnableWhitelistingOfReservedSlotsList));
 
         lstReturn.Add(new CPluginVariable("1 - Settings|Whitelist", Whitelist.GetType(), Whitelist));
 
-        lstReturn.Add(new CPluginVariable("1 - Settings|Blacklist", Blacklist.GetType(), Blacklist));
+        lstReturn.Add(new CPluginVariable("1 - Settings|Disperse Evenly List", DisperseEvenlyList.GetType(), DisperseEvenlyList));
         
         UpdatePresetValue();
 
@@ -572,7 +606,13 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
         lstReturn.Add(new CPluginVariable("2 - Exclusions|Same Clan Tags In Squad", SameClanTagsInSquad.GetType(), SameClanTagsInSquad));
 
-        lstReturn.Add(new CPluginVariable("2 - Exclusions|Minutes Since First Spawn", MinutesSinceFirstSpawn.GetType(), MinutesSinceFirstSpawn));
+        lstReturn.Add(new CPluginVariable("2 - Exclusions|Minutes After Joining", MinutesAfterJoining.GetType(), MinutesAfterJoining));
+
+        lstReturn.Add(new CPluginVariable("2 - Exclusions|Joined Early Phase", JoinedEarlyPhase.GetType(), JoinedEarlyPhase));
+
+        lstReturn.Add(new CPluginVariable("2 - Exclusions|Joined Mid Phase", JoinedMidPhase.GetType(), JoinedMidPhase));
+
+        lstReturn.Add(new CPluginVariable("2 - Exclusions|Joined Late Phase", JoinedLatePhase.GetType(), JoinedLatePhase));
 
         /* ===== SECTION 3 - Round Phase & Population Setttings ===== */
         
@@ -595,6 +635,10 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
         /* ===== SECTION 5 - Messages ===== */
         
+        lstReturn.Add(new CPluginVariable("5 - Messages|Quiet Mode", QuietMode.GetType(), QuietMode));
+
+        lstReturn.Add(new CPluginVariable("5 - Messages|Yell Duration Seconds", YellDurationSeconds.GetType(), YellDurationSeconds));
+        
         lstReturn.Add(new CPluginVariable("5 - Messages|Chat: Moved For Balance", ChatMovedForBalance.GetType(), ChatMovedForBalance));
         
         lstReturn.Add(new CPluginVariable("5 - Messages|Yell: Moved For Balance", YellMovedForBalance.GetType(), YellMovedForBalance));
@@ -615,6 +659,14 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         
         lstReturn.Add(new CPluginVariable("5 - Messages|Yell: After Unswitching", YellAfterUnswitching.GetType(), YellAfterUnswitching));
 
+        lstReturn.Add(new CPluginVariable("5 - Messages|Chat: Detected Switch By Dispersal Player", ChatDetectedSwitchByDispersalPlayer.GetType(), ChatDetectedSwitchByDispersalPlayer));
+        
+        lstReturn.Add(new CPluginVariable("5 - Messages|Yell: Detected Switch By Dispersal Player", YellDetectedSwitchByDispersalPlayer.GetType(), YellDetectedSwitchByDispersalPlayer));
+        
+        lstReturn.Add(new CPluginVariable("5 - Messages|Chat: After Unswitching Dispersal Player", ChatAfterUnswitchingDispersalPlayer.GetType(), ChatAfterUnswitchingDispersalPlayer));
+        
+        lstReturn.Add(new CPluginVariable("5 - Messages|Yell: After Unswitching Dispersal Player", YellAfterUnswitchingDispersalPlayer.GetType(), YellAfterUnswitchingDispersalPlayer));
+
         /* ===== SECTION 6 - TBD ===== */
 
         /* ===== SECTION 7 - TBD ===== */
@@ -633,8 +685,6 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
             }
 
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Max Players", oneSet.MaxPlayers.GetType(), oneSet.MaxPlayers));
-
-            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Estimated Max Tickets", oneSet.EstimatedMaxTickets.GetType(), oneSet.EstimatedMaxTickets));
 
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Check Team Stacking After First Minutes", oneSet.CheckTeamStackingAfterFirstMinutes.GetType(), oneSet.CheckTeamStackingAfterFirstMinutes));
 
@@ -1002,7 +1052,10 @@ public bool CheckForEquality(PROTObalancer rhs) {
     return (this.OnWhitelist == rhs.OnWhitelist
      && this.TopScorers == rhs.TopScorers
      && this.SameClanTagsInSquad == rhs.SameClanTagsInSquad
-     && this.MinutesSinceFirstSpawn == rhs.MinutesSinceFirstSpawn
+     && this.MinutesAfterJoining == rhs.MinutesAfterJoining
+     && this.JoinedEarlyPhase == rhs.JoinedEarlyPhase
+     && this.JoinedMidPhase == rhs.JoinedMidPhase
+     && this.JoinedLatePhase == rhs.JoinedLatePhase
      && PROTObalancerUtils.EqualArrays(this.EarlyPhaseTicketPercentageToUnstack, rhs.EarlyPhaseTicketPercentageToUnstack)
      && PROTObalancerUtils.EqualArrays(this.MidPhaseTicketPercentageToUnstack, rhs.MidPhaseTicketPercentageToUnstack)
      && PROTObalancerUtils.EqualArrays(this.LatePhaseTicketPercentageToUnstack, rhs.LatePhaseTicketPercentageToUnstack)
@@ -1086,7 +1139,10 @@ static class PROTObalancerUtils {
         lhs.OnWhitelist = rhs.OnWhitelist;
         lhs.TopScorers = rhs.TopScorers;
         lhs.SameClanTagsInSquad = rhs.SameClanTagsInSquad;
-        lhs.MinutesSinceFirstSpawn = rhs.MinutesSinceFirstSpawn;
+        lhs.MinutesAfterJoining = rhs.MinutesAfterJoining;
+        lhs.JoinedEarlyPhase = rhs.JoinedEarlyPhase;
+        lhs.JoinedMidPhase = rhs.JoinedMidPhase;
+        lhs.JoinedLatePhase = rhs.JoinedLatePhase;
 
         lhs.EarlyPhaseTicketPercentageToUnstack = rhs.EarlyPhaseTicketPercentageToUnstack;
         lhs.MidPhaseTicketPercentageToUnstack = rhs.MidPhaseTicketPercentageToUnstack;
