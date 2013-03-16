@@ -459,7 +459,7 @@ public PROTObalancer(PresetItems preset) : this() {
             LatePhaseTicketPercentageToUnstack = new double[3]      {  0,  0,  0};
 
             EarlyPhaseBalanceSpeed = new Speed[3]   {     Speed.Stop,     Speed.Stop,     Speed.Stop};
-            MidPhaseBalanceSpeed = new Speed[3]     {     Speed.Stop,     Speed.Slow,     Speed.Stop};
+            MidPhaseBalanceSpeed = new Speed[3]     {     Speed.Stop,     Speed.Stop,     Speed.Stop};
             LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Stop,     Speed.Stop,     Speed.Stop};
             
             break;
@@ -541,7 +541,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "0.0.0.4";
+    return "0.0.0.5";
 }
 
 public String GetPluginAuthor() {
@@ -565,6 +565,15 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
     List<CPluginVariable> lstReturn = new List<CPluginVariable>();
 
     try {
+        /* ===== SECTION 0 - Presets ===== */
+        
+        UpdatePresetValue();
+
+        String var_name = "0 - Presets|Use Round Phase, Population and Exclusions preset ";
+        String var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(PresetItems))) + ")";
+        
+        lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(PresetItems), Preset)));
+        
         /* ===== SECTION 1 - Settings ===== */
         
         lstReturn.Add(new CPluginVariable("1 - Settings|Debug Level", DebugLevel.GetType(), DebugLevel));
@@ -591,13 +600,6 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
         lstReturn.Add(new CPluginVariable("1 - Settings|Disperse Evenly List", DisperseEvenlyList.GetType(), DisperseEvenlyList));
         
-        UpdatePresetValue();
-
-        String var_name = "1 - Settings|Preset";
-        String var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(PresetItems))) + ")";
-        
-        lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(PresetItems), Preset)));
-
         /* ===== SECTION 2 - Exclusions ===== */
 
         lstReturn.Add(new CPluginVariable("2 - Exclusions|On Whitelist", OnWhitelist.GetType(), OnWhitelist));
@@ -746,6 +748,8 @@ public void SetPluginVariable(String strVariable, String strValue) {
         BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
 
         String propertyName = Regex.Replace(tmp, @"[^a-zA-Z_0-9]", String.Empty);
+        
+        if (strVariable.Contains("preset")) propertyName = "Preset";
 
         FieldInfo field = this.GetType().GetField(propertyName, flags);
         
@@ -754,7 +758,7 @@ public void SetPluginVariable(String strVariable, String strValue) {
 
         if (!strVariable.Contains("Settings for") && field != null) {
             fieldType = field.GetValue(this).GetType();
-            if (tmp.Contains("Preset")) {
+            if (strVariable.Contains("preset")) {
                 fieldType = typeof(PresetItems);
                 try {
                     Preset = (PresetItems)Enum.Parse(fieldType, strValue);
@@ -1068,7 +1072,7 @@ public bool CheckForEquality(PROTObalancer rhs) {
 
 public void UpdatePresetValue() {
     Preset = PresetItems.None;  // backstop value
-    
+
     // Check for Standard
     if (PROTObalancerUtils.IsEqual(this, PresetItems.Standard)) {
         Preset = PresetItems.Standard;
@@ -1110,7 +1114,6 @@ public void UpdatePresetValue() {
         Preset = PresetItems.UnstackOnly;
         return;
     }
-
 }
 
 
@@ -1135,6 +1138,8 @@ static class PROTObalancerUtils {
     
     public static void UpdateSettingsForPreset(PROTObalancer lhs, PresetItems preset) {
         PROTObalancer rhs = new PROTObalancer(preset);
+        
+        lhs.DebugWrite("UpdateSettingsForPreset to " + preset, 3);
 
         lhs.OnWhitelist = rhs.OnWhitelist;
         lhs.TopScorers = rhs.TopScorers;
