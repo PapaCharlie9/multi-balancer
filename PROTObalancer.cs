@@ -685,29 +685,31 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
             } else {
                 oneSet = fPerMode[sm];
             }
+            
+            bool isCTF = (sm == "CTF");
+            bool isGM = (sm == "Gun Master");
 
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Max Players", oneSet.MaxPlayers.GetType(), oneSet.MaxPlayers));
 
-            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Check Team Stacking After First Minutes", oneSet.CheckTeamStackingAfterFirstMinutes.GetType(), oneSet.CheckTeamStackingAfterFirstMinutes));
+            if (!isCTF && !isGM) {
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Check Team Stacking After First Minutes", oneSet.CheckTeamStackingAfterFirstMinutes.GetType(), oneSet.CheckTeamStackingAfterFirstMinutes));
 
-            var_name = "8 - Settings for " + sm + "|" + sm + ": " + "Determine Strong Players By";
-            var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(DefineStrong))) + ")";
+                var_name = "8 - Settings for " + sm + "|" + sm + ": " + "Determine Strong Players By";
+                var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(DefineStrong))) + ")";
 
-            lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(DefineStrong), oneSet.DetermineStrongPlayersBy)));
+                lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(DefineStrong), oneSet.DetermineStrongPlayersBy)));
+            }
 
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of High Population For Players >=", oneSet.DefinitionOfHighPopulationForPlayers.GetType(), oneSet.DefinitionOfHighPopulationForPlayers));
 
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Low Population For Players <=", oneSet.DefinitionOfLowPopulationForPlayers.GetType(), oneSet.DefinitionOfLowPopulationForPlayers));
 
-            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Early Phase For Tickets >=", oneSet.DefinitionOfEarlyPhaseForTickets.GetType(), oneSet.DefinitionOfEarlyPhaseForTickets));
+            if (!isCTF && !isGM) {
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Early Phase For Tickets >=", oneSet.DefinitionOfEarlyPhaseForTickets.GetType(), oneSet.DefinitionOfEarlyPhaseForTickets));
 
-            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Late Phase For Tickets <=", oneSet.DefinitionOfLatePhaseForTickets.GetType(), oneSet.DefinitionOfLatePhaseForTickets));
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Late Phase For Tickets <=", oneSet.DefinitionOfLatePhaseForTickets.GetType(), oneSet.DefinitionOfLatePhaseForTickets));
+            }
 
-            /*
-            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Min Tickets Percentage", oneSet.MinTicketsPercentage.GetType(), oneSet.MinTicketsPercentage));
-
-            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Go Aggressive", oneSet.GoAggressive.GetType(), oneSet.GoAggressive));
-            */
         }
 
         /* ===== SECTION 9 - Debug Settings ===== */
