@@ -38,23 +38,22 @@ namespace PRoConEvents
 using EventType = PRoCon.Core.Events.EventType;
 using CapturableEvent = PRoCon.Core.Events.CapturableEvents;
 
-/* Enums */
-
-public enum PresetItems { Standard, Aggressive, Passive, Intensify, Retain, BalanceOnly, UnstackOnly, None };
-
-public enum Speed { Click_Here_For_Speed_Names, Stop, Slow, Adaptive, Fast };
-
-public enum DefineStrong { RoundScore, RoundKDR, RoundKills };
-
-/* Classes */
+/* Main Class */
 
 public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
 {
+    /* Enums */
 
-/* Inherited:
-    this.PunkbusterPlayerInfoList = new Dictionary<String, CPunkbusterInfo>();
-    this.FrostbitePlayerInfoList = new Dictionary<String, CPlayerInfo>();
-*/
+    public enum PresetItems { Standard, Aggressive, Passive, Intensify, Retain, BalanceOnly, UnstackOnly, None };
+
+    public enum Speed { Click_Here_For_Speed_Names, Stop, Slow, Adaptive, Fast };
+
+    public enum DefineStrong { RoundScore, RoundKDR, RoundKills };
+    
+    public enum PluginState { Disabled, JustEnabled, NoPlayers, Active, Error };
+
+
+    /* Classes */
 
     public class PerModeSettings {
         public PerModeSettings() {}
@@ -160,29 +159,71 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
     } // end PerModeSettings
 
 
-    public class PlayerStats {
-        public PlayerStats() {}
-        
+    public class PlayerModel {
+        public String Name;
+        public int Team;
+        public int Squad;
+        public String EAGUID;
         public DateTime FirstSpawnTimestamp;
         public DateTime RoundStartTimestamp;
+        public DateTime LastSeenTimestamp;
         public String Tag;
         public int Score;
         public int Kills;
         public int Deaths;
         public int Rounds; // incremented OnRoundOverPlayers
+        public int Rank;
         
         public int ScoreTotal; // not including current round
         public int KillsTotal; // not including current round
         public int DeathsTotal; // not including current round
-    } // end PlayerStats
+        
+        public PlayerModel() {
+            Name = null;
+            Team = -1;
+            Squad = -1;
+            EAGUID = String.Empty;
+            FirstSpawnTimestamp = DateTime.MinValue;
+            RoundStartTimestamp = DateTime.MinValue;
+            LastSeenTimestamp = DateTime.MinValue;
+            Tag = String.Empty;
+            Score = -1;
+            Kills = -1;
+            Deaths = -1;
+            Rounds = -1;
+            Rank = -1;
+            ScoreTotal = 0;
+            KillsTotal = 0;
+            DeathsTotal = 0;
+        }
+        
+        public PlayerModel(String name, int team) : this() {
+            Name = name;
+            Team = team;
+        }
+    } // end PlayerModel
 
 
+/* Inherited:
+    this.PunkbusterPlayerInfoList = new Dictionary<String, CPunkbusterInfo>();
+    this.FrostbitePlayerInfoList = new Dictionary<String, CPlayerInfo>();
+*/
+
+// General
 private bool fIsEnabled;
 private Dictionary<String,String> fModeToSimple = null;
+
+// Settings
 private Dictionary<int, Type> fEasyTypeDict = null;
 private Dictionary<int, Type> fBoolDict = null;
 private Dictionary<int, Type> fListStrDict = null;
 private Dictionary<String,PerModeSettings> fPerMode = null;
+
+// Data model
+private List<String> fAllPlayers = null;
+private Dictionary<String, PlayerModel> fKnownPlayers = null;
+private PluginState fPluginState;
+private CServerInfo fServerInfo;
 
 /* Settings */
 
@@ -239,6 +280,9 @@ public bool LogChat;
 public PROTObalancer() {
     /* Private members */
     fIsEnabled = false;
+    fPluginState = PluginState.Disabled;
+    fServerInfo = null;
+    
     fModeToSimple = new Dictionary<String,String>();
 
     fEasyTypeDict = new Dictionary<int, Type>();
@@ -261,6 +305,9 @@ public PROTObalancer() {
     fListStrDict.Add(1, typeof(List<string>));
     
     fPerMode = new Dictionary<String,PerModeSettings>();
+    
+    fAllPlayers = new List<String>();
+    fKnownPlayers = new Dictionary<String, PlayerModel>();
     
     /* Settings */
 
@@ -726,6 +773,21 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
     return lstReturn;
 }
 
+
+
+
+
+
+
+/* ======================== OVERRIDES ============================= */
+
+
+
+
+
+
+
+
 public List<CPluginVariable> GetPluginVariables() {
     return GetDisplayPluginVariables();
 }
@@ -734,7 +796,7 @@ public void SetPluginVariable(String strVariable, String strValue) {
     bool isPresetVar = false;
     bool isReminderVar = false;
 
-    DebugWrite(strVariable + " <- " + strValue, 3);
+    DebugWrite(strVariable + " <- " + strValue, 6);
 
     try {
         String tmp = strVariable;
@@ -799,7 +861,7 @@ public void SetPluginVariable(String strVariable, String strValue) {
             } else if (fListStrDict.ContainsValue(fieldType)) {
                 field.SetValue(this, new List<string>(CPluginVariable.DecodeStringArray(strValue)));
             } else if (fBoolDict.ContainsValue(fieldType)) {
-                DebugWrite(propertyName + " strValue = " + strValue, 3);
+                DebugWrite(propertyName + " strValue = " + strValue, 6);
                 if (Regex.Match(strValue, "True", RegexOptions.IgnoreCase).Success) {
                     field.SetValue(this, true);
                 } else {
@@ -821,7 +883,7 @@ public void SetPluginVariable(String strVariable, String strValue) {
                 
                 field = pms.GetType().GetField(perModeName, flags);
                 
-                DebugWrite("Mode: " + mode + ", Field: " + perModeName + ", Value: " + strValue, 3);
+                DebugWrite("Mode: " + mode + ", Field: " + perModeName + ", Value: " + strValue, 6);
                 
                 if (field != null) {
                     fieldType = field.GetValue(pms).GetType();
@@ -844,7 +906,7 @@ public void SetPluginVariable(String strVariable, String strValue) {
                         }
                     }
                 } else {
-                    DebugWrite("field is null", 3);
+                    DebugWrite("field is null", 6);
                 }
             }
         }
@@ -857,9 +919,9 @@ public void SetPluginVariable(String strVariable, String strValue) {
         if (!String.IsNullOrEmpty(ShowInLog)) {
             if (Regex.Match(ShowInLog, @"modes", RegexOptions.IgnoreCase).Success) {
                 List<String> modeList = GetSimplifiedModes();
-                DebugWrite("modes(" + modeList.Count + "):", 2);
+                DebugWrite("modes(" + modeList.Count + "):", 6);
                 foreach (String m in modeList) {
-                    DebugWrite(m, 2);
+                    DebugWrite(m, 6);
                 }
             }
             
@@ -923,7 +985,10 @@ public void OnPluginLoaded(String strHostName, String strPort, String strPRoConV
 
 public void OnPluginEnable() {
     fIsEnabled = true;
+    fPluginState = PluginState.JustEnabled;
     ConsoleWrite("Enabled! Version = " + GetPluginVersion());
+    DebugWrite("^b^3State = " + fPluginState, 6);
+    ServerCommand("serverInfo");
 }
 
 
@@ -939,39 +1004,78 @@ private void JoinWith(Thread thread, int secs)
 
 public void OnPluginDisable() {
     fIsEnabled = false;
+
+    Reset();
     
     ConsoleWrite("Disabled!");
+    DebugWrite("^b^3State = " + fPluginState, 6);
 }
 
 
 public override void OnVersion(String type, String ver) {
-    DebugWrite("OnVersion " + type + " " + ver, 9);
+    DebugWrite("Got ^bOnVersion^n: " + type + " " + ver, 7);
 }
 
-private CServerInfo fSI = null;
+public override void OnPlayerJoin(String soldierName) { }
+
+public override void OnPlayerLeft(CPlayerInfo playerInfo) {
+    if (!fIsEnabled) return;
+    
+    DebugWrite("^bGot OnPlayerLeft^n", 7);
+    
+    if (IsKnownPlayer(playerInfo.SoldierName)) RemovePlayer(playerInfo.SoldierName);
+}
+
+public override void OnPlayerTeamChange(String soldierName, int teamId, int squadId) {
+    if (!fIsEnabled) return;
+    
+    DebugWrite("^bGot OnPlayerTeamChange^n", 7);
+    
+    // Only teamId is valid for BF3, squad change is sent on separate event
+
+    if (!IsKnownPlayer(soldierName)) AddNewPlayer(soldierName, teamId);
+    
+    CheckTeamSwitch(soldierName, teamId);
+}
+
+public override void OnPlayerKilled(Kill kKillerVictimDetails) {
+    if (!fIsEnabled) return;
+    
+    String killer = kKillerVictimDetails.Killer.SoldierName;
+    String victim = kKillerVictimDetails.Victim.SoldierName;
+    String weapon = kKillerVictimDetails.DamageType;
+    
+    DebugWrite("^bGot OnPlayerKilled^n: " + killer  + " -> " + victim + " (" + weapon + ")", 7);
+    
+    BalanceAndUnstack(victim);
+}
+
+public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subset) {
+    if (!fIsEnabled) return;
+    
+    DebugWrite("^bGot OnListPlayers^n", 7);
+    
+    foreach (CPlayerInfo p in players) {
+        UpdatePlayerModel(p.SoldierName, p.TeamID, p.SquadID, p.GUID, p.Score, p.Kills, p.Deaths, p.Rank);
+    }
+    
+    DebugStatus();
+
+    // State transition after first list players update
+    if (fPluginState == PluginState.JustEnabled) fPluginState = PluginState.Active;
+}
 
 public override void OnServerInfo(CServerInfo serverInfo) {
-    DebugWrite("Debug level = " + DebugLevel, 9);
+    DebugWrite("Got ^bOnServerInfo^n: Debug level = " + DebugLevel, 7);
     
-    fSI = serverInfo;
+    fServerInfo = serverInfo;
 }
 
 public override void OnResponseError(List<String> requestWords, String error) { }
 
-public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subset) {
-}
 
-public override void OnPlayerJoin(String soldierName) {
-}
-
-public override void OnPlayerLeft(CPlayerInfo playerInfo) {
-}
-
-public override void OnPlayerKilled(Kill kKillerVictimDetails) { }
 
 public override void OnPlayerSpawned(String soldierName, Inventory spawnedInventory) { }
-
-public override void OnPlayerTeamChange(String soldierName, int teamId, int squadId) { }
 
 public override void OnGlobalChat(String speaker, String message) { }
 
@@ -992,7 +1096,129 @@ public override void OnLevelStarted() { }
 public override void OnLevelLoaded(String mapFileName, String Gamemode, int roundsPlayed, int roundsTotal) { } // BF3
 
 
-/* ========================================== */
+
+
+
+
+
+
+
+/* ======================== CORE ENGINE ============================= */
+
+
+
+
+
+
+
+
+
+
+public void BalanceAndUnstack(String name) {
+}
+
+public bool IsKnownPlayer(String name) {
+    bool check = false;
+    lock (fAllPlayers) {
+        check = fAllPlayers.Contains(name);
+    }
+    return check;
+}
+
+public void AddNewPlayer(String name, int team) {
+    lock (fAllPlayers) {
+        fAllPlayers.Add(name);
+    }
+    lock (fKnownPlayers) {
+        if (!fKnownPlayers.ContainsKey(name)) {
+            fKnownPlayers[name] = new PlayerModel(name, team);
+        } else {
+            fKnownPlayers[name].Team = team;
+        }
+        fKnownPlayers[name].LastSeenTimestamp = DateTime.Now;
+    }
+}
+
+public void RemovePlayer(String name) {
+    lock (fAllPlayers) {
+        if (fAllPlayers.Contains(name)) fAllPlayers.Remove(name);
+    }
+    lock (fKnownPlayers) {
+        if (fKnownPlayers.ContainsKey(name)) {
+            fKnownPlayers[name].LastSeenTimestamp = DateTime.Now;
+        }
+    }
+}
+
+public void UpdatePlayerModel(String name, int team, int squad, String eaGUID, int score, int kills, int deaths, int rank) {
+    if (!IsKnownPlayer(name)) {
+        switch (fPluginState) {
+            case PluginState.JustEnabled:
+                DebugWrite("JustEnabled state, adding new player: " + name, 3);
+                AddNewPlayer(name, team);
+                break;
+            case PluginState.Active:
+            case PluginState.NoPlayers:
+                DebugWrite("^b^1WARNING^0^n: Unmodeled player " + name + " in state " + fPluginState, 3);
+                return;
+                break;
+            case PluginState.Error:
+                DebugWrite("Error state, adding new player: " + name, 3);
+                AddNewPlayer(name, team);
+                break;
+            default:
+                return;
+        }          
+    }
+    
+    if (!fKnownPlayers.ContainsKey(name)) {
+        DebugWrite("^b^1WARNING^0^n: player " + name + " not in master table!", 1);
+        fPluginState = PluginState.Error;
+        return;
+    }
+    
+    PlayerModel m = fKnownPlayers[name];
+    
+    if (m.Team != team) {
+        DebugWrite("^b^1UNEXPECTED^0^n: player model for " + name + " has team " + m.Team + " but update says " + team + "!", 3);
+        m.Team = team;
+    }
+    m.Squad = squad;
+    m.EAGUID = eaGUID;
+    m.Score = score;
+    m.Kills = kills;
+    m.Deaths = deaths;
+    m.Rank = rank;
+    
+    fKnownPlayers[name] = m;
+    
+    // TBD, LastSeenTimestamp?
+}
+
+
+public void CheckTeamSwitch(String name, int team) {
+    // Team
+}
+
+
+
+
+
+
+
+
+
+
+/* ======================== SUPPORT FUNCTIONS ============================= */
+
+
+
+
+
+
+
+
+
 
 public List<String> GetSimplifiedModes() {
     List<String> r = new List<String>();
@@ -1118,6 +1344,66 @@ public void UpdatePresetValue() {
     }
 }
 
+public void Reset() {
+    fPluginState = PluginState.Disabled;
+    fAllPlayers.Clear();
+}
+
+public bool IsSQDM() {
+    if (fServerInfo == null) return false;
+    return (fServerInfo.GameMode == "SquadDeathMatch0");
+}
+
+public void ListTeams(out List<String> team1, out List<String> team2, out List<String> team3, out List<String> team4) {
+    team1 = new List<String>();
+    team2 = new List<String>();
+    team3 = new List<String>();
+    team4 = new List<String>();
+    
+    foreach (String name in fAllPlayers) {
+        switch (fKnownPlayers[name].Team) {
+            case 1: team1.Add(name); break;
+            case 2: team2.Add(name); break;
+            case 3: team3.Add(name); break;
+            case 4: team4.Add(name); break;
+            default:
+                DebugWrite("ListTeams unknown team for " + name + " in " + fKnownPlayers[name].Team, 3);
+                break;
+        }
+    }
+}
+
+
+public void DebugStatus() {
+    List<String> team1 = null;
+    List<String> team2 = null;
+    List<String> team3 = null;
+    List<String> team4 = null;
+    
+    ListTeams(out team1, out team2, out team3, out team4);
+    
+    DebugWrite("^bStatus^n: Plugin state = " + fPluginState + ", mode = " + fServerInfo.GameMode, 3);
+    
+    if (IsSQDM()) {
+        DebugWrite("^bStatus^n: Team counts = " + team1.Count + "(A) vs " + team2.Count + "(B) vs " + team3.Count + "(C) vs " + team4.Count + "(D)", 3);
+    } else {
+        DebugWrite("^bStatus^n: Team counts = " + team1.Count + "(US) vs " + team2.Count + "(RU)", 3);
+    }
+    
+    List<int> counts = new List<int>();
+    counts.Add(team1.Count);
+    counts.Add(team2.Count);
+    if (IsSQDM()) {
+        counts.Add(team3.Count);
+        counts.Add(team4.Count);
+    }
+    
+    counts.Sort();
+    int diff = Math.Abs(counts[0] - counts[counts.Count-1]);
+    
+    DebugWrite("^bStatus^n: Max difference = " + diff, 3);
+}
+
 
 } // end PROTObalancer
 
@@ -1133,15 +1419,15 @@ public void UpdatePresetValue() {
 
 
 static class PROTObalancerUtils {
-    public static bool IsEqual(PROTObalancer lhs, PresetItems preset) {
+    public static bool IsEqual(PROTObalancer lhs, PROTObalancer.PresetItems preset) {
         PROTObalancer rhs = new PROTObalancer(preset);
         return (lhs.CheckForEquality(rhs));
     }
     
-    public static void UpdateSettingsForPreset(PROTObalancer lhs, PresetItems preset) {
+    public static void UpdateSettingsForPreset(PROTObalancer lhs, PROTObalancer.PresetItems preset) {
         PROTObalancer rhs = new PROTObalancer(preset);
         
-        lhs.DebugWrite("UpdateSettingsForPreset to " + preset, 3);
+        lhs.DebugWrite("UpdateSettingsForPreset to " + preset, 6);
 
         lhs.OnWhitelist = rhs.OnWhitelist;
         lhs.TopScorers = rhs.TopScorers;
@@ -1171,7 +1457,7 @@ static class PROTObalancerUtils {
         return true;
     }
 
-    public static bool EqualArrays(Speed[] lhs, Speed[] rhs) {
+    public static bool EqualArrays(PROTObalancer.Speed[] lhs, PROTObalancer.Speed[] rhs) {
         if (lhs == null && rhs == null) return true;
         if (lhs == null || rhs == null) return false;
         if (lhs.Length != rhs.Length) return false;
@@ -1197,16 +1483,16 @@ static class PROTObalancerUtils {
         return ret;
     }
 
-    public static String ArrayToString(Speed[] a) {
+    public static String ArrayToString(PROTObalancer.Speed[] a) {
         String ret = String.Empty;
         bool first = true;
         if (a == null || a.Length == 0) return ret;
         for (int i = 0; i < a.Length; ++i) {
             if (first) {
-                ret = Enum.GetName(typeof(Speed), a[i]);
+                ret = Enum.GetName(typeof(PROTObalancer.Speed), a[i]);
                 first = false;
             } else {
-                ret = ret + ", " + Enum.GetName(typeof(Speed), a[i]);
+                ret = ret + ", " + Enum.GetName(typeof(PROTObalancer.Speed), a[i]);
             }
         }
         return ret;
@@ -1228,18 +1514,18 @@ static class PROTObalancerUtils {
         return nums;
     }
 
-    public static Speed[] ParseSpeedArray(String s) {
-        Speed[] speeds = new Speed[3] {Speed.Click_Here_For_Speed_Names, Speed.Click_Here_For_Speed_Names, Speed.Click_Here_For_Speed_Names};
+    public static PROTObalancer.Speed[] ParseSpeedArray(String s) {
+        PROTObalancer.Speed[] speeds = new PROTObalancer.Speed[3] {PROTObalancer.Speed.Click_Here_For_Speed_Names, PROTObalancer.Speed.Click_Here_For_Speed_Names, PROTObalancer.Speed.Click_Here_For_Speed_Names};
         if (String.IsNullOrEmpty(s)) return speeds;
         if (!s.Contains(",")) return speeds;
         String[] strs = s.Split(new Char[] {','});
         if (strs.Length != 3) return speeds;
         for (int i = 0; i < speeds.Length; ++i) {
             try {
-                speeds[i] = (Speed)Enum.Parse(typeof(Speed), strs[i]);
+                speeds[i] = (PROTObalancer.Speed)Enum.Parse(typeof(PROTObalancer.Speed), strs[i]);
             } catch (Exception e) {
                 // TBD log an error about a bogus value?
-                speeds[i] = Speed.Click_Here_For_Speed_Names;
+                speeds[i] = PROTObalancer.Speed.Click_Here_For_Speed_Names;
             }
         }
         return speeds;
