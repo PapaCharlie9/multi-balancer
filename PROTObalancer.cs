@@ -224,6 +224,13 @@ private List<String> fAllPlayers = null;
 private Dictionary<String, PlayerModel> fKnownPlayers = null;
 private PluginState fPluginState;
 private CServerInfo fServerInfo;
+private List<String> fTeam0 = null;
+private List<String> fTeam1 = null;
+private List<String> fTeam2 = null;
+private List<String> fTeam3 = null;
+private List<String> fTeam4 = null;
+private List<String> fUnassigned = null;
+
 
 /* Settings */
 
@@ -308,6 +315,12 @@ public PROTObalancer() {
     
     fAllPlayers = new List<String>();
     fKnownPlayers = new Dictionary<String, PlayerModel>();
+    fTeam0 = new List<String>();
+    fTeam1 = new List<String>();
+    fTeam2 = new List<String>();
+    fTeam3 = new List<String>();
+    fTeam4 = new List<String>();
+    fUnassigned = new List<String>();
     
     /* Settings */
 
@@ -1024,6 +1037,8 @@ public override void OnPlayerLeft(CPlayerInfo playerInfo) {
     DebugWrite("^bGot OnPlayerLeft^n", 7);
     
     if (IsKnownPlayer(playerInfo.SoldierName)) RemovePlayer(playerInfo.SoldierName);
+    
+    DebugWrite("Disconnected: ^b" + playerInfo.SoldierName, 3);
 }
 
 public override void OnPlayerTeamChange(String soldierName, int teamId, int squadId) {
@@ -1033,9 +1048,14 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
     
     // Only teamId is valid for BF3, squad change is sent on separate event
 
-    if (!IsKnownPlayer(soldierName)) AddNewPlayer(soldierName, teamId);
+    if (!IsKnownPlayer(soldierName)) {
+        AddNewPlayer(soldierName, teamId);
+        DebugWrite("^4New player^0: ^b" + soldierName + "^n, assigned to team " + teamId + " by game server", 3);
+    }
     
-    CheckTeamSwitch(soldierName, teamId);
+    if (CheckTeamSwitch(soldierName, teamId)) {
+        UpdatePlayerTeam(soldierName, teamId);
+    }
 }
 
 public override void OnPlayerKilled(Kill kKillerVictimDetails) {
@@ -1055,6 +1075,8 @@ public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subs
     
     DebugWrite("^bGot OnListPlayers^n", 7);
     
+    fUnassigned.Clear();
+    
     foreach (CPlayerInfo p in players) {
         UpdatePlayerModel(p.SoldierName, p.TeamID, p.SquadID, p.GUID, p.Score, p.Kills, p.Deaths, p.Rank);
     }
@@ -1066,7 +1088,13 @@ public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subs
 }
 
 public override void OnServerInfo(CServerInfo serverInfo) {
+    if (!fIsEnabled) return;
+
     DebugWrite("Got ^bOnServerInfo^n: Debug level = " + DebugLevel, 7);
+    
+    if (fServerInfo == null || fServerInfo.GameMode != serverInfo.GameMode || fServerInfo.Map != serverInfo.Map) {
+        DebugWrite("ServerInfo update: " + serverInfo.Map + "/" + serverInfo.GameMode, 3);
+    }
     
     fServerInfo = serverInfo;
 }
@@ -1087,13 +1115,25 @@ public override void OnRoundOverPlayers(List<CPlayerInfo> players) { }
 
 public override void OnRoundOverTeamScores(List<TeamScore> teamScores) { }
 
-public override void OnRoundOver(int winningTeamId) { }
+public override void OnRoundOver(int winningTeamId) {
+    if (!fIsEnabled) return;
+    
+    DebugWrite("^bGot OnRoundOver^n", 7);
+
+    DebugWrite(":::::::::::: Round over detected ::::::::::::", 2);
+}
 
 public override void OnLoadingLevel(String mapFileName, int roundsPlayed, int roundsTotal) { }
 
 public override void OnLevelStarted() { }
 
-public override void OnLevelLoaded(String mapFileName, String Gamemode, int roundsPlayed, int roundsTotal) { } // BF3
+public override void OnLevelLoaded(String mapFileName, String Gamemode, int roundsPlayed, int roundsTotal) {
+    if (!fIsEnabled) return;
+    
+    DebugWrite("^bGot OnLevelLoaded^n", 7);
+
+    DebugWrite(":::::::::::: Level loaded detected ::::::::::::", 2);
+}
 
 
 
@@ -1127,7 +1167,7 @@ public bool IsKnownPlayer(String name) {
 
 public void AddNewPlayer(String name, int team) {
     lock (fAllPlayers) {
-        fAllPlayers.Add(name);
+        if (!fAllPlayers.Contains(name)) fAllPlayers.Add(name);
     }
     lock (fKnownPlayers) {
         if (!fKnownPlayers.ContainsKey(name)) {
@@ -1154,16 +1194,23 @@ public void UpdatePlayerModel(String name, int team, int squad, String eaGUID, i
     if (!IsKnownPlayer(name)) {
         switch (fPluginState) {
             case PluginState.JustEnabled:
-                DebugWrite("JustEnabled state, adding new player: " + name, 3);
-                AddNewPlayer(name, team);
+                if (team != 0) {
+                    DebugWrite("JustEnabled state, adding new player: ^b" + name, 3);
+                    AddNewPlayer(name, team);
+                } else {
+                    DebugWrite("JustEnabled state, unassigned player: ^b" + name, 3);
+                    if (!fUnassigned.Contains(name)) fUnassigned.Add(name);
+                    return;
+                }
                 break;
             case PluginState.Active:
             case PluginState.NoPlayers:
-                DebugWrite("^b^1WARNING^0^n: Unmodeled player " + name + " in state " + fPluginState, 3);
+                DebugWrite("Update waiting for ^b" + name + "^n to be assigned a team", 3);
+                if (!fUnassigned.Contains(name)) fUnassigned.Add(name);
                 return;
                 break;
             case PluginState.Error:
-                DebugWrite("Error state, adding new player: " + name, 3);
+                DebugWrite("Error state, adding new player: ^b" + name, 3);
                 AddNewPlayer(name, team);
                 break;
             default:
@@ -1172,7 +1219,7 @@ public void UpdatePlayerModel(String name, int team, int squad, String eaGUID, i
     }
     
     if (!fKnownPlayers.ContainsKey(name)) {
-        DebugWrite("^b^1WARNING^0^n: player " + name + " not in master table!", 1);
+        DebugWrite("^b^1WARNING^0^n: player ^b" + name + "^n not in master table!", 1);
         fPluginState = PluginState.Error;
         return;
     }
@@ -1180,7 +1227,7 @@ public void UpdatePlayerModel(String name, int team, int squad, String eaGUID, i
     PlayerModel m = fKnownPlayers[name];
     
     if (m.Team != team) {
-        DebugWrite("^b^1UNEXPECTED^0^n: player model for " + name + " has team " + m.Team + " but update says " + team + "!", 3);
+        DebugWrite("^b^1UNEXPECTED^0^n: player model for ^b" + name + "^n has team " + m.Team + " but update says " + team + "!", 3);
         m.Team = team;
     }
     m.Squad = squad;
@@ -1196,8 +1243,30 @@ public void UpdatePlayerModel(String name, int team, int squad, String eaGUID, i
 }
 
 
-public void CheckTeamSwitch(String name, int team) {
+public void UpdatePlayerTeam(String name, int team) {
+    if (!IsKnownPlayer(name) || !fKnownPlayers.ContainsKey(name)) {
+        ConsoleError("UpdatePlayerTeam(" + name + ", " + team + ")");
+        return;
+    }
+    
+    PlayerModel m = fKnownPlayers[name];
+    
+    if (m.Team != team) {
+        if (m.Team == 0) {
+            DebugWrite("Assigning ^b" + name + "^n to " + team, 3);
+        } else {
+            DebugWrite("Team switch: ^b" + name + "^n from " + m.Team + " to " + team, 3);
+            m.Team = team;
+        }
+        fKnownPlayers[name] = m;
+    }
+}
+
+
+
+public bool CheckTeamSwitch(String name, int team) {
     // Team
+    return true; // means switch is okay
 }
 
 
@@ -1347,6 +1416,12 @@ public void UpdatePresetValue() {
 public void Reset() {
     fPluginState = PluginState.Disabled;
     fAllPlayers.Clear();
+    
+    fTeam0.Clear();
+    fTeam1.Clear();
+    fTeam2.Clear();
+    fTeam3.Clear();
+    fTeam4.Clear();
 }
 
 public bool IsSQDM() {
@@ -1354,48 +1429,47 @@ public bool IsSQDM() {
     return (fServerInfo.GameMode == "SquadDeathMatch0");
 }
 
-public void ListTeams(out List<String> team1, out List<String> team2, out List<String> team3, out List<String> team4) {
-    team1 = new List<String>();
-    team2 = new List<String>();
-    team3 = new List<String>();
-    team4 = new List<String>();
-    
+public void ListTeams() {
+    fTeam0.Clear();
+    fTeam1.Clear();
+    fTeam2.Clear();
+    fTeam3.Clear();
+    fTeam4.Clear();
+
     foreach (String name in fAllPlayers) {
         switch (fKnownPlayers[name].Team) {
-            case 1: team1.Add(name); break;
-            case 2: team2.Add(name); break;
-            case 3: team3.Add(name); break;
-            case 4: team4.Add(name); break;
-            default:
-                DebugWrite("ListTeams unknown team for " + name + " in " + fKnownPlayers[name].Team, 3);
-                break;
+            case 1: fTeam1.Add(name); break;
+            case 2: fTeam2.Add(name); break;
+            case 3: fTeam3.Add(name); break;
+            case 4: fTeam4.Add(name); break;
+            default: fTeam0.Add(name); break;
         }
     }
 }
 
 
 public void DebugStatus() {
-    List<String> team1 = null;
-    List<String> team2 = null;
-    List<String> team3 = null;
-    List<String> team4 = null;
     
-    ListTeams(out team1, out team2, out team3, out team4);
+    ListTeams();
     
     DebugWrite("^bStatus^n: Plugin state = " + fPluginState + ", mode = " + fServerInfo.GameMode, 3);
     
     if (IsSQDM()) {
-        DebugWrite("^bStatus^n: Team counts = " + team1.Count + "(A) vs " + team2.Count + "(B) vs " + team3.Count + "(C) vs " + team4.Count + "(D)", 3);
+        DebugWrite("^bStatus^n: Team counts = " + fTeam1.Count + "(A) vs " + fTeam2.Count + "(B) vs " + fTeam3.Count + "(C) vs " + fTeam4.Count + "(D), with " + fUnassigned.Count + " unassigned", 3);
     } else {
-        DebugWrite("^bStatus^n: Team counts = " + team1.Count + "(US) vs " + team2.Count + "(RU)", 3);
+        DebugWrite("^bStatus^n: Team counts = " + fTeam1.Count + "(US) vs " + fTeam2.Count + "(RU), with " + fUnassigned.Count + " unassigned", 3);
+    }
+    
+    if (fTeam0.Count > 0) {
+        DebugWrite("^1DEBUG^0: fTeam0.Count > 0, is " + fTeam0.Count, 3);
     }
     
     List<int> counts = new List<int>();
-    counts.Add(team1.Count);
-    counts.Add(team2.Count);
+    counts.Add(fTeam1.Count);
+    counts.Add(fTeam2.Count);
     if (IsSQDM()) {
-        counts.Add(team3.Count);
-        counts.Add(team4.Count);
+        counts.Add(fTeam3.Count);
+        counts.Add(fTeam4.Count);
     }
     
     counts.Sort();
