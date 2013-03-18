@@ -50,7 +50,9 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     public enum DefineStrong { RoundScore, RoundKDR, RoundKills };
     
-    public enum PluginState { Disabled, JustEnabled, NoPlayers, Active, Error };
+    public enum PluginState { Disabled, JustEnabled, WaitingForPlayers, Active, Error };
+    
+    public enum GameState { RoundEnding, RoundStarting, Playing, Warmup, Unknown };
 
 
     /* Classes */
@@ -223,6 +225,7 @@ private Dictionary<String,PerModeSettings> fPerMode = null;
 private List<String> fAllPlayers = null;
 private Dictionary<String, PlayerModel> fKnownPlayers = null;
 private PluginState fPluginState;
+private GameState fGameState;
 private CServerInfo fServerInfo;
 private List<String> fTeam0 = null;
 private List<String> fTeam1 = null;
@@ -288,6 +291,7 @@ public PROTObalancer() {
     /* Private members */
     fIsEnabled = false;
     fPluginState = PluginState.Disabled;
+    fGameState = GameState.Unknown;
     fServerInfo = null;
     
     fModeToSimple = new Dictionary<String,String>();
@@ -990,8 +994,6 @@ public void OnPluginLoaded(String strHostName, String strPort, String strPRoConV
     "OnRoundOverPlayers",
     "OnRoundOver",
     "OnRoundOverTeamScores",
-    "OnLoadingLevel",
-    "OnLevelStarted",
     "OnLevelLoaded"
     );
 }
@@ -999,8 +1001,10 @@ public void OnPluginLoaded(String strHostName, String strPort, String strPRoConV
 public void OnPluginEnable() {
     fIsEnabled = true;
     fPluginState = PluginState.JustEnabled;
-    ConsoleWrite("Enabled! Version = " + GetPluginVersion());
+    fGameState = GameState.Unknown;
+    ConsoleWrite("^bEnabled!^n Version = " + GetPluginVersion());
     DebugWrite("^b^3State = " + fPluginState, 6);
+    DebugWrite("^b^3Game state = " + fGameState, 6);
     ServerCommand("serverInfo");
 }
 
@@ -1020,8 +1024,11 @@ public void OnPluginDisable() {
 
     Reset();
     
-    ConsoleWrite("Disabled!");
+    ConsoleWrite("^bDisabled!^n");
+    fPluginState = PluginState.Disabled;
+    fGameState = GameState.Unknown;
     DebugWrite("^b^3State = " + fPluginState, 6);
+    DebugWrite("^b^3Game state = " + fGameState, 6);
 }
 
 
@@ -1067,6 +1074,11 @@ public override void OnPlayerKilled(Kill kKillerVictimDetails) {
     
     DebugWrite("^bGot OnPlayerKilled^n: " + killer  + " -> " + victim + " (" + weapon + ")", 7);
     
+    if (fGameState == GameState.Unknown) {
+        fGameState = (TotalPlayerCount() < 4) ? GameState.Warmup : GameState.Playing;
+        DebugWrite("^b^3Game state = " + fGameState, 6);  
+    }
+    
     BalanceAndUnstack(victim);
 }
 
@@ -1082,9 +1094,12 @@ public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subs
     }
     
     DebugStatus();
-
-    // State transition after first list players update
-    if (fPluginState == PluginState.JustEnabled) fPluginState = PluginState.Active;
+    
+    /* Special handling for JustEnabled state */
+    if (fPluginState == PluginState.JustEnabled) {
+        fPluginState = (TotalPlayerCount() < 4) ? PluginState.WaitingForPlayers : PluginState.Active;
+        DebugWrite("^b^3State = " + fPluginState, 6);  
+    }
 }
 
 public override void OnServerInfo(CServerInfo serverInfo) {
@@ -1103,8 +1118,6 @@ public override void OnResponseError(List<String> requestWords, String error) { 
 
 
 
-public override void OnPlayerSpawned(String soldierName, Inventory spawnedInventory) { }
-
 public override void OnGlobalChat(String speaker, String message) { }
 
 public override void OnTeamChat(String speaker, String message, int teamId) { }
@@ -1120,7 +1133,12 @@ public override void OnRoundOver(int winningTeamId) {
     
     DebugWrite("^bGot OnRoundOver^n", 7);
 
-    DebugWrite(":::::::::::: Round over detected ::::::::::::", 2);
+    DebugWrite(":::::::::::: ^b^1Round over detected^0^n ::::::::::::", 2);
+    
+    if (fGameState == GameState.Playing || fGameState == GameState.Unknown) {
+        fGameState = GameState.RoundEnding;
+        DebugWrite("^b^3Game state = " + fGameState, 6);  
+    }
 }
 
 public override void OnLoadingLevel(String mapFileName, int roundsPlayed, int roundsTotal) { }
@@ -1132,8 +1150,32 @@ public override void OnLevelLoaded(String mapFileName, String Gamemode, int roun
     
     DebugWrite("^bGot OnLevelLoaded^n", 7);
 
-    DebugWrite(":::::::::::: Level loaded detected ::::::::::::", 2);
+    DebugWrite(":::::::::::: ^b^1Level loaded detected^0^n ::::::::::::", 2);
+
+    if (fGameState == GameState.RoundEnding || fGameState == GameState.Unknown) {
+        fGameState = GameState.RoundStarting;
+        DebugWrite("^b^3Game state = " + fGameState, 6);  
+    }
 }
+
+public override void OnPlayerSpawned(String soldierName, Inventory spawnedInventory) {
+    if (!fIsEnabled) return;
+    
+    DebugWrite("^bGot OnPlayerSpawned^n", 7);
+    
+    if (fGameState == GameState.Unknown) {
+        fGameState = (TotalPlayerCount() < 4) ? GameState.Warmup : GameState.Playing;
+        DebugWrite("^b^3Game state = " + fGameState, 6);  
+    }
+
+    if (fGameState == GameState.RoundStarting) {
+        DebugWrite(":::::::::::: ^b^1First spawn detected^0^n ::::::::::::", 2);
+
+        fGameState = (TotalPlayerCount() < 4) ? GameState.Warmup : GameState.Playing;
+        DebugWrite("^b^3Game state = " + fGameState, 6);  
+    }
+}
+
 
 
 
@@ -1165,38 +1207,91 @@ public bool IsKnownPlayer(String name) {
     return check;
 }
 
-public void AddNewPlayer(String name, int team) {
-    lock (fAllPlayers) {
-        if (!fAllPlayers.Contains(name)) fAllPlayers.Add(name);
-    }
+public bool AddNewPlayer(String name, int team) {
+    bool stateChange = false;
+    bool gameChange = false;
+    bool known = false;
     lock (fKnownPlayers) {
         if (!fKnownPlayers.ContainsKey(name)) {
             fKnownPlayers[name] = new PlayerModel(name, team);
         } else {
             fKnownPlayers[name].Team = team;
+            known = true;
         }
         fKnownPlayers[name].LastSeenTimestamp = DateTime.Now;
     }
+    lock (fAllPlayers) {
+        if (!fAllPlayers.Contains(name)) fAllPlayers.Add(name);
+        if (fAllPlayers.Count < 4) {
+            if (fGameState == GameState.Unknown) {
+                fGameState = GameState.Warmup;
+                gameChange = true;
+            }
+        } else {
+            if (fPluginState == PluginState.WaitingForPlayers) {
+                fPluginState = PluginState.Active;
+                stateChange = true;
+            }
+            if (fGameState == GameState.Warmup || fGameState == GameState.Unknown) {
+                fGameState = GameState.Playing;
+                gameChange = true;
+            }
+        }
+    }
+    if (stateChange) {
+        DebugWrite("^b^3State = " + fPluginState, 6);
+    }
+    if (gameChange) {
+        DebugWrite("^b^3Game state = " + fGameState, 6);
+    }
+    return known;
 }
 
 public void RemovePlayer(String name) {
-    lock (fAllPlayers) {
-        if (fAllPlayers.Contains(name)) fAllPlayers.Remove(name);
-    }
+    bool stateChange = false;
+    bool gameChange = false;
     lock (fKnownPlayers) {
         if (fKnownPlayers.ContainsKey(name)) {
             fKnownPlayers[name].LastSeenTimestamp = DateTime.Now;
         }
     }
+    lock (fAllPlayers) {
+        if (fAllPlayers.Contains(name)) fAllPlayers.Remove(name);
+    
+        if (fAllPlayers.Count < 4) {
+            if (fPluginState != PluginState.WaitingForPlayers) {
+                fPluginState = PluginState.WaitingForPlayers;
+                stateChange = true;
+            }
+            if (fGameState != GameState.Warmup) {
+                fGameState = GameState.Warmup;
+                gameChange = true;
+            }
+        }
+    }
+    if (stateChange) {
+        DebugWrite("^b^3State = " + fPluginState, 6);
+    }
+    if (gameChange) {
+        DebugWrite("^b^3Game state = " + fGameState, 6);
+    }
+}
+
+public int TotalPlayerCount() {
+    lock (fAllPlayers) {
+        return fAllPlayers.Count;
+    }
 }
 
 public void UpdatePlayerModel(String name, int team, int squad, String eaGUID, int score, int kills, int deaths, int rank) {
+    bool known = false;
     if (!IsKnownPlayer(name)) {
         switch (fPluginState) {
             case PluginState.JustEnabled:
                 if (team != 0) {
-                    DebugWrite("JustEnabled state, adding new player: ^b" + name, 3);
-                    AddNewPlayer(name, team);
+                    known = AddNewPlayer(name, team);
+                    String verb = (known) ? "^6renewing^0" : "^4adding^0";
+                    DebugWrite("JustEnabled state, " + verb + " new player: ^b" + name, 3);
                 } else {
                     DebugWrite("JustEnabled state, unassigned player: ^b" + name, 3);
                     if (!fUnassigned.Contains(name)) fUnassigned.Add(name);
@@ -1204,7 +1299,7 @@ public void UpdatePlayerModel(String name, int team, int squad, String eaGUID, i
                 }
                 break;
             case PluginState.Active:
-            case PluginState.NoPlayers:
+            case PluginState.WaitingForPlayers:
                 DebugWrite("Update waiting for ^b" + name + "^n to be assigned a team", 3);
                 if (!fUnassigned.Contains(name)) fUnassigned.Add(name);
                 return;
@@ -1414,7 +1509,6 @@ public void UpdatePresetValue() {
 }
 
 public void Reset() {
-    fPluginState = PluginState.Disabled;
     fAllPlayers.Clear();
     
     fTeam0.Clear();
