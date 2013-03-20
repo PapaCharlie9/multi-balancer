@@ -1424,6 +1424,7 @@ public void KillUpdate(String killer, String victim) {
     double deaths = -1;
     double kdr = -1;
     double spm = -1;
+    TimeSpan tir = TimeSpan.FromSeconds(0); // Time In Round
     lock (fKnownPlayers) {
         PlayerModel m = null;
         if (killer != victim && fKnownPlayers.TryGetValue(killer, out m)) {
@@ -1442,8 +1443,9 @@ public void KillUpdate(String killer, String victim) {
             deaths = m.DeathsRound;
             kdr = m.KDRRound;
             spm = m.SPMRound;
+            tir = now.Subtract((m.FirstSpawnTimestamp != DateTime.MinValue) ? m.FirstSpawnTimestamp : now);
         }
-    }    
+    }
 
     if (!okKiller) {
         DebugWrite("^b^1UNEXPECTED^0^n: player ^b" + killer + "^n is a killer, but not a known player!", 3);
@@ -1452,7 +1454,9 @@ public void KillUpdate(String killer, String victim) {
     if (!okVictim) {
         DebugWrite("^b^1UNEXPECTED^0^n: player ^b" + victim + "^n is a victim, but not a known player!", 3);
     } else {
-        DebugWrite("^9STATS: ^b" + victim + "^n [S:" + score + ", K:" + kills + ", D:" + deaths + ", KDRRound: " + kdr.ToString("F2") + ", SPMRound: " + spm.ToString("F0") + "]", 6);
+        Match rm = Regex.Match(tir.ToString(), @"([0-9]+:[0-9]+:[0-9]+)");
+        String sTIR = (rm.Success) ? rm.Groups[1].Value : "?";
+        DebugWrite("^9STATS: ^b" + victim + "^n [S:" + score + ", K:" + kills + ", D:" + deaths + ", KDR: " + kdr.ToString("F2") + ", SPM: " + spm.ToString("F0") + ", TIR: " + sTIR + "]", 6);
     }
 }
 
