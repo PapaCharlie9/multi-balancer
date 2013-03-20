@@ -71,72 +71,72 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     CheckTeamStackingAfterFirstMinutes = 10;
                     DefinitionOfHighPopulationForPlayers = 28;
                     DefinitionOfLowPopulationForPlayers = 8;
-                    DefinitionOfEarlyPhaseForTickets = 160;
-                    DefinitionOfLatePhaseForTickets = 40;
+                    DefinitionOfEarlyPhase = 160;
+                    DefinitionOfLatePhase = 40;
                     break;
                 case "Conquest Large":
                     MaxPlayers = 64;
                     CheckTeamStackingAfterFirstMinutes = 10;
                     DefinitionOfHighPopulationForPlayers = 48;
                     DefinitionOfLowPopulationForPlayers = 16;
-                    DefinitionOfEarlyPhaseForTickets = 240;
-                    DefinitionOfLatePhaseForTickets = 60;
+                    DefinitionOfEarlyPhase = 240;
+                    DefinitionOfLatePhase = 60;
                     break;
                 case "CTF":
                     MaxPlayers = 64;
-                    CheckTeamStackingAfterFirstMinutes = 10;
+                    CheckTeamStackingAfterFirstMinutes = 5;
                     DefinitionOfHighPopulationForPlayers = 48;
                     DefinitionOfLowPopulationForPlayers = 16;
-                    DefinitionOfEarlyPhaseForTickets = 240;
-                    DefinitionOfLatePhaseForTickets = 60;
+                    DefinitionOfEarlyPhase = 5; // minutes
+                    DefinitionOfLatePhase = 15; // minutes
                     break;
                 case "Rush":
                     MaxPlayers = 32;
                     CheckTeamStackingAfterFirstMinutes = 10;
                     DefinitionOfHighPopulationForPlayers = 24;
                     DefinitionOfLowPopulationForPlayers = 8;
-                    DefinitionOfEarlyPhaseForTickets = 60;
-                    DefinitionOfLatePhaseForTickets = 15;
+                    DefinitionOfEarlyPhase = 60;
+                    DefinitionOfLatePhase = 15;
                     break;
                 case "Squad Deathmatch":
                     MaxPlayers = 16;
                     CheckTeamStackingAfterFirstMinutes = 5;
                     DefinitionOfHighPopulationForPlayers = 14;
                     DefinitionOfLowPopulationForPlayers = 8;
-                    DefinitionOfEarlyPhaseForTickets = 80;
-                    DefinitionOfLatePhaseForTickets = 20;
+                    DefinitionOfEarlyPhase = 80;
+                    DefinitionOfLatePhase = 20;
                     break;
                 case "Superiority":
                     MaxPlayers = 24;
                     CheckTeamStackingAfterFirstMinutes = 15;
                     DefinitionOfHighPopulationForPlayers = 48;
                     DefinitionOfLowPopulationForPlayers = 16;
-                    DefinitionOfEarlyPhaseForTickets = 160;
-                    DefinitionOfLatePhaseForTickets = 40;
+                    DefinitionOfEarlyPhase = 160;
+                    DefinitionOfLatePhase = 40;
                     break;
                 case "Team Deathmatch":
                     MaxPlayers = 64;
                     CheckTeamStackingAfterFirstMinutes = 5;
                     DefinitionOfHighPopulationForPlayers = 48;
                     DefinitionOfLowPopulationForPlayers = 16;
-                    DefinitionOfEarlyPhaseForTickets = 80;
-                    DefinitionOfLatePhaseForTickets = 20;
+                    DefinitionOfEarlyPhase = 80;
+                    DefinitionOfLatePhase = 20;
                     break;
                 case "Squad Rush":
                     MaxPlayers = 8;
                     CheckTeamStackingAfterFirstMinutes = 2;
                     DefinitionOfHighPopulationForPlayers = 6;
                     DefinitionOfLowPopulationForPlayers = 4;
-                    DefinitionOfEarlyPhaseForTickets = 18;
-                    DefinitionOfLatePhaseForTickets = 2;
+                    DefinitionOfEarlyPhase = 18;
+                    DefinitionOfLatePhase = 2;
                     break;
                 case "Gun Master":
-                    MaxPlayers = 32;
+                    MaxPlayers = 16;
                     CheckTeamStackingAfterFirstMinutes = 2;
-                    DefinitionOfHighPopulationForPlayers = 24;
-                    DefinitionOfLowPopulationForPlayers = 8;
-                    DefinitionOfEarlyPhaseForTickets = 0;
-                    DefinitionOfLatePhaseForTickets = 0;
+                    DefinitionOfHighPopulationForPlayers = 12;
+                    DefinitionOfLowPopulationForPlayers = 6;
+                    DefinitionOfEarlyPhase = 0;
+                    DefinitionOfLatePhase = 0;
                     break;
                 case "Unknown or New Mode":
                 default:
@@ -144,8 +144,8 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     CheckTeamStackingAfterFirstMinutes = 10;
                     DefinitionOfHighPopulationForPlayers = 28;
                     DefinitionOfLowPopulationForPlayers = 8;
-                    DefinitionOfEarlyPhaseForTickets = 160;
-                    DefinitionOfLatePhaseForTickets = 40;
+                    DefinitionOfEarlyPhase = 160;
+                    DefinitionOfLatePhase = 40;
                     break;
             }
         }
@@ -155,8 +155,8 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         public DefineStrong DetermineStrongPlayersBy = DefineStrong.RoundScore;
         public double DefinitionOfHighPopulationForPlayers = 48;
         public double DefinitionOfLowPopulationForPlayers = 16;
-        public double DefinitionOfEarlyPhaseForTickets = 80;
-        public double DefinitionOfLatePhaseForTickets = 20;
+        public double DefinitionOfEarlyPhase = 80;
+        public double DefinitionOfLatePhase = 20;
         
         //public double MinTicketsPercentage = 10.0; // TBD
         public int GoAggressive = 0; // TBD
@@ -173,9 +173,9 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         public int Squad;
         public DateTime FirstSpawnTimestamp;
         public DateTime LastSeenTimestamp;
-        public double Score;
-        public double Kills;
-        public double Deaths;
+        public double ScoreRound;
+        public double KillsRound;
+        public double DeathsRound;
         public int Rounds; // incremented OnRoundOverPlayers
         public int Rank;
         public bool IsDeployed;
@@ -184,8 +184,8 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         public String Tag;
         
         // Computed
-        public double KDR;
-        public double SPM;
+        public double KDRRound;
+        public double SPMRound;
         
         // Accumulated
         public int ScoreTotal; // not including current round
@@ -200,13 +200,13 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
             FirstSpawnTimestamp = DateTime.MinValue;
             LastSeenTimestamp = DateTime.MinValue;
             Tag = String.Empty;
-            Score = -1;
-            Kills = -1;
-            Deaths = -1;
+            ScoreRound = -1;
+            KillsRound = -1;
+            DeathsRound = -1;
             Rounds = -1;
             Rank = -1;
-            KDR = -1;
-            SPM = -1;
+            KDRRound = -1;
+            SPMRound = -1;
             ScoreTotal = 0;
             KillsTotal = 0;
             DeathsTotal = 0;
@@ -219,6 +219,15 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         }
     } // end PlayerModel
 
+    class TeamRoster {
+        public int Team = 0; 
+        public List<PlayerModel> Roster = null;
+
+        public TeamRoster(int team, List<PlayerModel> roster) {
+            Team = team;
+            Roster = roster;
+        }
+    } // end TeamList
 
 /* Inherited:
     this.PunkbusterPlayerInfoList = new Dictionary<String, CPunkbusterInfo>();
@@ -241,11 +250,10 @@ private Dictionary<String, PlayerModel> fKnownPlayers = null;
 private PluginState fPluginState;
 private GameState fGameState;
 private CServerInfo fServerInfo;
-private List<String> fTeam0 = null;
-private List<String> fTeam1 = null;
-private List<String> fTeam2 = null;
-private List<String> fTeam3 = null;
-private List<String> fTeam4 = null;
+private List<PlayerModel> fTeam1 = null;
+private List<PlayerModel> fTeam2 = null;
+private List<PlayerModel> fTeam3 = null;
+private List<PlayerModel> fTeam4 = null;
 private List<String> fUnassigned = null;
 public DateTime fRoundStartTimestamp;
 
@@ -334,11 +342,10 @@ public PROTObalancer() {
     
     fAllPlayers = new List<String>();
     fKnownPlayers = new Dictionary<String, PlayerModel>();
-    fTeam0 = new List<String>();
-    fTeam1 = new List<String>();
-    fTeam2 = new List<String>();
-    fTeam3 = new List<String>();
-    fTeam4 = new List<String>();
+    fTeam1 = new List<PlayerModel>();
+    fTeam2 = new List<PlayerModel>();
+    fTeam3 = new List<PlayerModel>();
+    fTeam4 = new List<PlayerModel>();
     fUnassigned = new List<String>();
     fRoundStartTimestamp = DateTime.MinValue;
     
@@ -719,10 +726,12 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
             
             bool isCTF = (sm == "CTF");
             bool isGM = (sm == "Gun Master");
+            String earlyEq = (sm.Contains("Deathmatch")) ? "<=" :  ">=";
+            String lateEq = (sm.Contains("Deathmatch")) ? ">=" : "<=";
 
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Max Players", oneSet.MaxPlayers.GetType(), oneSet.MaxPlayers));
 
-            if (!isCTF && !isGM) {
+            if (!isGM) {
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Check Team Stacking After First Minutes", oneSet.CheckTeamStackingAfterFirstMinutes.GetType(), oneSet.CheckTeamStackingAfterFirstMinutes));
 
                 var_name = "8 - Settings for " + sm + "|" + sm + ": " + "Determine Strong Players By";
@@ -735,10 +744,14 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Low Population For Players <=", oneSet.DefinitionOfLowPopulationForPlayers.GetType(), oneSet.DefinitionOfLowPopulationForPlayers));
 
-            if (!isCTF && !isGM) {
-                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Early Phase For Tickets >=", oneSet.DefinitionOfEarlyPhaseForTickets.GetType(), oneSet.DefinitionOfEarlyPhaseForTickets));
+            if (isCTF) {
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Early Phase For Minutes <=", oneSet.DefinitionOfEarlyPhase.GetType(), oneSet.DefinitionOfEarlyPhase));
 
-                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Late Phase For Tickets <=", oneSet.DefinitionOfLatePhaseForTickets.GetType(), oneSet.DefinitionOfLatePhaseForTickets));
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Late Phase For Minutes >=", oneSet.DefinitionOfLatePhase.GetType(), oneSet.DefinitionOfLatePhase));
+            } else if (!isGM) {
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Early Phase For Tickets " + earlyEq, oneSet.DefinitionOfEarlyPhase.GetType(), oneSet.DefinitionOfEarlyPhase));
+
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Late Phase For Tickets " + lateEq, oneSet.DefinitionOfLatePhase.GetType(), oneSet.DefinitionOfLatePhase));
             }
 
         }
@@ -843,16 +856,18 @@ public void SetPluginVariable(String strVariable, String strValue) {
             if (m.Success) {
                 String mode = m.Groups[1].Value;
                 String fieldPart = m.Groups[2].Value.Replace(" ","");
-                String perModeName = Regex.Replace(fieldPart, @"[^a-zA-Z_0-9]", String.Empty);
+                String perModeSetting = Regex.Replace(fieldPart, @"[^a-zA-Z_0-9]", String.Empty);
+
+                perModeSetting = Regex.Replace(perModeSetting, @"(?:ForTickets|ForMinutes)", String.Empty);
                 
                 if (!fPerMode.ContainsKey(mode)) {
                     fPerMode[mode] = new PerModeSettings(mode);
                 }
                 PerModeSettings pms = fPerMode[mode];
                 
-                field = pms.GetType().GetField(perModeName, flags);
+                field = pms.GetType().GetField(perModeSetting, flags);
                 
-                DebugWrite("Mode: " + mode + ", Field: " + perModeName + ", Value: " + strValue, 6);
+                DebugWrite("Mode: " + mode + ", Field: " + perModeSetting + ", Value: " + strValue, 6);
                 
                 if (field != null) {
                     fieldType = field.GetValue(pms).GetType();
@@ -899,7 +914,7 @@ public void SetPluginVariable(String strVariable, String strValue) {
 
                 
         /*
-        switch (perModeName) {
+        switch (perModeSetting) {
             case "Min Tickets":
                 if (!Double.TryParse(strValue, out pms.MinTicketsPercentage)) {
                     ConsoleError("Bogus setting for " + strVariable + " ? " + strValue);
@@ -1315,17 +1330,17 @@ public void UpdatePlayerModel(String name, int team, int squad, String eaGUID, i
         }
         m.Squad = squad;
         m.EAGUID = eaGUID;
-        m.Score = score;
-        m.Kills = kills;
-        m.Deaths = deaths;
+        m.ScoreRound = score;
+        m.KillsRound = kills;
+        m.DeathsRound = deaths;
         m.Rank = rank;
 
         m.LastSeenTimestamp = DateTime.Now;
 
         // Computed
-        m.KDR = m.Kills / Math.Max(1, m.Deaths);
+        m.KDRRound = m.KillsRound / Math.Max(1, m.DeathsRound);
         double mins = (m.FirstSpawnTimestamp == DateTime.MinValue) ? 1 : Math.Max(1, DateTime.Now.Subtract(m.FirstSpawnTimestamp).TotalMinutes);
-        m.SPM = m.Score / mins;
+        m.SPMRound = m.ScoreRound / mins;
 
         // Accumulated
         // TBD
@@ -1422,11 +1437,11 @@ public void KillUpdate(String killer, String victim) {
             okVictim = true;
             m.LastSeenTimestamp = now;
             m.IsDeployed = false;
-            score = m.Score;
-            kills = m.Kills;
-            deaths = m.Deaths;
-            kdr = m.KDR;
-            spm = m.SPM;
+            score = m.ScoreRound;
+            kills = m.KillsRound;
+            deaths = m.DeathsRound;
+            kdr = m.KDRRound;
+            spm = m.SPMRound;
         }
     }    
 
@@ -1437,7 +1452,7 @@ public void KillUpdate(String killer, String victim) {
     if (!okVictim) {
         DebugWrite("^b^1UNEXPECTED^0^n: player ^b" + victim + "^n is a victim, but not a known player!", 3);
     } else {
-        DebugWrite("^9STATS: ^b" + victim + "^n [S:" + score + ", K:" + kills + ", D:" + deaths + ", KDR: " + kdr.ToString("F2") + ", SPM: " + spm.ToString("F0") + "]", 6);
+        DebugWrite("^9STATS: ^b" + victim + "^n [S:" + score + ", K:" + kills + ", D:" + deaths + ", KDRRound: " + kdr.ToString("F2") + ", SPMRound: " + spm.ToString("F0") + "]", 6);
     }
 }
 
@@ -1645,11 +1660,14 @@ public void UpdatePresetValue() {
 public void Reset() {
     fAllPlayers.Clear();
     
-    fTeam0.Clear();
     fTeam1.Clear();
     fTeam2.Clear();
     fTeam3.Clear();
     fTeam4.Clear();
+
+    /*
+     * fKnownPlayers is not cleared, since we want to retain stats from previous plugin sessions
+     */
 }
 
 public bool IsSQDM() {
@@ -1657,8 +1675,12 @@ public bool IsSQDM() {
     return (fServerInfo.GameMode == "SquadDeathMatch0");
 }
 
+public int MaxDiff() {
+    // TBD - based on per mode population settings
+    return 1;
+}
+
 public void ListTeams() {
-    fTeam0.Clear();
     fTeam1.Clear();
     fTeam2.Clear();
     fTeam3.Clear();
@@ -1666,13 +1688,63 @@ public void ListTeams() {
 
     foreach (String name in fAllPlayers) {
         switch (fKnownPlayers[name].Team) {
-            case 1: fTeam1.Add(name); break;
-            case 2: fTeam2.Add(name); break;
-            case 3: fTeam3.Add(name); break;
-            case 4: fTeam4.Add(name); break;
-            default: fTeam0.Add(name); break;
+            case 1: fTeam1.Add(fKnownPlayers[name]); break;
+            case 2: fTeam2.Add(fKnownPlayers[name]); break;
+            case 3: fTeam3.Add(fKnownPlayers[name]); break;
+            case 4: fTeam4.Add(fKnownPlayers[name]); break;
+            default: break;
         }
     }
+}
+
+public int ToTeam(int fromTeam) {
+    if (fromTeam < 1 || fromTeam > 4) return 0;
+
+    ListTeams();
+
+    List<TeamRoster> teams = new List<TeamRoster>();
+    List<PlayerModel> from = null;
+    
+    if (fromTeam == 1) {
+        from = fTeam1;
+    } else {
+        teams.Add(new TeamRoster(1, fTeam1));
+    }
+    if (fromTeam == 2) {
+        from = fTeam2;
+    } else {
+        teams.Add(new TeamRoster(2, fTeam2));
+    }
+    if (IsSQDM()) {
+        if (fromTeam == 3) {
+            from = fTeam3;
+        } else {
+            teams.Add(new TeamRoster(3, fTeam3));
+        }
+        if (fromTeam == 4) {
+            from = fTeam4;
+        } else {
+            teams.Add(new TeamRoster(4, fTeam4));
+        }
+
+        teams.Sort(delegate(TeamRoster lhs, TeamRoster rhs) {
+            // Sort ascending order by count
+            if (lhs == null || rhs == null) return 0;
+            if (lhs.Roster.Count < rhs.Roster.Count) return -1;
+            if (lhs.Roster.Count > rhs.Roster.Count) return 1;
+            return 0;
+        });
+    }
+
+    if (from.Count == 0) return 0;
+
+    TeamRoster to = teams[0];
+
+    if (to.Roster.Count >= from.Count) return 0;
+
+    if ((from.Count - to.Roster.Count) <= MaxDiff()) return 0;
+
+    return to.Team;
 }
 
 
@@ -1688,10 +1760,6 @@ public void DebugStatus() {
         DebugWrite("^bStatus^n: Team counts = " + fTeam1.Count + "(US) vs " + fTeam2.Count + "(RU), with " + fUnassigned.Count + " unassigned", 3);
     }
     
-    if (fTeam0.Count > 0) {
-        DebugWrite("^1DEBUG^0: fTeam0.Count > 0, is " + fTeam0.Count, 3);
-    }
-    
     List<int> counts = new List<int>();
     counts.Add(fTeam1.Count);
     counts.Add(fTeam2.Count);
@@ -1703,7 +1771,7 @@ public void DebugStatus() {
     counts.Sort();
     int diff = Math.Abs(counts[0] - counts[counts.Count-1]);
     
-    DebugWrite("^bStatus^n: Max difference = " + diff, 3);
+    DebugWrite("^bStatus^n: Max difference = " + ((diff > 2) ? "^8^b" : "^b") + diff, 3);
 }
 
 
