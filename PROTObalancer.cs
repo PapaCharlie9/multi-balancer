@@ -237,12 +237,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
 // General
 private bool fIsEnabled;
 private Dictionary<String,String> fModeToSimple = null;
-
-// Settings
-private Dictionary<int, Type> fEasyTypeDict = null;
-private Dictionary<int, Type> fBoolDict = null;
-private Dictionary<int, Type> fListStrDict = null;
-private Dictionary<String,PerModeSettings> fPerMode = null;
+private Dictionary<String,int> fPendingTeamChange = null;
 
 // Data model
 private List<String> fAllPlayers = null;
@@ -256,10 +251,15 @@ private List<PlayerModel> fTeam3 = null;
 private List<PlayerModel> fTeam4 = null;
 private List<String> fUnassigned = null;
 public DateTime fRoundStartTimestamp;
+public bool fModelIsInSync = false; // false immediately after a move, true after listPlayers update
 
+// Settings support
+private Dictionary<int, Type> fEasyTypeDict = null;
+private Dictionary<int, Type> fBoolDict = null;
+private Dictionary<int, Type> fListStrDict = null;
+private Dictionary<String,PerModeSettings> fPerMode = null;
 
-/* Settings */
-
+// Settings
 public int DebugLevel;
 public int MaximumServerSize;
 public int MaxTeamSwitchesByStrongPlayers;
@@ -348,6 +348,9 @@ public PROTObalancer() {
     fTeam4 = new List<PlayerModel>();
     fUnassigned = new List<String>();
     fRoundStartTimestamp = DateTime.MinValue;
+
+    fPendingTeamChange = new Dictionary<String,int>();
+    fModelIsInSync = false;
     
     /* Settings */
 
@@ -963,23 +966,25 @@ public void SetPluginVariable(String strVariable, String strValue) {
 
 public void OnPluginLoaded(String strHostName, String strPort, String strPRoConVersion) {
     this.RegisterEvents(this.GetType().Name, 
-    "OnVersion",
-    "OnServerInfo",
-    "OnResponseError",
-    "OnListPlayers",
-    "OnPlayerJoin",
-    "OnPlayerLeft",
-    "OnPlayerKilled",
-    "OnPlayerSpawned",
-    "OnPlayerTeamChange",
-    "OnGlobalChat",
-    "OnTeamChat",
-    "OnSquadChat",
-    "OnRoundOverPlayers",
-    "OnRoundOver",
-    "OnRoundOverTeamScores",
-    "OnLevelLoaded",
-    "OnPlayerKilledByAdmin"
+        "OnVersion",
+        "OnServerInfo",
+        "OnResponseError",
+        "OnListPlayers",
+        "OnPlayerJoin",
+        "OnPlayerLeft",
+        "OnPlayerKilled",
+        "OnPlayerSpawned",
+        "OnPlayerTeamChange",
+        "OnGlobalChat",
+        "OnTeamChat",
+        "OnSquadChat",
+        "OnRoundOverPlayers",
+        "OnRoundOver",
+        "OnRoundOverTeamScores",
+        "OnLevelLoaded",
+        "OnPlayerKilledByAdmin",
+        "OnPlayerMovedByAdmin",
+        "OnPlayerIsAlive"
     );
 }
 
@@ -1028,7 +1033,9 @@ public override void OnPlayerLeft(CPlayerInfo playerInfo) {
     
     DebugWrite("^9^bGot OnPlayerLeft^n", 7);
     
-    if (IsKnownPlayer(playerInfo.SoldierName)) RemovePlayer(playerInfo.SoldierName);
+    if (IsKnownPlayer(playerInfo.SoldierName)) {
+        RemovePlayer(playerInfo.SoldierName);
+    }
     
     DebugWrite("Disconnected: ^b" + playerInfo.SoldierName, 3);
 }
@@ -1043,12 +1050,69 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
     if (!IsKnownPlayer(soldierName)) {
         AddNewPlayer(soldierName, teamId);
         DebugWrite("^4New player^0: ^b" + soldierName + "^n, assigned to team " + teamId + " by game server", 3);
-    }
-    
-    if (CheckTeamSwitch(soldierName, teamId)) {
-        UpdatePlayerTeam(soldierName, teamId);
+    } else {
+        /*
+         * We need to determine if this team change was instigated by a player or by an admin (plugin).
+         * We want to ignore moves by admin. This is tricky due to the events possibly being 
+         * in reverse order (team change first, then moved by admin). Use player.isAlive
+         * to force a round trip with the game server, to insure that we get the admin move
+         * event, if it exists.
+         */
+        if (fPendingTeamChange.ContainsKey(soldierName)) {
+            // This is an admin move in correct order, ignore it
+            fPendingTeamChange.Remove(soldierName);
+            DebugWrite("Moved by admin: ^b" + soldierName + "^n to team " + teamId, 6);
+            return;
+        }
+
+        // Remember the pending move in a table
+        fPendingTeamChange[soldierName] = teamId;
+
+        // Admin move event may still be on its way, so do a round-trip to check
+        ServerCommand("player.isAlive", soldierName);
     }
 }
+
+public override void OnPlayerIsAlive(string soldierName, bool isAlive) {
+    if (!fIsEnabled) return;
+
+    DebugWrite("^9^bGot OnPlayerIsAlive^n: ^b" + soldierName + "^n " + isAlive, 7);
+
+    /*
+     * This may be the return leg of the round-trip to insure that
+     * an admin move event, if any, has been processed. If the player's
+     * name is still in fPendingTeamChange, it's a real player instigated move
+     */
+
+    if (fPendingTeamChange.ContainsKey(soldierName)) {
+        int team = fPendingTeamChange[soldierName];
+        fPendingTeamChange.Remove(soldierName);
+        
+        DebugWrite("Player team switch: ^b" + soldierName + "^n to team " + team, 6);
+
+        // Check if player is allowed to switch teams
+        // Unswitch is handled in CheckTeamSwitch
+        if (CheckTeamSwitch(soldierName, team)) {
+            UpdatePlayerTeam(soldierName, team);
+        }
+    }
+}
+
+public override void OnPlayerMovedByAdmin(string soldierName, int destinationTeamId, int destinationSquadId, bool forceKilled) {
+    if (!fIsEnabled) return;
+
+    DebugWrite("^9^bGot OnPlayerMovedByAdmin^n: ^b" + soldierName + "^n " + destinationTeamId + "/" + destinationSquadId + " " + forceKilled, 7);
+
+    if (fPendingTeamChange.ContainsKey(soldierName)) {
+        // this is an admin move in reversed order, clear from pending table and ignore the move
+        fPendingTeamChange.Remove(soldierName);
+        DebugWrite("(REVERSED) Moved by admin: ^b" + soldierName + " to team " + destinationTeamId, 6);
+    } else if (!fUnassigned.Contains(soldierName)) {
+        // this is an admin move in correct order, add to pending table and let OnPlayerTeamChange handle it
+        fPendingTeamChange[soldierName] = destinationTeamId;
+    }
+}
+
 
 public override void OnPlayerKilled(Kill kKillerVictimDetails) {
     if (!fIsEnabled) return;
@@ -1068,7 +1132,7 @@ public override void OnPlayerKilled(Kill kKillerVictimDetails) {
     
     KillUpdate(killer, victim);
     
-    BalanceAndUnstack(victim);
+    if (fModelIsInSync) BalanceAndUnstack(victim);
 }
 
 public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subset) {
@@ -1079,8 +1143,14 @@ public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subs
     fUnassigned.Clear();
     
     foreach (CPlayerInfo p in players) {
-        UpdatePlayerModel(p.SoldierName, p.TeamID, p.SquadID, p.GUID, p.Score, p.Kills, p.Deaths, p.Rank);
+        try {
+            UpdatePlayerModel(p.SoldierName, p.TeamID, p.SquadID, p.GUID, p.Score, p.Kills, p.Deaths, p.Rank);
+        } catch (Exception e) {
+            ConsoleException(e.ToString());
+            continue;
+        }
     }
+    fModelIsInSync = true;
     
     DebugStatus();
     
@@ -1518,7 +1588,7 @@ public void ConsoleError(String msg)
 
 public void ConsoleException(String msg)
 {
-    ConsoleWrite(msg, MessageType.Exception);
+    if (DebugLevel >= 3) ConsoleWrite(msg, MessageType.Exception);
 }
 
 public void DebugWrite(String msg, int level)
@@ -1691,6 +1761,9 @@ public void ListTeams() {
     fTeam4.Clear();
 
     foreach (String name in fAllPlayers) {
+        if (!fKnownPlayers.ContainsKey(name)) {
+            throw new Exception("ListTeams: " + name + " not in fKnownPlayers");
+        }
         switch (fKnownPlayers[name].Team) {
             case 1: fTeam1.Add(fKnownPlayers[name]); break;
             case 2: fTeam2.Add(fKnownPlayers[name]); break;
@@ -1750,7 +1823,6 @@ public int ToTeam(int fromTeam) {
 
     return to.Team;
 }
-
 
 public void DebugStatus() {
     
@@ -1898,7 +1970,11 @@ static class PROTObalancerUtils {
     }
 
     public static PROTObalancer.Speed[] ParseSpeedArray(String s) {
-        PROTObalancer.Speed[] speeds = new PROTObalancer.Speed[3] {PROTObalancer.Speed.Click_Here_For_Speed_Names, PROTObalancer.Speed.Click_Here_For_Speed_Names, PROTObalancer.Speed.Click_Here_For_Speed_Names};
+        PROTObalancer.Speed[] speeds = new PROTObalancer.Speed[3] {
+            PROTObalancer.Speed.Click_Here_For_Speed_Names,
+            PROTObalancer.Speed.Click_Here_For_Speed_Names,
+            PROTObalancer.Speed.Click_Here_For_Speed_Names
+        };
         if (String.IsNullOrEmpty(s)) return speeds;
         if (!s.Contains(",")) return speeds;
         String[] strs = s.Split(new Char[] {','});
@@ -1952,6 +2028,4 @@ static class PROTObalancerUtils {
 
 
 } // end namespace PRoConEvents
-
-
 
