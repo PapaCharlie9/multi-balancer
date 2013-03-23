@@ -56,6 +56,8 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
     
     public enum GameState { RoundEnding, RoundStarting, Playing, Warmup, Unknown };
 
+    public enum ReasonFor { Balance, Unstack, Unswitch };
+
     /* Constants & Statics */
 
     public const int DUMMY = 2;
@@ -248,7 +250,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
     } // end TeamList
 
     public class MoveInfo {
-        public bool isForBalance = true;
+        public ReasonFor Reason = ReasonFor.Balance;
         public String Name = String.Empty;
         public String Tag = String.Empty;
         public int Source = -1;
@@ -308,6 +310,7 @@ private bool fFinalizerActive = false;
 private Dictionary<String,String> fModeToSimple = null;
 private Dictionary<String,int> fPendingTeamChange = null;
 private Thread fMoveThread = null;
+private List<String> fReservedSlots = null;
 
 // Data model
 private List<String> fAllPlayers = null;
@@ -431,6 +434,7 @@ public PROTObalancer() {
     fMoving = new Dictionary<String, MoveInfo>();
     fMoveQ = new Queue<MoveInfo>();
     fReassigned = new List<String>();
+    fReservedSlots = new List<String>();
     
     /* Settings */
 
@@ -1073,7 +1077,8 @@ public void OnPluginLoaded(String strHostName, String strPort, String strPRoConV
         "OnLevelLoaded",
         "OnPlayerKilledByAdmin",
         "OnPlayerMovedByAdmin",
-        "OnPlayerIsAlive"
+        "OnPlayerIsAlive",
+        "OnReservedSlotsList"
     );
 }
 
@@ -1394,9 +1399,18 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
 
 
 public override void OnPlayerKilledByAdmin(string soldierName) {
+    if (!fIsEnabled) return;
+    
+    DebugWrite("^9^bGot OnPlayerKilledByAdmin^n", 7);
     // TBD for m.IsDeployed
 }
 
+public override void OnReservedSlotsList(List<String> lstSoldierNames) {
+    //if (!fIsEnabled) return; // do this always
+    
+    DebugWrite("^9^bGot OnReservedSlotsList^n", 7);
+    fReservedSlots = lstSoldierNames;
+}
 
 
 
@@ -1416,6 +1430,15 @@ public override void OnPlayerKilledByAdmin(string soldierName) {
 
 
 private void BalanceAndUnstack(String name) {
+    /* Exclusions */
+
+    // On Whitelist or Reserved Slots if enabled
+    List<String> vip = new List<String>(Whitelist);
+    if (EnableWhitelistingOfReservedSlotsList) vip.AddRange(fReservedSlots);
+    if (vip.Contains(name)) {
+        DebugWrite("(MB) Excluding ^b" + name + "^n: whitelisted", DUMMY);
+        return;
+    }
 }
 
 public bool IsKnownPlayer(String name) {
@@ -1701,7 +1724,14 @@ private void StartMoveImmediate(MoveInfo move, bool sendMessages) {
     }
     // Do the move
     // ServerCommand("admin.movePlayer", ...
-    DebugWrite("^b^1MOVING^0 " + move.Name + ((move.isForBalance) ? "^n for balance" : "^n to unstack"), DUMMY);
+    String r = null;
+    switch (move.Reason) {
+        case ReasonFor.Balance: r = "for balance"; break;
+        case ReasonFor.Unstack: r = "to unstack teams"; break;
+        case ReasonFor.Unswitch: r = "to unswitch player"; break;
+        default: r = "for ???"; break;
+    }
+    DebugWrite("^b^1MOVING^0 " + move.Name + "^n " + r, DUMMY);
 }
 
 private void FinishMoveImmediate(String name, int team) {
