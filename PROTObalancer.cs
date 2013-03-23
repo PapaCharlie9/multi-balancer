@@ -56,9 +56,18 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
     
     public enum GameState { RoundEnding, RoundStarting, Playing, Warmup, Unknown };
 
-    /* Constants */
+    /* Constants & Statics */
 
     public const int DUMMY = 2;
+
+    public static String[] TEAM_NAMES = new String[] { "US", "RU" };
+
+    public static String[] SQUAD_NAMES = new String[] {
+      "Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel",
+      "India", "Juliet", "Kilo", "Lima", "Mike", "November", "Oscar", "Papa",
+      "Quebec", "Romeo", "Sierra", "Tango", "Uniform", "Victor", "Whiskey", "Xray",
+      "Yankee", "Zulu", "Haggard", "Sweetwater", "Preston", "Redford", "Faith", "Celeste"
+    };
 
     /* Classes */
 
@@ -195,6 +204,9 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         public double ScoreTotal; // not including current round
         public double KillsTotal; // not including current round
         public double DeathsTotal; // not including current round
+
+        //  Per-round state
+        public int MovesRound;
         
         public PlayerModel() {
             Name = null;
@@ -216,6 +228,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
             KillsTotal = 0;
             DeathsTotal = 0;
             IsDeployed = false;
+            MovesRound = 0;
         }
         
         public PlayerModel(String name, int team) : this() {
@@ -310,6 +323,7 @@ private List<String> fUnassigned = null;
 public DateTime fRoundStartTimestamp;
 public Dictionary<String, MoveInfo> fMoving = null;
 public Queue<MoveInfo> fMoveQ = null;
+public List<String> fReassigned = null;
 
 // Settings support
 private Dictionary<int, Type> fEasyTypeDict = null;
@@ -367,6 +381,7 @@ public String YellAfterUnswitchingDispersalPlayer;
 
 public String ShowInLog; // command line to show info in plugin.log
 public bool LogChat;
+public bool EnableLoggingOnlyMode;
 
 /* Constructor */
 
@@ -415,6 +430,7 @@ public PROTObalancer() {
     fPendingTeamChange = new Dictionary<String,int>();
     fMoving = new Dictionary<String, MoveInfo>();
     fMoveQ = new Queue<MoveInfo>();
+    fReassigned = new List<String>();
     
     /* Settings */
 
@@ -486,6 +502,7 @@ public PROTObalancer() {
 
     ShowInLog = String.Empty;
     LogChat = true;
+    EnableLoggingOnlyMode = false;
 }
 
 public PROTObalancer(PresetItems preset) : this() {
@@ -835,6 +852,8 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
         lstReturn.Add(new CPluginVariable("9 - Debugging|Log Chat", LogChat.GetType(), LogChat));
 
+        lstReturn.Add(new CPluginVariable("9 - Debugging|Enable Logging Only Mode", EnableLoggingOnlyMode.GetType(), EnableLoggingOnlyMode));
+
 
     } catch (Exception e) {
         ConsoleException(e.ToString());
@@ -1125,9 +1144,20 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
     try {
         // Only teamId is valid for BF3, squad change is sent on separate event
 
-        if (!IsKnownPlayer(soldierName)) {
+        if (fReassigned.Contains(soldierName)) {
+            // We reassigned this new player
+            fReassigned.Remove(soldierName);
             AddNewPlayer(soldierName, teamId);
-            DebugWrite("^4New player^0: ^b" + soldierName + "^n, assigned to team " + teamId + " by game server", 3);
+            DebugWrite("^4New player^0: ^b" + soldierName + "^n, ^b^1REASSIGNED^0^n to team " + teamId + " by " + GetPluginName(), 3);
+       } else if (!IsKnownPlayer(soldierName)) {
+            int reassignTo = ToTeam(soldierName, teamId);
+            if (reassignTo == 0 || reassignTo == teamId) {
+                // New player was going to the right team anyway
+                AddNewPlayer(soldierName, teamId);
+                DebugWrite("^4New player^0: ^b" + soldierName + "^n, assigned to team " + teamId + " by game server", 3);
+            } else {
+                Reassign(soldierName, teamId, reassignTo);
+            }
         } else if (fPluginState == PluginState.Active && fGameState == GameState.Playing) {
 
             // If this was an MB move, finish it
@@ -1385,7 +1415,7 @@ public override void OnPlayerKilledByAdmin(string soldierName) {
 
 
 
-public void BalanceAndUnstack(String name) {
+private void BalanceAndUnstack(String name) {
 }
 
 public bool IsKnownPlayer(String name) {
@@ -1396,7 +1426,7 @@ public bool IsKnownPlayer(String name) {
     return check;
 }
 
-public bool AddNewPlayer(String name, int team) {
+private bool AddNewPlayer(String name, int team) {
     bool stateChange = false;
     bool gameChange = false;
     bool known = false;
@@ -1436,7 +1466,7 @@ public bool AddNewPlayer(String name, int team) {
     return known;
 }
 
-public void RemovePlayer(String name) {
+private void RemovePlayer(String name) {
     bool stateChange = false;
     bool gameChange = false;
     lock (fKnownPlayers) {
@@ -1466,13 +1496,13 @@ public void RemovePlayer(String name) {
     }
 }
 
-public int TotalPlayerCount() {
+private int TotalPlayerCount() {
     lock (fAllPlayers) {
         return fAllPlayers.Count;
     }
 }
 
-public void UpdatePlayerModel(String name, int team, int squad, String eaGUID, int score, int kills, int deaths, int rank) {
+private void UpdatePlayerModel(String name, int team, int squad, String eaGUID, int score, int kills, int deaths, int rank) {
     bool known = false;
     if (!IsKnownPlayer(name)) {
         switch (fPluginState) {
@@ -1543,7 +1573,7 @@ public void UpdatePlayerModel(String name, int team, int squad, String eaGUID, i
 }
 
 
-public void UpdatePlayerTeam(String name, int team) {
+private void UpdatePlayerTeam(String name, int team) {
     bool isKnown = IsKnownPlayer(name);
     if (!isKnown) {
         lock (fKnownPlayers) {
@@ -1577,7 +1607,7 @@ public bool CheckTeamSwitch(String name, int team) {
     return true; // means switch is okay
 }
 
-public void SpawnUpdate(String name) {
+private void SpawnUpdate(String name) {
     if (fPluginState != PluginState.Active) return;
     bool ok = false;
     bool updated = false;
@@ -1607,7 +1637,7 @@ public void SpawnUpdate(String name) {
 }
 
 
-public void KillUpdate(String killer, String victim) {
+private void KillUpdate(String killer, String victim) {
     if (fPluginState != PluginState.Active) return;
     bool okVictim = false;
     bool okKiller = false;
@@ -1653,7 +1683,7 @@ public void KillUpdate(String killer, String victim) {
     }
 }
 
-public void StartMoveImmediate(MoveInfo move, bool sendMessages) {
+private void StartMoveImmediate(MoveInfo move, bool sendMessages) {
     // Do an immediate move, also used by the move thread
     if (!fIsEnabled || fPluginState != PluginState.Active) {
         ConsoleDebug("MoveImmediate called while fIsEnabled is " + fIsEnabled + " or fPluginState is "  + fPluginState);
@@ -1674,7 +1704,7 @@ public void StartMoveImmediate(MoveInfo move, bool sendMessages) {
     DebugWrite("^b^1MOVING^0 " + move.Name + ((move.isForBalance) ? "^n for balance" : "^n to unstack"), DUMMY);
 }
 
-public void FinishMoveImmediate(String name, int team) {
+private void FinishMoveImmediate(String name, int team) {
     // If this is an MB move, handle it
     MoveInfo move = null;
     lock (fMoving) {
@@ -1683,6 +1713,7 @@ public void FinishMoveImmediate(String name, int team) {
             fMoving.Remove(name);
             try {
                 UpdatePlayerTeam(name, team);
+                IncrementMoves(name);
             } catch (Exception e) {
                 ConsoleException(e.ToString());
             }
@@ -1694,7 +1725,7 @@ public void FinishMoveImmediate(String name, int team) {
     }
 }
 
-public void KillAndMoveAsync(MoveInfo move) {
+private void KillAndMoveAsync(MoveInfo move) {
     lock (fMoveQ) {
         fMoveQ.Enqueue(move);
         Monitor.Pulse(fMoveQ);
@@ -1738,9 +1769,17 @@ public void MoveLoop() {
 }
 
 
+private void Reassign(String name, int fromTeam, int toTeam) {
+    // This is not a known player yet, so not PlayerModel to use
+    // Just do a raw move as quickly as possible, not messages, just logging
+    fReassigned.Add(name);
+    if (!EnableLoggingOnlyMode) ServerCommand("admin.movePlayer", name, toTeam.ToString(), ToSquad(name, toTeam).ToString(), "false");
+    DebugWrite("^b^1REASSIGN^0^n new player ^b" + name + "^n from team " + fromTeam + " to team " + toTeam, DUMMY);
+}
+
 public bool IsModelInSync() {
     lock (fMoving) {
-        return (fMoving.Count == 0);
+        return (fMoving.Count == 0 && fReassigned.Count == 0);
     }
 }
 
@@ -2059,7 +2098,7 @@ public void ListTeams() {
     }
 }
 
-public int ToTeam(int fromTeam) {
+private int ToTeam(String name, int fromTeam) {
     if (fromTeam < 1 || fromTeam > 4) return 0;
 
     ListTeams();
@@ -2069,44 +2108,96 @@ public int ToTeam(int fromTeam) {
     
     if (fromTeam == 1) {
         from = fTeam1;
-    } else {
-        teams.Add(new TeamRoster(1, fTeam1));
     }
+    teams.Add(new TeamRoster(1, fTeam1));
+
     if (fromTeam == 2) {
         from = fTeam2;
-    } else {
-        teams.Add(new TeamRoster(2, fTeam2));
-    }
+    } 
+    teams.Add(new TeamRoster(2, fTeam2));
+
     if (IsSQDM()) {
         if (fromTeam == 3) {
             from = fTeam3;
-        } else {
-            teams.Add(new TeamRoster(3, fTeam3));
         }
+        teams.Add(new TeamRoster(3, fTeam3));
+
         if (fromTeam == 4) {
             from = fTeam4;
-        } else {
-            teams.Add(new TeamRoster(4, fTeam4));
         }
-
-        teams.Sort(delegate(TeamRoster lhs, TeamRoster rhs) {
-            // Sort ascending order by count
-            if (lhs == null || rhs == null) return 0;
-            if (lhs.Roster.Count < rhs.Roster.Count) return -1;
-            if (lhs.Roster.Count > rhs.Roster.Count) return 1;
-            return 0;
-        });
+        teams.Add(new TeamRoster(4, fTeam4));
     }
 
-    if (from.Count == 0) return 0;
+    if (from != null && from.Count == 0) return 0;
+
+    teams.Sort(delegate(TeamRoster lhs, TeamRoster rhs) {
+        // Sort ascending order by count
+        if (lhs == null || rhs == null) return 0;
+        if (lhs.Roster.Count < rhs.Roster.Count) return -1;
+        if (lhs.Roster.Count > rhs.Roster.Count) return 1;
+        return 0;
+    });
 
     TeamRoster to = teams[0];
+
+    if (from == null) return to.Team;
 
     if (to.Roster.Count >= from.Count) return 0;
 
     if ((from.Count - to.Roster.Count) <= MaxDiff()) return 0;
 
     return to.Team;
+}
+
+private int ToSquad(String name, int team) {
+    String tag = String.Empty;
+    if (IsKnownPlayer(name)) {
+        lock (fKnownPlayers) {
+            tag = fKnownPlayers[name].Tag;
+        }
+    }
+
+    ListTeams();
+
+    List<PlayerModel> teamList = null;
+
+    switch (team) {
+        case 1: teamList = fTeam1; break;
+        case 2: teamList = fTeam2; break;
+        case 3: teamList = fTeam3; break;
+        case 4: teamList = fTeam4; break;
+        default: return 0;
+    }
+
+    int[] squads = new int[SQUAD_NAMES.Length];
+
+    // Build table of squad counts
+    for (int i = 1; i < SQUAD_NAMES.Length; ++i) {
+        squads[i] = 0;
+    }
+    foreach (PlayerModel p in teamList) {
+        squads[p.Squad] = squads[p.Squad] + 1;
+    }
+
+    // Find the smallest squad above zero (that isn't locked -- TBD)
+    int squad = 0;
+    int least = 4;
+    int atZero = 0;
+    for (int squadNum = 1; squadNum < SQUAD_NAMES.Length; ++squadNum) {
+        int n = squads[squadNum];
+        if (n == 0) {
+            if (atZero == 0) atZero = squadNum;
+            continue;
+        }
+        if (n < least) {
+            squad = squadNum;
+            least = n;
+        }
+    }
+    // if there is an empty squad at a lower slot than the smallest squad, return that
+    if (atZero < squad) return atZero;
+    // otherwise return the smallest squad
+    return squad;
 }
 
 private void StartThreads() {
@@ -2162,6 +2253,21 @@ private void StopThreads() {
     catch (Exception e)
     {
         ConsoleException(e.ToString());
+    }
+}
+
+private void IncrementMoves(String name) {
+    if (!IsKnownPlayer(name)) return;
+    lock (fKnownPlayers) {
+        PlayerModel m = fKnownPlayers[name];
+        m.MovesRound = m.MovesRound + 1;
+    }
+}
+
+private int GetMoves(String name) {
+    if (!IsKnownPlayer(name)) return 99;
+    lock (fKnownPlayers) {
+        return fKnownPlayers[name].MovesRound;
     }
 }
 
