@@ -62,9 +62,11 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     public const int DUMMY = 2;
 
-    public static String[] TEAM_NAMES = new String[] { "US", "RU" };
+    public const double MODEL_TIMEOUT = 24*60; // in minutes
 
-    public static String[] SQUAD_NAMES = new String[] {
+    public static String[] TEAM_NAMES = new String[] { "None", "US", "RU" };
+
+    public static String[] SQUAD_NAMES = new String[] { "None",
       "Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel",
       "India", "Juliet", "Kilo", "Lima", "Mike", "November", "Oscar", "Papa",
       "Quebec", "Romeo", "Sierra", "Tango", "Uniform", "Victor", "Whiskey", "Xray",
@@ -237,6 +239,20 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
             Name = name;
             Team = team;
         }
+
+        public void ResetRound() {
+            ScoreTotal = ScoreTotal + ScoreRound;
+            KillsTotal = KillsTotal + KillsRound;
+            DeathsTotal = DeathsTotal + DeathsRound;
+            Rounds = (Rounds > 0) ? Rounds + 1 : 1;
+
+            ScoreRound = -1;
+            KillsRound = -1;
+            DeathsRound = -1;
+            KDRRound = -1;
+            SPMRound = -1;
+            IsDeployed = false;
+        }
     } // end PlayerModel
 
     class TeamRoster {
@@ -297,6 +313,19 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                 }
             }
         }
+
+        public override String ToString() {
+            String s = "Move(";
+            s += "[" + Tag + "]" + Name + ",";
+            s += Reason + ",";
+            s += Source + "(" + SourceName + "),";
+            s += Destination + "(" + DestinationName + "),";
+            s += "C'" + ChatBefore + "',";
+            s += "Y'" + YellBefore + "',";
+            s += "C'" + ChatAfter + "',";
+            s += "Y'" + YellAfter + "')";
+            return s;
+        }
     } // end MoveInfo
 
 /* Inherited:
@@ -327,6 +356,16 @@ public DateTime fRoundStartTimestamp;
 public Dictionary<String, MoveInfo> fMoving = null;
 public Queue<MoveInfo> fMoveQ = null;
 public List<String> fReassigned = null;
+public int[] fTickets = null;
+
+// Operational statistics
+public int fReassignedRound = 0;
+public int fBalancedRound = 0;
+public int fUnstackedRound = 0;
+public int fUnswitchedRound = 0;
+public int fExcludedRound = 0;
+public int fExemptRound = 0;
+public int fTotalRound = 0;
 
 // Settings support
 private Dictionary<int, Type> fEasyTypeDict = null;
@@ -396,6 +435,13 @@ public PROTObalancer() {
     fGameState = GameState.Unknown;
     fServerInfo = null;
 
+    fBalancedRound = 0;
+    fUnstackedRound = 0;
+    fUnswitchedRound = 0;
+    fExcludedRound = 0;
+    fExemptRound = 0;
+    fTotalRound = 0;
+
     fMoveThread = null;
     
     fModeToSimple = new Dictionary<String,String>();
@@ -435,6 +481,7 @@ public PROTObalancer() {
     fMoveQ = new Queue<MoveInfo>();
     fReassigned = new List<String>();
     fReservedSlots = new List<String>();
+    fTickets = new int[5]{0,0,0,0,0};
     
     /* Settings */
 
@@ -1097,6 +1144,7 @@ public void OnPluginEnable() {
     StartThreads();
 
     ServerCommand("serverInfo");
+    ServerCommand("admin.listPlayers", "all");
 }
 
 
@@ -1135,7 +1183,7 @@ public override void OnPlayerLeft(CPlayerInfo playerInfo) {
             RemovePlayer(playerInfo.SoldierName);
         }
     
-        DebugWrite("Disconnected: ^b" + playerInfo.SoldierName, 3);
+        DebugWrite("Player left: ^b" + playerInfo.SoldierName, 3);
     } catch (Exception e) {
         ConsoleException(e.ToString());
     }
@@ -1152,16 +1200,20 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
         if (fReassigned.Contains(soldierName)) {
             // We reassigned this new player
             fReassigned.Remove(soldierName);
+            IncrementTotal();
+            fReassignedRound = fReassignedRound + 1;
             AddNewPlayer(soldierName, teamId);
             DebugWrite("^4New player^0: ^b" + soldierName + "^n, ^b^1REASSIGNED^0^n to team " + teamId + " by " + GetPluginName(), 3);
        } else if (!IsKnownPlayer(soldierName)) {
-            int reassignTo = ToTeam(soldierName, teamId);
+            int diff = 0;
+            int reassignTo = ToTeam(soldierName, teamId, out diff);
             if (reassignTo == 0 || reassignTo == teamId) {
                 // New player was going to the right team anyway
+                IncrementTotal();
                 AddNewPlayer(soldierName, teamId);
                 DebugWrite("^4New player^0: ^b" + soldierName + "^n, assigned to team " + teamId + " by game server", 3);
             } else {
-                Reassign(soldierName, teamId, reassignTo);
+                Reassign(soldierName, teamId, reassignTo, diff);
             }
         } else if (fPluginState == PluginState.Active && fGameState == GameState.Playing) {
 
@@ -1179,6 +1231,7 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
                 // This is an admin move in correct order, ignore it
                 fPendingTeamChange.Remove(soldierName);
                 DebugWrite("Moved by admin: ^b" + soldierName + "^n to team " + teamId, 6);
+                IncrementTotal();
                 return;
             }
 
@@ -1212,6 +1265,7 @@ public override void OnPlayerIsAlive(string soldierName, bool isAlive) {
             fPendingTeamChange.Remove(soldierName);
         
             DebugWrite("Player team switch: ^b" + soldierName + "^n to team " + team, 6);
+            IncrementTotal();
 
             // Check if player is allowed to switch teams
             // Unswitch is handled in CheckTeamSwitch
@@ -1236,6 +1290,7 @@ public override void OnPlayerMovedByAdmin(string soldierName, int destinationTea
                 // (unless MB initiated it)
                 fPendingTeamChange.Remove(soldierName);
                 DebugWrite("(REVERSED) Moved by admin: ^b" + soldierName + " to team " + destinationTeamId, 6);
+                IncrementTotal();
             } else if (!fUnassigned.Contains(soldierName)) {
                 // this is an admin move in correct order, add to pending table and let OnPlayerTeamChange handle it
                 fPendingTeamChange[soldierName] = destinationTeamId;
@@ -1266,6 +1321,8 @@ public override void OnPlayerKilled(Kill kKillerVictimDetails) {
         }
     
         KillUpdate(killer, victim);
+
+        IncrementTotal();
     
         if (IsModelInSync()) BalanceAndUnstack(victim);
     } catch (Exception e) {
@@ -1289,6 +1346,8 @@ public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subs
                 continue;
             }
         }
+
+        GarbageCollectKnownPlayers();
     
         DebugStatus();
     
@@ -1313,6 +1372,13 @@ public override void OnServerInfo(CServerInfo serverInfo) {
         }
     
         fServerInfo = serverInfo;
+
+        int i = 1;
+        foreach (TeamScore ts in fServerInfo.TeamScores) {
+            fTickets[i] = ts.Score;
+            i = i + 1;
+            if (i >= fTickets.Length) break;
+        }
     } catch (Exception e) {
         ConsoleException(e.ToString());
     }
@@ -1433,13 +1499,64 @@ private void BalanceAndUnstack(String name) {
     /* Exclusions */
 
     // On Whitelist or Reserved Slots if enabled
-    List<String> vip = new List<String>(Whitelist);
-    if (EnableWhitelistingOfReservedSlotsList) vip.AddRange(fReservedSlots);
-    if (vip.Contains(name)) {
-        DebugWrite("(MB) Excluding ^b" + name + "^n: whitelisted", DUMMY);
-        return;
+    if (OnWhitelist) {
+        List<String> vip = new List<String>(Whitelist);
+        if (EnableWhitelistingOfReservedSlotsList) vip.AddRange(fReservedSlots);
+        if (vip.Contains(name)) {
+            DebugBalance("Excluding ^b" + name + "^n: whitelisted");
+            fExcludedRound = fExcludedRound + 1;
+            return;
+        }
     }
+
+    /* Balance */
+
+    PlayerModel player = null;
+    lock (fKnownPlayers) {
+        if (!fKnownPlayers.ContainsKey(name)) return;
+        player = fKnownPlayers[name];
+    }
+
+    int diff = 0;
+    int toTeam = ToTeam(name, player.Team, out diff);  // calls ListTeams
+
+    if (diff > MaxDiff()) DebugBalance("Autobalancing because difference of " + diff + " is greater than " + MaxDiff());
+
+    while (diff > MaxDiff() && toTeam != 0) {
+
+        /* Exemptions */
+
+        // Has this player already been moved for balance or unstacking?
+        if (player.MovesRound > 1) {
+            DebugBalance("Exempting ^b" + name + "^n, already moved this round");
+            break;
+        }
+
+        // TBD
+
+        /* Move for balance */
+
+        MoveInfo move = new MoveInfo(name, player.Tag, player.Team, GetTeamName(player.Team), toTeam, GetTeamName(toTeam));
+        move.Reason = ReasonFor.Balance;
+        move.ChatAfter = ChatMovedForBalance;
+        move.YellAfter = YellMovedForBalance;
+
+        DebugWrite("^9" + move, 6);
+
+        StartMoveImmediate(move, false);
+        break;
+    }
+
+    /* Unstack */
+
+    // TBD
+
 }
+
+private void DebugBalance(String msg) {
+    DebugWrite("^5(MB)^9 " + msg, 4);
+}
+
 
 public bool IsKnownPlayer(String name) {
     bool check = false;
@@ -1494,7 +1611,10 @@ private void RemovePlayer(String name) {
     bool gameChange = false;
     lock (fKnownPlayers) {
         if (fKnownPlayers.ContainsKey(name)) {
-            fKnownPlayers[name].LastSeenTimestamp = DateTime.Now;
+            // Keep around for MODEL_TIMEOUT minutes, in case player rejoins
+            PlayerModel m = fKnownPlayers[name];
+            m.ResetRound();
+            m.LastSeenTimestamp = DateTime.Now;
         }
     }
     lock (fAllPlayers) {
@@ -1743,7 +1863,10 @@ private void FinishMoveImmediate(String name, int team) {
             fMoving.Remove(name);
             try {
                 UpdatePlayerTeam(name, team);
-                IncrementMoves(name);
+                if (move.Reason == ReasonFor.Balance || move.Reason == ReasonFor.Unstack) IncrementMoves(name);
+                if (move.Reason == ReasonFor.Balance) fBalancedRound = fBalancedRound + 1;
+                else if (move.Reason == ReasonFor.Unstack) fUnstackedRound = fUnstackedRound + 1;
+                else if (move.Reason == ReasonFor.Unswitch) fUnswitchedRound = fUnswitchedRound + 1;
             } catch (Exception e) {
                 ConsoleException(e.ToString());
             }
@@ -1763,48 +1886,57 @@ private void KillAndMoveAsync(MoveInfo move) {
 }
 
 public void MoveLoop() {
-    while (fIsEnabled) {
-        try {
+    try {
+        while (fIsEnabled) {
+            MoveInfo move = null;
             lock (fMoveQ) {
                 while (fMoveQ.Count == 0) {
                     Monitor.Wait(fMoveQ);
                     if (!fIsEnabled) return;
                 }
 
-                MoveInfo move = fMoveQ.Dequeue();
-
-                // Sending before messages
-                Yell(move.Name, move.YellBefore);
-                Chat(move.Name, move.ChatBefore);
-
-                // Pause
-                Thread.Sleep(5*1000);
-                if (!fIsEnabled) return;
-
-                // Make sure player is dead
-                // ServerCommand("admin.killPlayer", ...
-                DebugWrite("^b^1ADMIN KILL^0 " + move.Name, DUMMY);
-
-                // Pause
-                Thread.Sleep(1*1000);
-                if (!fIsEnabled) return;
-
-                // Move player
-                StartMoveImmediate(move, false);
+                move = fMoveQ.Dequeue();
             }
-        } catch (Exception e) {
-            ConsoleException(e.ToString());
+
+            // Sending before messages
+            Yell(move.Name, move.YellBefore);
+            Chat(move.Name, move.ChatBefore);
+
+            // Pause
+            Thread.Sleep(5*1000);
+            if (!fIsEnabled) return;
+
+            // Make sure player is dead
+            // ServerCommand("admin.killPlayer", ...
+            DebugWrite("^b^1ADMIN KILL^0 " + move.Name, DUMMY);
+
+            // Pause
+            Thread.Sleep(1*1000);
+            if (!fIsEnabled) return;
+
+            // Move player
+            StartMoveImmediate(move, false);
         }
+    } catch (Exception e) {
+        ConsoleException(e.ToString());
+    } finally {
+        ConsoleWrite("^bMoveLoop^n thread stopped");
     }
 }
 
 
-private void Reassign(String name, int fromTeam, int toTeam) {
+private void Reassign(String name, int fromTeam, int toTeam, int diff) {
     // This is not a known player yet, so not PlayerModel to use
     // Just do a raw move as quickly as possible, not messages, just logging
-    fReassigned.Add(name);
-    if (!EnableLoggingOnlyMode) ServerCommand("admin.movePlayer", name, toTeam.ToString(), ToSquad(name, toTeam).ToString(), "false");
-    DebugWrite("^b^1REASSIGN^0^n new player ^b" + name + "^n from team " + fromTeam + " to team " + toTeam, DUMMY);
+    DebugWrite("^b^1REASSIGN^0^n new player ^b" + name + "^n from team " + fromTeam + " to team " + toTeam + " because difference is " + diff, DUMMY);
+    int toSquad = ToSquad(name, toTeam);
+    if (!EnableLoggingOnlyMode) {
+        fReassigned.Add(name);
+        ServerCommand("admin.movePlayer", name, toTeam.ToString(), toSquad.ToString(), "false");
+    } else {
+        // Simulate reassignment
+        OnPlayerTeamChange(name, toTeam, toSquad);
+    }
 }
 
 public bool IsModelInSync() {
@@ -1833,12 +1965,38 @@ public void Yell(String who, String what) {
 }
 
 public void ProconChat(String what) {
-    ExecuteCommand("procon.protected.chat.write", "MB > All: " + what);
+    if (LogChat) ExecuteCommand("procon.protected.chat.write", "MB > All: " + what);
 }
 
 public void ProconChatPlayer(String who, String what) {
-    ExecuteCommand("procon.protected.chat.write", "MB > " + who + ": " + what);
+    if (LogChat) ExecuteCommand("procon.protected.chat.write", "MB > " + who + ": " + what);
 }
+
+private void GarbageCollectKnownPlayers()
+{
+    int n = 0;
+    lock (fKnownPlayers) {
+        List<String> garbage = new List<String>();
+
+        // collect up garbage
+        foreach (String name in fKnownPlayers.Keys) {
+            PlayerModel m = fKnownPlayers[name];
+            if (DateTime.Now.Subtract(m.LastSeenTimestamp).TotalMinutes > MODEL_TIMEOUT) {
+                garbage.Add(name);
+            }
+        }
+
+        // remove garbage
+        if (garbage.Count > 0) foreach (String name in garbage) {
+            fKnownPlayers.Remove(name);
+            n = n + 1;
+        }
+    }
+    if (n > 0) {
+        DebugWrite("^9Garbage collected " + n + " old players from known players table", 6);
+    }
+}
+
 
 
 
@@ -1998,7 +2156,7 @@ public bool CheckForEquality(PROTObalancer rhs) {
 }
 
 
-public void UpdatePresetValue() {
+private void UpdatePresetValue() {
     Preset = PresetItems.None;  // backstop value
 
     // Check for Standard
@@ -2044,7 +2202,7 @@ public void UpdatePresetValue() {
     }
 }
 
-public void Reset() {
+private void Reset() {
     ResetRound();
     
     lock (fMoveQ) {
@@ -2057,15 +2215,20 @@ public void Reset() {
     }
     
     /*
-     * fKnownPlayers is not cleared, since we want to retain stats from previous plugin sessions
+     fKnownPlayers is not cleared right away, since we want to retain stats from previous plugin sessions.
+     It will be garbage collected after MODEL_MINUTES.
      */
 }
 
-public void ResetRound() {
+private void ResetRound() {
     fTeam1.Clear();
     fTeam2.Clear();
     fTeam3.Clear();
     fTeam4.Clear();
+
+    for (int i = 0; i < fTickets.Length; i++) {
+        fTickets[i] = 0;
+    }
             
     fRoundStartTimestamp = DateTime.Now;
 
@@ -2079,19 +2242,18 @@ public void ResetRound() {
                 m = fKnownPlayers[name];
             }
 
-            m.ScoreTotal = m.ScoreTotal + m.ScoreRound;
-            m.KillsTotal = m.KillsTotal + m.KillsRound;
-            m.DeathsTotal = m.DeathsTotal + m.DeathsRound;
-            m.Rounds = (m.Rounds > 0) ? m.Rounds + 1 : 1;
-
-            m.ScoreRound = -1;
-            m.KillsRound = -1;
-            m.DeathsRound = -1;
-            m.KDRRound = -1;
-            m.SPMRound = -1;
-            m.IsDeployed = false;
+            m.ResetRound();
         }
     }
+
+    DebugWrite("^bFINAL STATUS FOR PREVIOUS ROUND:^n", 3);
+    DebugStatus();
+    fBalancedRound = 0;
+    fUnstackedRound = 0;
+    fUnswitchedRound = 0;
+    fExcludedRound = 0;
+    fExemptRound = 0;
+    fTotalRound = 0;
 }
 
 public bool IsSQDM() {
@@ -2128,7 +2290,8 @@ public void ListTeams() {
     }
 }
 
-private int ToTeam(String name, int fromTeam) {
+private int ToTeam(String name, int fromTeam, out int diff) {
+    diff = 0;
     if (fromTeam < 1 || fromTeam > 4) return 0;
 
     ListTeams();
@@ -2174,7 +2337,9 @@ private int ToTeam(String name, int fromTeam) {
 
     if (to.Roster.Count >= from.Count) return 0;
 
-    if ((from.Count - to.Roster.Count) <= MaxDiff()) return 0;
+    diff = (from.Count - to.Roster.Count);
+
+    if (diff <= MaxDiff()) return 0;
 
     return to.Team;
 }
@@ -2249,9 +2414,11 @@ private void JoinWith(Thread thread, int secs)
 private void StopThreads() {
     try
     {
-        Thread finalizer = new Thread(new ThreadStart(delegate()
+        Thread stopper = new Thread(new ThreadStart(delegate()
             {
                 fFinalizerActive = true;
+
+                Thread.Sleep(100);
 
                 try
                 {
@@ -2277,7 +2444,7 @@ private void StopThreads() {
                 ConsoleWrite("Finished disabling threads, ready to be enabled again!");
             }));
 
-        finalizer.Start();
+        stopper.Start();
 
     }
     catch (Exception e)
@@ -2301,12 +2468,33 @@ private int GetMoves(String name) {
     }
 }
 
+private void IncrementTotal()
+{
+    if (fPluginState == PluginState.Active) fTotalRound = fTotalRound + 1;
+}
+
+private String GetTeamName(int team) {
+    if (team < 0 || team >= SQUAD_NAMES.Length) team = 0;
+    if (team == 0) return "None";
+
+    if (IsSQDM()) {
+        return SQUAD_NAMES[team];
+    }
+    if (team > 2) return "None";
+    return TEAM_NAMES[team];
+}
+
 
 public void DebugStatus() {
     
     ListTeams();
+
+    String tm = fTickets[1] + "/" + fTickets[2];
+    if (IsSQDM()) tm = tm + "/" + fTickets[3] + "/" + fTickets[4];
     
-    DebugWrite("^bStatus^n: Plugin state = " + fPluginState + ", game state = " + fGameState + ", mode = " + fServerInfo.GameMode, 3);
+    DebugWrite("^bStatus^n: Plugin state = " + fPluginState + ", game state = " + fGameState + ", mode = " + fServerInfo.GameMode + ", tickets = " + tm, 4);
+
+    DebugWrite("^bStatus^n: " + fReassignedRound + " reassigned, " + fBalancedRound + " balanced, " + fUnstackedRound + " unstacked, " + fUnswitchedRound + " unswitched, " + fExcludedRound + " excluded, " + fExemptRound + " exempt, of " + fTotalRound + " TOTAL", 3);
     
     if (IsSQDM()) {
         DebugWrite("^bStatus^n: Team counts = " + fTeam1.Count + "(A) vs " + fTeam2.Count + "(B) vs " + fTeam3.Count + "(C) vs " + fTeam4.Count + "(D), with " + fUnassigned.Count + " unassigned", 3);
@@ -2473,17 +2661,25 @@ static class PROTObalancerUtils {
 <p>For BF3, this plugin does live round team balancing and unstacking for all game modes, including Squad Deathmatch (SQDM).</p>
 
 <h2>THIS IS JUST A PROTOTYPE FOR FEEDBACK!</h2>
-<p>It doesn't do any balancing or unstacking, no matter what you change the settings to. It is completely safe to run on an active server. It sends no commands to the server.</p>
+<p>Only new player reassignment is enabled. All other balancing and unstacking features do logging only. If you plan to test this on a live server, <FONT color='#FF0000'><b>DISABLE</b> TrueBalancer Balance Guard or Insane Limits limits that evaluate OnTeamChange or ProconRulz that evaluate on team changes, such as player team unswitching or unstacking.</FONT>. Alternatively, set PROTObalancer's <b>Enable Logging Only Mode</b> to true, which will make new player reassignment do logging only. If you do not do this, the two plugins will conflict with each other and a player might be moved back and forth between teams repeatedly.</p>
 
-<p><font color=#0000FF>The purpose of this prototype is to get feedback from users about the arrangement and usage of plugin settings. I'm interested in answers to these questions:</font></p>
+<p><font color=#0000FF>The purpose of this prototype is to get feedback about usage and behavior.</font></p>
 
+<p>Since logging to plugin.log is an important part of this phase of testing, it would be best if you could reduce or eliminate logging of other plugins so that most or all of the log is from PROTObalancer. If you are planning to leave the plugin unattended to collect logs, set <b>Debug Level</b> to 5. If you are going to watch the log interactively for a while, you can experiment with higher or lower <b>Debug Level</b> settings. It would also be useful to set the console.log to enable Event logging, but be advised that the console.log might get quite large. Do <b>not</b> enable Debug on your console.log.</p>
+
+<p>The only settings that do anything are:
 <ul>
-<li>What is your overall impression with the number and complexity of settings?</li>
-<li>What's missing?</li>
-<li>What should be added?</li>
-<li>Which names or values are confusing and need additional documentation to clarify?</li>
-<li>What should be changed to improve clarity?</li>
+<li>Debug Level</li>
+<li>Enable Whitelisting Of Reserved Slot List</li>
+<li>Whitelist</li>
+<li>On Whitelist</li>
+<li>Quiet Mode</li>
+<li>Chat: Moved For Balance (only for logging purposes, no chat is actually sent)</li>
+<li>Yell: Moved For Balance (only for logging purposes, no yell is actually sent)</li>
+<li>Log Chat</li>
+<li>Enable Logging Only Mode</li>
 </ul>
+</p>
 
 <h2>Description</h2>
 <p>TBD</p>
