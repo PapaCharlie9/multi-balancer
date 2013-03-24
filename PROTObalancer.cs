@@ -1362,7 +1362,7 @@ public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subs
 }
 
 public override void OnServerInfo(CServerInfo serverInfo) {
-    if (!fIsEnabled) return;
+    if (!fIsEnabled || serverInfo == null) return;
 
     DebugWrite("^9^bGot OnServerInfo^n: Debug level = " + DebugLevel, 7);
     
@@ -1374,7 +1374,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
         fServerInfo = serverInfo;
 
         int i = 1;
-        foreach (TeamScore ts in fServerInfo.TeamScores) {
+        if (fServerInfo.TeamScores != null) foreach (TeamScore ts in fServerInfo.TeamScores) {
             fTickets[i] = ts.Score;
             i = i + 1;
             if (i >= fTickets.Length) break;
@@ -1538,12 +1538,17 @@ private void BalanceAndUnstack(String name) {
 
         MoveInfo move = new MoveInfo(name, player.Tag, player.Team, GetTeamName(player.Team), toTeam, GetTeamName(toTeam));
         move.Reason = ReasonFor.Balance;
-        move.ChatAfter = ChatMovedForBalance;
-        move.YellAfter = YellMovedForBalance;
+        move.Format(ChatMovedForBalance, false, false);
+        move.Format(YellMovedForBalance, true, false);
 
         DebugWrite("^9" + move, 6);
 
         StartMoveImmediate(move, false);
+
+        if (EnableLoggingOnlyMode || DUMMY == 2) {
+            // Simulate completion of move
+            OnPlayerTeamChange(name, toTeam, 0);
+        }
         break;
     }
 
@@ -1710,7 +1715,7 @@ private void UpdatePlayerModel(String name, int team, int squad, String eaGUID, 
         // TBD
     }
 
-    if (unex) {
+    if (!EnableLoggingOnlyMode && DUMMY != 2) {
         ConsoleDebug("player model for ^b" + name + "^n has team " + unTeam + " but update says " + team + "!");
     }
 }
