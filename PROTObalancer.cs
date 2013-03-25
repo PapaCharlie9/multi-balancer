@@ -701,7 +701,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "0.0.0.5";
+    return "0.0.0.6";
 }
 
 public String GetPluginAuthor() {
@@ -2218,6 +2218,14 @@ private void Reset() {
     lock (fAllPlayers) {
         fAllPlayers.Clear();
     }
+
+    lock (fMoving) {
+        fMoving.Clear();
+    }
+
+    fReassigned.Clear();
+
+    fPendingTeamChange.Clear();
     
     /*
      fKnownPlayers is not cleared right away, since we want to retain stats from previous plugin sessions.
@@ -2498,6 +2506,8 @@ public void DebugStatus() {
     if (IsSQDM()) tm = tm + "/" + fTickets[3] + "/" + fTickets[4];
     
     DebugWrite("^bStatus^n: Plugin state = " + fPluginState + ", game state = " + fGameState + ", mode = " + fServerInfo.GameMode + ", tickets = " + tm, 4);
+
+    if (!IsModelInSync()) DebugWrite("^bStatus^n: FMoving = " + fMoving.Count + ", fReassigned = " + fReassigned.Count, 3);
 
     DebugWrite("^bStatus^n: " + fReassignedRound + " reassigned, " + fBalancedRound + " balanced, " + fUnstackedRound + " unstacked, " + fUnswitchedRound + " unswitched, " + fExcludedRound + " excluded, " + fExemptRound + " exempt, of " + fTotalRound + " TOTAL", 3);
     
