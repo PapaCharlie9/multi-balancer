@@ -1867,6 +1867,8 @@ private void KillUpdate(String killer, String victim) {
     double deaths = -1;
     double kdr = -1;
     double spm = -1;
+    int team = -1;
+    String tag = String.Empty;
     TimeSpan tir = TimeSpan.FromSeconds(0); // Time In Round
     lock (fKnownPlayers) {
         PlayerModel m = null;
@@ -1887,6 +1889,8 @@ private void KillUpdate(String killer, String victim) {
             kdr = m.KDRRound;
             spm = m.SPMRound;
             tir = now.Subtract((m.FirstSpawnTimestamp != DateTime.MinValue) ? m.FirstSpawnTimestamp : now);
+            team = m.Team;
+            tag = ExtractTag(m);
         }
     }
 
@@ -1899,7 +1903,8 @@ private void KillUpdate(String killer, String victim) {
     } else {
         Match rm = Regex.Match(tir.ToString(), @"([0-9]+:[0-9]+:[0-9]+)");
         String sTIR = (rm.Success) ? rm.Groups[1].Value : "?";
-        DebugWrite("^9STATS: ^b" + victim + "^n [S:" + score + ", K:" + kills + ", D:" + deaths + ", KDR: " + kdr.ToString("F2") + ", SPM: " + spm.ToString("F0") + ", TIR: " + sTIR + "]", 6);
+        String vn = (!String.IsNullOrEmpty(tag)) ? "[" + tag + "]" + victim : victim;
+        DebugWrite("^9STATS: ^b" + vn + "^n [T: " + team + ", S:" + score + ", K:" + kills + ", D:" + deaths + ", KDR: " + kdr.ToString("F2") + ", SPM: " + spm.ToString("F0") + ", TIR: " + sTIR + "]", 6);
     }
 }
 
