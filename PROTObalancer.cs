@@ -724,7 +724,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "0.0.0.6";
+    return "0.0.0.7";
 }
 
 public String GetPluginAuthor() {
@@ -1388,7 +1388,7 @@ public override void OnPlayerKilled(Kill kKillerVictimDetails) {
 
         IncrementTotal();
     
-        if (IsModelInSync()) BalanceAndUnstack(victim);
+        if (fPluginState == PluginState.Active && fGameState == GameState.Playing && IsModelInSync()) BalanceAndUnstack(victim);
     } catch (Exception e) {
         ConsoleException(e.ToString());
     }
