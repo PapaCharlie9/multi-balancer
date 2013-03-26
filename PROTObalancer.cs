@@ -1166,6 +1166,7 @@ public void OnPluginEnable() {
 
     StartThreads();
 
+    fRoundStartTimestamp = DateTime.Now;
     ServerCommand("serverInfo");
     ServerCommand("admin.listPlayers", "all");
 }
@@ -1416,11 +1417,12 @@ public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subs
 
         GarbageCollectKnownPlayers();
     
-        DebugStatus();
+        LogStatus();
     
         /* Special handling for JustEnabled state */
         if (fPluginState == PluginState.JustEnabled) {
             fPluginState = (TotalPlayerCount() < 4) ? PluginState.WaitingForPlayers : PluginState.Active;
+            if (fPluginState == PluginState.Active) fRoundStartTimestamp = DateTime.Now;
             DebugWrite("^b^3State = " + fPluginState, 6);  
         }
     } catch (Exception e) {
@@ -1502,7 +1504,7 @@ public override void OnLevelLoaded(String mapFileName, String Gamemode, int roun
 public override void OnPlayerSpawned(String soldierName, Inventory spawnedInventory) {
     if (!fIsEnabled) return;
     
-    DebugWrite("^9^bGot OnPlayerSpawned^n", 7);
+    DebugWrite("^9^bGot OnPlayerSpawned: ^n" + soldierName, 7);
     
     try {
         if (fGameState == GameState.Unknown) {
@@ -1512,7 +1514,7 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
 
         if (fGameState == GameState.RoundStarting) {
             DebugWrite("^bFINAL STATUS FOR PREVIOUS ROUND:^n", 3);
-            DebugStatus();
+            LogStatus();
 
             // First spawn after Level Loaded is the official start of a round
             DebugWrite(":::::::::::: ^b^1First spawn detected^0^n ::::::::::::", 2);
@@ -1577,9 +1579,11 @@ private void BalanceAndUnstack(String name) {
     if (OnWhitelist) {
         List<String> vip = new List<String>(Whitelist);
         if (EnableWhitelistingOfReservedSlotsList) vip.AddRange(fReservedSlots);
+        /*
         while (vip.Contains(String.Empty)) {
             vip.Remove(String.Empty);
         }
+        */
         if (vip.Contains(name) || vip.Contains(ExtractTag(player)) || vip.Contains(player.EAGUID)) {
             DebugBalance("Excluding ^b" + name + "^n: whitelisted");
             fExcludedRound = fExcludedRound + 1;
@@ -2671,8 +2675,10 @@ private void ListPlayersLoop() {
 }
 
 private void ScheduleListPlayers(double delay) {
+    ListPlayersRequest r = new ListPlayersRequest(delay, fListPlayersTimestamp);
+    DebugWrite("^9Scheduling listPlayers no later than " + r.MaxDelay  + " seconds from " + r.LastUpdate.ToString("HH:mm:ss"), 5);
     lock (fListPlayersQ) {
-        fListPlayersQ.Enqueue(new ListPlayersRequest(delay, fListPlayersTimestamp));
+        fListPlayersQ.Enqueue(r);
     }
 }
 
@@ -2682,11 +2688,11 @@ private String ExtractTag(PlayerModel m) {
     String tag = m.Tag;
     if (String.IsNullOrEmpty(tag)) {
         // Maybe they are using [_-=]XXX[=-_]PlayerName[_-=]XXX[=-_] format
-        Match tm = Regex.Match(m.Name, @"^[=_\-]?([^=_\-]{2,4})[=_\-]");
+        Match tm = Regex.Match(m.Name, @"^[=_\-]*([^=_\-]{2,4})[=_\-]");
         if (tm.Success) {
             tag = tm.Groups[1].Value;
         } else {
-            tm = Regex.Match(m.Name, @"[^=_\-][=_\-]([^=_\-]{2,4})[=_\-]?$");
+            tm = Regex.Match(m.Name, @"[^=_\-][=_\-]([^=_\-]{2,4})[=_\-]*$");
             if (tm.Success) { 
                 tag = tm.Groups[1].Value;
             } else {
@@ -2698,16 +2704,19 @@ private String ExtractTag(PlayerModel m) {
 }
 
 
-public void DebugStatus() {
+public void LogStatus() {
     
     ListTeams();
 
     String tm = fTickets[1] + "/" + fTickets[2];
     if (IsSQDM()) tm = tm + "/" + fTickets[3] + "/" + fTickets[4];
 
-    if (EnableLoggingOnlyMode) DebugWrite("^bStatus^n: Enable Logging Only Mode = true", 1);
-    
-    DebugWrite("^bStatus^n: Plugin state = " + fPluginState + ", game state = " + fGameState + ", mode = " + fServerInfo.GameMode + ", tickets = " + tm, 4);
+    DateTime rst = (fRoundStartTimestamp == DateTime.MinValue) ? DateTime.Now : fRoundStartTimestamp;
+    Match rm = Regex.Match(DateTime.Now.Subtract(fRoundStartTimestamp).ToString(), @"([0-9]+:[0-9]+:[0-9]+)");
+    String rt = (rm.Success) ? rm.Groups[1].Value : "?";
+
+    DebugWrite("^bStatus^n: Plugin state = " + fPluginState + ", game state = " + fGameState + ", Enable Logging Only Mode = " + EnableLoggingOnlyMode, 4);
+    DebugWrite("^bStatus^n: Map = " + fServerInfo.Map + ", mode = " + fServerInfo.GameMode + ", time in round = " + rt + ", tickets = " + tm, 4);
 
     if (!IsModelInSync()) DebugWrite("^bStatus^n: fMoving = " + fMoving.Count + ", fReassigned = " + fReassigned.Count, 3);
 
