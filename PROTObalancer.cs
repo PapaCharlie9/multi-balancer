@@ -328,6 +328,21 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         }
     } // end MoveInfo
 
+    public class ListPlayersRequest {
+        public double MaxDelay; // in seconds
+        public DateTime LastUpdate;
+
+        public ListPlayersRequest() {
+            MaxDelay = 0;
+            LastUpdate = DateTime.MinValue;
+        }
+
+        public ListPlayersRequest(double delay, DateTime last) {
+            MaxDelay = delay;
+            LastUpdate = last;
+        }
+    } // end ListPlayersRequest
+
 /* Inherited:
     this.PunkbusterPlayerInfoList = new Dictionary<String, CPunkbusterInfo>();
     this.FrostbitePlayerInfoList = new Dictionary<String, CPlayerInfo>();
@@ -339,6 +354,7 @@ private bool fFinalizerActive = false;
 private Dictionary<String,String> fModeToSimple = null;
 private Dictionary<String,int> fPendingTeamChange = null;
 private Thread fMoveThread = null;
+private Thread fListPlayersThread = null;
 private List<String> fReservedSlots = null;
 
 // Data model
@@ -352,20 +368,23 @@ private List<PlayerModel> fTeam2 = null;
 private List<PlayerModel> fTeam3 = null;
 private List<PlayerModel> fTeam4 = null;
 private List<String> fUnassigned = null;
-public DateTime fRoundStartTimestamp;
-public Dictionary<String, MoveInfo> fMoving = null;
-public Queue<MoveInfo> fMoveQ = null;
-public List<String> fReassigned = null;
-public int[] fTickets = null;
+private DateTime fRoundStartTimestamp;
+private Dictionary<String, MoveInfo> fMoving = null;
+private Queue<MoveInfo> fMoveQ = null;
+private List<String> fReassigned = null;
+private int[] fTickets = null;
+private DateTime fListPlayersTimestamp;
+private Queue<ListPlayersRequest> fListPlayersQ = null;
 
 // Operational statistics
-public int fReassignedRound = 0;
-public int fBalancedRound = 0;
-public int fUnstackedRound = 0;
-public int fUnswitchedRound = 0;
-public int fExcludedRound = 0;
-public int fExemptRound = 0;
-public int fTotalRound = 0;
+private int fReassignedRound = 0;
+private int fBalancedRound = 0;
+private int fUnstackedRound = 0;
+private int fUnswitchedRound = 0;
+private int fExcludedRound = 0;
+private int fExemptRound = 0;
+private int fFailedRound = 0;
+private int fTotalRound = 0;
 
 // Settings support
 private Dictionary<int, Type> fEasyTypeDict = null;
@@ -440,9 +459,11 @@ public PROTObalancer() {
     fUnswitchedRound = 0;
     fExcludedRound = 0;
     fExemptRound = 0;
+    fFailedRound = 0;
     fTotalRound = 0;
 
     fMoveThread = null;
+    fListPlayersThread = null;
     
     fModeToSimple = new Dictionary<String,String>();
 
@@ -475,6 +496,8 @@ public PROTObalancer() {
     fTeam4 = new List<PlayerModel>();
     fUnassigned = new List<String>();
     fRoundStartTimestamp = DateTime.MinValue;
+    fListPlayersTimestamp = DateTime.MinValue;
+    fListPlayersQ = new Queue<ListPlayersRequest>();
 
     fPendingTeamChange = new Dictionary<String,int>();
     fMoving = new Dictionary<String, MoveInfo>();
@@ -1168,7 +1191,13 @@ public void OnPluginDisable() {
 
 
 public override void OnVersion(String type, String ver) {
+    if (!fIsEnabled) return;
+    
     DebugWrite("Got ^bOnVersion^n: " + type + " " + ver, 7);
+    try {
+    } catch (Exception e) {
+        ConsoleException(e.ToString());
+    }
 }
 
 public override void OnPlayerJoin(String soldierName) { }
@@ -1252,14 +1281,12 @@ public override void OnPlayerIsAlive(string soldierName, bool isAlive) {
     DebugWrite("^9^bGot OnPlayerIsAlive^n: ^b" + soldierName + "^n " + isAlive, 7);
 
     try {
-        if (fPluginState != PluginState.Active || fGameState != GameState.Playing) return;
-
+        if (fPluginState != PluginState.Active) return;
         /*
-         * This may be the return leg of the round-trip to insure that
-         * an admin move event, if any, has been processed. If the player's
-         * name is still in fPendingTeamChange, it's a real player instigated move
+         This may be the return leg of the round-trip to insure that
+         an admin move event, if any, has been processed. If the player's
+         name is still in fPendingTeamChange, it's a real player instigated move
          */
-
         if (fPendingTeamChange.ContainsKey(soldierName)) {
             int team = fPendingTeamChange[soldierName];
             fPendingTeamChange.Remove(soldierName);
@@ -1301,6 +1328,41 @@ public override void OnPlayerMovedByAdmin(string soldierName, int destinationTea
     }
 }
 
+/*
+public override void OnSquadListPlayers(int teamId, int squadId, int playerCount, List<string> playersInSquad) {
+    if (!fIsEnabled) return;
+    
+    DebugWrite("Got ^bOnSquadListPlayers^n: " + teamId + "/" + squadId + " has " + playerCount, 7);
+
+    try {
+        if (playersInSquad == null || playersInSquad.Count == 0) return;
+
+        // Logging
+        if (DebugLevel >= 6) {
+            String ss = "Squad (";
+            int t = Math.Max(0, Math.Min(teamId, TEAM_NAMES.Length-1));
+            int s = Math.Max(0, Math.Min(squadId, SQUAD_NAMES.Length-1));
+
+            ss = ss + TEAM_NAMES[t] + "/" + SQUAD_NAMES[s] + "): ";
+
+            bool first = true;
+            foreach (String grunt in playersInSquad) {
+                if (first) {
+                    ss = ss + grunt;
+                    first = false;
+                } else {
+                    ss = ss + ", " + grunt;
+                }
+            }
+
+            ConsoleWrite("^9" + ss);
+        }
+    } catch (Exception e) {
+        ConsoleException(e.ToString());
+    }
+}
+*/
+
 
 public override void OnPlayerKilled(Kill kKillerVictimDetails) {
     if (!fIsEnabled) return;
@@ -1335,7 +1397,12 @@ public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subs
     
     DebugWrite("^9^bGot OnListPlayers^n", 7);
 
-    try {   
+    try {
+        lock (fListPlayersQ) {
+            fListPlayersTimestamp = DateTime.Now;
+            Monitor.Pulse(fListPlayersQ);
+        }
+
         fUnassigned.Clear();
     
         foreach (CPlayerInfo p in players) {
@@ -1415,10 +1482,6 @@ public override void OnRoundOver(int winningTeamId) {
     }
 }
 
-public override void OnLoadingLevel(String mapFileName, int roundsPlayed, int roundsTotal) { }
-
-public override void OnLevelStarted() { }
-
 public override void OnLevelLoaded(String mapFileName, String Gamemode, int roundsPlayed, int roundsTotal) {
     if (!fIsEnabled) return;
     
@@ -1448,6 +1511,9 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
         }
 
         if (fGameState == GameState.RoundStarting) {
+            DebugWrite("^bFINAL STATUS FOR PREVIOUS ROUND:^n", 3);
+            DebugStatus();
+
             // First spawn after Level Loaded is the official start of a round
             DebugWrite(":::::::::::: ^b^1First spawn detected^0^n ::::::::::::", 2);
 
@@ -1457,7 +1523,10 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
             ResetRound();
         }
     
-        SpawnUpdate(soldierName);
+        if (fPluginState == PluginState.Active) {
+            ValidateMove(soldierName);
+            SpawnUpdate(soldierName);
+        }
     } catch (Exception e) {
         ConsoleException(e.ToString());
     }
@@ -1496,13 +1565,22 @@ public override void OnReservedSlotsList(List<String> lstSoldierNames) {
 
 
 private void BalanceAndUnstack(String name) {
+    PlayerModel player = null;
+    lock (fKnownPlayers) {
+        if (!fKnownPlayers.ContainsKey(name)) return;
+        player = fKnownPlayers[name];
+    }
+
     /* Exclusions */
 
     // On Whitelist or Reserved Slots if enabled
     if (OnWhitelist) {
         List<String> vip = new List<String>(Whitelist);
         if (EnableWhitelistingOfReservedSlotsList) vip.AddRange(fReservedSlots);
-        if (vip.Contains(name)) {
+        while (vip.Contains(String.Empty)) {
+            vip.Remove(String.Empty);
+        }
+        if (vip.Contains(name) || vip.Contains(ExtractTag(player)) || vip.Contains(player.EAGUID)) {
             DebugBalance("Excluding ^b" + name + "^n: whitelisted");
             fExcludedRound = fExcludedRound + 1;
             return;
@@ -1511,11 +1589,6 @@ private void BalanceAndUnstack(String name) {
 
     /* Balance */
 
-    PlayerModel player = null;
-    lock (fKnownPlayers) {
-        if (!fKnownPlayers.ContainsKey(name)) return;
-        player = fKnownPlayers[name];
-    }
 
     int diff = 0;
     int toTeam = ToTeam(name, player.Team, out diff);  // calls ListTeams
@@ -1559,7 +1632,7 @@ private void BalanceAndUnstack(String name) {
 }
 
 private void DebugBalance(String msg) {
-    DebugWrite("^5(MB)^9 " + msg, 4);
+    DebugWrite("^5(AUTO)^9 " + msg, 4);
 }
 
 
@@ -1756,7 +1829,6 @@ public bool CheckTeamSwitch(String name, int team) {
 }
 
 private void SpawnUpdate(String name) {
-    if (fPluginState != PluginState.Active) return;
     bool ok = false;
     bool updated = false;
     DateTime now = DateTime.Now;
@@ -1849,6 +1921,7 @@ private void StartMoveImmediate(MoveInfo move, bool sendMessages) {
     }
     // Do the move
     // ServerCommand("admin.movePlayer", ...
+    // ScheduleListPlayers(10);
     String r = null;
     switch (move.Reason) {
         case ReasonFor.Balance: r = "for balance"; break;
@@ -1899,7 +1972,6 @@ public void MoveLoop() {
                     Monitor.Wait(fMoveQ);
                     if (!fIsEnabled) return;
                 }
-
                 move = fMoveQ.Dequeue();
             }
 
@@ -1938,6 +2010,7 @@ private void Reassign(String name, int fromTeam, int toTeam, int diff) {
     if (!EnableLoggingOnlyMode) {
         fReassigned.Add(name);
         ServerCommand("admin.movePlayer", name, toTeam.ToString(), toSquad.ToString(), "false");
+        ScheduleListPlayers(10);
     } else {
         // Simulate reassignment
         OnPlayerTeamChange(name, toTeam, toSquad);
@@ -1947,6 +2020,46 @@ private void Reassign(String name, int fromTeam, int toTeam, int diff) {
 public bool IsModelInSync() {
     lock (fMoving) {
         return (fMoving.Count == 0 && fReassigned.Count == 0);
+    }
+}
+
+public void ValidateMove(String name) {
+    /*
+    This may be the return leg of the round-trip to insure that
+    a move for balance MB has completed. If fMoving still
+    contains the player's name, the move failed.
+    */
+    bool completedMove = true;
+    lock (fMoving) {
+        if (fMoving.ContainsKey(name)) {
+            completedMove = false;
+            fMoving.Remove(name);
+        }
+    }
+    if (!completedMove) {
+        ConsoleDebug("Move of ^b" + name + "^n failed!");
+        IncrementTotal();
+        fFailedRound = fFailedRound + 1;
+        return;
+    }
+    /*
+    This may be the return leg of the round-trip to insure that
+    a reassignment of a player by MB has completed. If fReassigned still
+    contains the player's name, the move failed.
+    */
+    bool completedReassign = true;
+    lock (fReassigned) {
+        if (fReassigned.Contains(name)) {
+            completedReassign = false;
+            fReassigned.Remove(name);
+        }
+    }
+    if (!completedReassign) {
+        ConsoleDebug("Reassign of ^b" + name + "^n failed!");
+        fFailedRound = fFailedRound + 1;
+        IncrementTotal();
+        AddNewPlayer(name, 0);
+        return;
     }
 }
 
@@ -2005,6 +2118,7 @@ private void GarbageCollectKnownPlayers()
 
 
 
+
 /* ======================== SUPPORT FUNCTIONS ============================= */
 
 
@@ -2018,6 +2132,8 @@ private void GarbageCollectKnownPlayers()
 
 public String FormatMessage(String msg, MessageType type) {
     String prefix = "[^b" + GetPluginName() + "^n] ";
+
+    if (Thread.CurrentThread.Name != null) prefix += "Thread(^b" + Thread.CurrentThread.Name + "^n): ";
 
     if (type.Equals(MessageType.Warning))
         prefix += "^1^bWARNING^0^n: ";
@@ -2209,10 +2325,15 @@ private void UpdatePresetValue() {
 
 private void Reset() {
     ResetRound();
-    
+
     lock (fMoveQ) {
         fMoveQ.Clear();
         Monitor.Pulse(fMoveQ);
+    }
+
+    lock (fListPlayersQ) {
+        fListPlayersQ.Clear();
+        Monitor.Pulse(fListPlayersQ);
     }
 
     lock (fAllPlayers) {
@@ -2224,13 +2345,16 @@ private void Reset() {
     }
 
     fReassigned.Clear();
-
     fPendingTeamChange.Clear();
+    fUnassigned.Clear();
     
     /*
      fKnownPlayers is not cleared right away, since we want to retain stats from previous plugin sessions.
      It will be garbage collected after MODEL_MINUTES.
      */
+
+     fServerInfo = null; // release Procon reference
+     fListPlayersTimestamp = DateTime.MinValue;
 }
 
 private void ResetRound() {
@@ -2259,13 +2383,12 @@ private void ResetRound() {
         }
     }
 
-    DebugWrite("^bFINAL STATUS FOR PREVIOUS ROUND:^n", 3);
-    DebugStatus();
     fBalancedRound = 0;
     fUnstackedRound = 0;
     fUnswitchedRound = 0;
     fExcludedRound = 0;
     fExemptRound = 0;
+    fFailedRound = 0;
     fTotalRound = 0;
 }
 
@@ -2380,18 +2503,21 @@ private int ToSquad(String name, int team) {
     int[] squads = new int[SQUAD_NAMES.Length];
 
     // Build table of squad counts
-    for (int i = 1; i < SQUAD_NAMES.Length; ++i) {
+    int i = 0;
+    for (i = 0; i < squads.Length; ++i) {
         squads[i] = 0;
     }
     foreach (PlayerModel p in teamList) {
-        squads[p.Squad] = squads[p.Squad] + 1;
+        i = p.Squad;
+        if (i < 0 || i >= squads.Length) continue;
+        squads[i] = squads[i] + 1;
     }
 
     // Find the smallest squad above zero (that isn't locked -- TBD)
     int squad = 0;
     int least = 4;
     int atZero = 0;
-    for (int squadNum = 1; squadNum < SQUAD_NAMES.Length; ++squadNum) {
+    for (int squadNum = 1; squadNum < squads.Length; ++squadNum) {
         int n = squads[squadNum];
         if (n == 0) {
             if (atZero == 0) atZero = squadNum;
@@ -2413,6 +2539,11 @@ private void StartThreads() {
     fMoveThread.IsBackground = true;
     fMoveThread.Name = "MoveLoop";
     fMoveThread.Start();
+
+    fListPlayersThread = new Thread(new ThreadStart(ListPlayersLoop));
+    fListPlayersThread.IsBackground = true;
+    fListPlayersThread.Name = "ListPlayersLoops";
+    fListPlayersThread.Start();
 }
 
 private void JoinWith(Thread thread, int secs)
@@ -2440,6 +2571,8 @@ private void StopThreads() {
                     }
                     JoinWith(fMoveThread, 3);
                     fMoveThread = null;
+                    JoinWith(fListPlayersThread, 3);
+                    fListPlayersThread = null;
 
                     //this.blog.CleanUp();
                     /*
@@ -2457,6 +2590,7 @@ private void StopThreads() {
                 ConsoleWrite("Finished disabling threads, ready to be enabled again!");
             }));
 
+        stopper.Name = "stopper";
         stopper.Start();
 
     }
@@ -2497,6 +2631,67 @@ private String GetTeamName(int team) {
     return TEAM_NAMES[team];
 }
 
+private void ListPlayersLoop() {
+    /*
+    Strategy: Control the rate of listPlayers commands by keeping track of the
+    timestamp of the last event. Only issue a new command if no new event occurs within
+    the required time.
+    */
+    try {
+        while (fIsEnabled) {
+            ListPlayersRequest request = null;
+            lock (fListPlayersQ) {
+                while (fListPlayersQ.Count == 0) {
+                    Monitor.Wait(fListPlayersQ);
+                    if (!fIsEnabled) return;
+                }
+
+                request = fListPlayersQ.Dequeue();
+
+                while (request.LastUpdate == fListPlayersTimestamp 
+                  && DateTime.Now.Subtract(request.LastUpdate).TotalSeconds < request.MaxDelay) {
+                    Monitor.Wait(fListPlayersQ, 1000);
+                    if (!fIsEnabled) return;
+                }
+            }
+
+            // If there has been no event, ask for one
+            if (request.LastUpdate == fListPlayersTimestamp) ServerCommand("admin.listPlayers", "all");
+        }
+    } catch (Exception e) {
+        ConsoleException(e.ToString());
+    } finally {
+        ConsoleWrite("^bListPlayersLoop^n thread stopped");
+    }
+}
+
+private void ScheduleListPlayers(double delay) {
+    lock (fListPlayersQ) {
+        fListPlayersQ.Enqueue(new ListPlayersRequest(delay, fListPlayersTimestamp));
+    }
+}
+
+private String ExtractTag(PlayerModel m) {
+    if (m == null) return String.Empty;
+
+    String tag = m.Tag;
+    if (String.IsNullOrEmpty(tag)) {
+        // Maybe they are using [_-=]XXX[=-_]PlayerName[_-=]XXX[=-_] format
+        Match tm = Regex.Match(m.Name, @"^[=_\-]?([^=_\-]{2,4})[=_\-]");
+        if (tm.Success) {
+            tag = tm.Groups[1].Value;
+        } else {
+            tm = Regex.Match(m.Name, @"[^=_\-][=_\-]([^=_\-]{2,4})[=_\-]?$");
+            if (tm.Success) { 
+                tag = tm.Groups[1].Value;
+            } else {
+                tag = String.Empty;
+            }
+        }
+    }
+    return tag;
+}
+
 
 public void DebugStatus() {
     
@@ -2504,12 +2699,14 @@ public void DebugStatus() {
 
     String tm = fTickets[1] + "/" + fTickets[2];
     if (IsSQDM()) tm = tm + "/" + fTickets[3] + "/" + fTickets[4];
+
+    if (EnableLoggingOnlyMode) DebugWrite("^bStatus^n: Enable Logging Only Mode = true", 1);
     
     DebugWrite("^bStatus^n: Plugin state = " + fPluginState + ", game state = " + fGameState + ", mode = " + fServerInfo.GameMode + ", tickets = " + tm, 4);
 
-    if (!IsModelInSync()) DebugWrite("^bStatus^n: FMoving = " + fMoving.Count + ", fReassigned = " + fReassigned.Count, 3);
+    if (!IsModelInSync()) DebugWrite("^bStatus^n: fMoving = " + fMoving.Count + ", fReassigned = " + fReassigned.Count, 3);
 
-    DebugWrite("^bStatus^n: " + fReassignedRound + " reassigned, " + fBalancedRound + " balanced, " + fUnstackedRound + " unstacked, " + fUnswitchedRound + " unswitched, " + fExcludedRound + " excluded, " + fExemptRound + " exempt, of " + fTotalRound + " TOTAL", 3);
+    DebugWrite("^bStatus^n: " + fReassignedRound + " reassigned, " + fBalancedRound + " balanced, " + fUnstackedRound + " unstacked, " + fUnswitchedRound + " unswitched, " + fExcludedRound + " excluded, " + fExemptRound + " exempt, " + fFailedRound + " failed; of " + fTotalRound + " TOTAL", 3);
     
     if (IsSQDM()) {
         DebugWrite("^bStatus^n: Team counts = " + fTeam1.Count + "(A) vs " + fTeam2.Count + "(B) vs " + fTeam3.Count + "(C) vs " + fTeam4.Count + "(D), with " + fUnassigned.Count + " unassigned", 3);
@@ -2528,7 +2725,7 @@ public void DebugStatus() {
     counts.Sort();
     int diff = Math.Abs(counts[0] - counts[counts.Count-1]);
     
-    DebugWrite("^bStatus^n: Max difference = " + ((diff > 2) ? "^8^b" : "^b") + diff, 3);
+    DebugWrite("^bStatus^n: Team difference = " + ((diff > MaxDiff()) ? "^8^b" : "^b") + diff, 3);
 }
 
 
