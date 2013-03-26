@@ -1167,6 +1167,7 @@ public void OnPluginEnable() {
     StartThreads();
 
     fRoundStartTimestamp = DateTime.Now;
+    ServerCommand("reservedSlotsList.list");
     ServerCommand("serverInfo");
     ServerCommand("admin.listPlayers", "all");
 }
