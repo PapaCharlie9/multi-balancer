@@ -50,7 +50,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     public enum Speed { Click_Here_For_Speed_Names, Stop, Slow, Adaptive, Fast };
 
-    public enum DefineStrong { RoundScore, RoundKDR, RoundKills };
+    public enum DefineStrong { RoundScore, RoundKDR, RoundKills, PlayerRank };
     
     public enum PluginState { Disabled, JustEnabled, WaitingForPlayers, Active, Error, Reconnected };
     
@@ -82,6 +82,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         
         public PerModeSettings(String simplifiedModeName) {
             DetermineStrongPlayersBy = DefineStrong.RoundScore;
+            DisperseEvenlyForRank = 145;
             
             switch (simplifiedModeName) {
                 case "Conq Small, Dom, Scav":
@@ -175,6 +176,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         public double DefinitionOfLowPopulationForPlayers = 16;
         public double DefinitionOfEarlyPhase = 80;
         public double DefinitionOfLatePhase = 20;
+        public int DisperseEvenlyForRank = 145;
         
         //public double MinTicketsPercentage = 10.0; // TBD
         public int GoAggressive = 0; // TBD
@@ -201,6 +203,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         
         // Battlelog
         public String Tag;
+        public String FullName { get {return (String.IsNullOrEmpty(Tag) ? Name : "[" + Tag + "]" + Name);}}
         
         // Computed
         public double KDRRound;
@@ -381,6 +384,8 @@ private List<String> fReassigned = null;
 private int[] fTickets = null;
 private DateTime fListPlayersTimestamp;
 private Queue<ListPlayersRequest> fListPlayersQ = null;
+private Dictionary<String,String> fFriendlyMaps = null;
+private Dictionary<String,String> fFriendlyModes = null;
 
 // Operational statistics
 private int fReassignedRound = 0;
@@ -450,6 +455,25 @@ public String ShowInLog; // command line to show info in plugin.log
 public bool LogChat;
 public bool EnableLoggingOnlyMode;
 
+// Properties
+public int TotalPlayerCount {get{lock (fAllPlayers) {return fAllPlayers.Count;}}}
+public String FriendlyMap { 
+    get {
+        if (fServerInfo == null) return "???";
+        String r = null;
+        return (fFriendlyMaps.TryGetValue(fServerInfo.Map, out r)) ? r : fServerInfo.Map;
+    }
+}
+public String FriendlyMode { 
+    get {
+        if (fServerInfo == null) return "???";
+        String r = null;
+        return (fFriendlyModes.TryGetValue(fServerInfo.GameMode, out r)) ? r : fServerInfo.GameMode;
+    }
+}
+
+
+
 /* Constructor */
 
 public PROTObalancer() {
@@ -515,6 +539,8 @@ public PROTObalancer() {
     fReassigned = new List<String>();
     fReservedSlots = new List<String>();
     fTickets = new int[5]{0,0,0,0,0};
+    fFriendlyMaps = new Dictionary<String,String>();
+    fFriendlyModes = new Dictionary<String,String>();
     
     /* Settings */
 
@@ -914,6 +940,8 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
                 lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(DefineStrong), oneSet.DetermineStrongPlayersBy)));
             }
 
+            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Disperse Evenly For Rank >=", oneSet.DisperseEvenlyForRank.GetType(), oneSet.DisperseEvenlyForRank));
+
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of High Population For Players >=", oneSet.DefinitionOfHighPopulationForPlayers.GetType(), oneSet.DefinitionOfHighPopulationForPlayers));
 
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Low Population For Players <=", oneSet.DefinitionOfLowPopulationForPlayers.GetType(), oneSet.DefinitionOfLowPopulationForPlayers));
@@ -1077,14 +1105,7 @@ public void SetPluginVariable(String strVariable, String strValue) {
         // Validate all values and correct if needed
         
         if (!String.IsNullOrEmpty(ShowInLog)) {
-            if (Regex.Match(ShowInLog, @"modes", RegexOptions.IgnoreCase).Success) {
-                List<String> modeList = GetSimplifiedModes();
-                DebugWrite("modes(" + modeList.Count + "):", 6);
-                foreach (String m in modeList) {
-                    DebugWrite(m, 6);
-                }
-            }
-            
+            CommandToLog(ShowInLog);
             ShowInLog = String.Empty;
         }
 
@@ -1118,6 +1139,182 @@ public void SetPluginVariable(String strVariable, String strValue) {
         }
     }
 }
+
+private void ResetSettings() {
+    PROTObalancer rhs = new PROTObalancer();
+
+    /* ===== SECTION 1 - Settings ===== */
+
+    DebugLevel = rhs.DebugLevel;
+    MaximumServerSize = rhs.MaximumServerSize;
+    EnableBattlelogRequests = rhs.EnableBattlelogRequests;
+    MaximumRequestRate =  rhs.MaximumRequestRate;
+    MaxTeamSwitchesByStrongPlayers = rhs.MaxTeamSwitchesByStrongPlayers;
+    MaxTeamSwitchesByWeakPlayers = rhs.MaxTeamSwitchesByWeakPlayers;
+    UnlimitedTeamSwitchingDuringFirstMinutesOfRound = rhs.UnlimitedTeamSwitchingDuringFirstMinutesOfRound;
+    Enable2SlotReserve = rhs.Enable2SlotReserve;
+    EnablerecruitCommand = rhs.EnablerecruitCommand;
+    EnableWhitelistingOfReservedSlotsList = rhs.EnableWhitelistingOfReservedSlotsList;
+    Whitelist = rhs.Whitelist;
+    DisperseEvenlyList = rhs.DisperseEvenlyList;
+    Preset = rhs.Preset;
+    
+    /* ===== SECTION 2 - Exclusions ===== */
+    
+    OnWhitelist = rhs.OnWhitelist;
+    TopScorers = rhs.TopScorers;
+    SameClanTagsInSquad = rhs.SameClanTagsInSquad;
+    MinutesAfterJoining = rhs.MinutesAfterJoining;
+    JoinedEarlyPhase = rhs.JoinedEarlyPhase;
+    JoinedMidPhase = rhs.JoinedMidPhase;
+    JoinedLatePhase = rhs.JoinedLatePhase;
+
+
+    /* ===== SECTION 3 - Round Phase & Population Settings ===== */
+
+    EarlyPhaseTicketPercentageToUnstack = rhs.EarlyPhaseTicketPercentageToUnstack;
+    MidPhaseTicketPercentageToUnstack = rhs.MidPhaseTicketPercentageToUnstack;
+    LatePhaseTicketPercentageToUnstack = rhs.LatePhaseTicketPercentageToUnstack;
+    
+    SpellingOfSpeedNamesReminder = rhs.SpellingOfSpeedNamesReminder;
+
+    EarlyPhaseBalanceSpeed = rhs.EarlyPhaseBalanceSpeed;
+    MidPhaseBalanceSpeed = rhs.MidPhaseBalanceSpeed;
+    LatePhaseBalanceSpeed = rhs.LatePhaseBalanceSpeed;
+
+    /* ===== SECTION 5 - Messages ===== */
+    
+    QuietMode =  rhs.QuietMode;
+    YellDurationSeconds = rhs.YellDurationSeconds;
+    ChatMovedForBalance = rhs.ChatMovedForBalance;
+    YellMovedForBalance = rhs.YellMovedForBalance;
+    ChatMovedToUnstack = rhs.ChatMovedToUnstack;
+    YellMovedToUnstack = rhs.YellMovedToUnstack;
+    ChatDetectedSwitchToWinningTeam = rhs.ChatDetectedSwitchToWinningTeam;
+    YellDetectedSwitchToWinningTeam = rhs.YellDetectedSwitchToWinningTeam;
+    ChatDetectedSwitchToLosingTeam = rhs.ChatDetectedSwitchToLosingTeam;
+    YellDetectedSwitchToLosingTeam = rhs.YellDetectedSwitchToLosingTeam;
+    ChatAfterUnswitching = rhs.ChatAfterUnswitching;
+    YellAfterUnswitching = rhs.YellAfterUnswitching;
+    ChatDetectedSwitchByDispersalPlayer = rhs.ChatDetectedSwitchByDispersalPlayer;
+    YellDetectedSwitchByDispersalPlayer = rhs.YellDetectedSwitchByDispersalPlayer;
+    ChatAfterUnswitchingDispersalPlayer = rhs.ChatAfterUnswitchingDispersalPlayer;
+    YellAfterUnswitchingDispersalPlayer = rhs.YellAfterUnswitchingDispersalPlayer;
+    
+    /* ===== SECTION 6 - TBD ===== */
+
+    /* ===== SECTION 7 - TBD ===== */
+
+    /* ===== SECTION 8 - Per-Mode Settings ===== */
+
+    List<String> simpleModes = GetSimplifiedModes();
+
+    fPerMode.Clear();
+
+    foreach (String sm in simpleModes) {
+        PerModeSettings oneSet = null;
+        if (!fPerMode.ContainsKey(sm)) {
+            oneSet = new PerModeSettings(sm);
+            fPerMode[sm] = oneSet;
+        }
+    }
+
+    /* ===== SECTION 9 - Debug Settings ===== */
+
+    ShowInLog = rhs.ShowInLog;
+    LogChat = rhs.LogChat;
+    EnableLoggingOnlyMode = rhs.EnableLoggingOnlyMode;
+}
+
+private void CommandToLog(string cmd) {
+    try {
+        Match m = null;
+        ConsoleDump("Command: " + cmd);
+
+        if (Regex.Match(cmd, @"help", RegexOptions.IgnoreCase).Success) {
+            ConsoleDump("^1^bmodes^n^0: List the known game modes");
+            ConsoleDump("^1^breset settings^n^0: Reset all plugin settings to default");
+            ConsoleDump("^1^bsort^n ^iteam^n ^itype^n^0: Sort ^iteam^n (1-4) by ^itype^n (one of: score, kills, kdr, rank)");
+            return;
+        }
+
+        if (Regex.Match(cmd, @"modes", RegexOptions.IgnoreCase).Success) {
+            List<String> modeList = GetSimplifiedModes();
+            ConsoleDump("modes(" + modeList.Count + "):");
+            foreach (String mode in modeList) {
+                ConsoleDump(mode);
+            }
+            return;
+        }
+        
+        if (Regex.Match(cmd, @"reset settings", RegexOptions.IgnoreCase).Success) {
+            ConsoleDump("^8^bRESETTING ALL PLUGIN SETTINGS TO DEFAULT!");
+            ResetSettings();
+            return;
+        }
+
+        m = Regex.Match(cmd, @"^sort\s+([1-4])\s+(score|kills|kdr|rank)", RegexOptions.IgnoreCase);
+        if (m.Success) {
+            String teamID = m.Groups[1].Value;
+            String propID = m.Groups[2].Value;
+
+            int team = 0;
+            if (!Int32.TryParse(teamID, out team) || team < 1 || team > 4) {
+                ConsoleDump("Invalid team: " + teamID);
+                return;
+            }
+            List<PlayerModel> fromList = GetTeam(team);
+            if (fromList == null || fromList.Count < 3) {
+                ConsoleDump("Invalid team or not enough players in team: " + team);
+                return;
+            }
+            switch (propID.ToLower()) {
+                case "score":
+                    fromList.Sort(DescendingRoundScore);
+                    break;
+                case "kills":
+                    fromList.Sort(DescendingRoundKills);
+                   break;
+                case "kdr":
+                    fromList.Sort(DescendingRoundKDR);
+                    break;
+                case "rank":
+                    fromList.Sort(DescendingPlayerRank);
+                    break;
+                default:
+                    fromList.Sort(DescendingRoundScore);
+                    break;
+            }
+            int n = 1;
+            foreach (PlayerModel p in fromList) {
+                switch (propID.ToLower()) {
+                    case "score":
+                        ConsoleDump("#" + String.Format("{0,2}", n) + ") Score: " + String.Format("{0,6}", p.ScoreRound) + ", ^b" + p.FullName);
+                        break;
+                    case "kills":
+                        ConsoleDump("#" + String.Format("{0,2}", n) + ") Kills: " + String.Format("{0,6}", p.KillsRound) + ", ^b" + p.FullName);
+                       break;
+                    case "kdr":
+                        ConsoleDump("#" + String.Format("{0,2}", n) + ") KDR: " + String.Format("{0,6}", p.KDRRound) + ", ^b" + p.FullName);
+                        break;
+                    case "rank":
+                        ConsoleDump("#" + String.Format("{0,2}", n) + ") Rank: " + String.Format("{0,6}", p.Rank) + ", ^b" + p.FullName);
+                        break;
+                    default:
+                        ConsoleDump("#" + String.Format("{0,2}", n) + ") Score: " + String.Format("{0,6}", p.ScoreRound) + ", ^b" + p.FullName);
+                        break;
+                }
+                n = n + 1;
+            }
+        }
+
+            
+
+    } catch (Exception e) {
+        ConsoleException(e.ToString());
+    }
+}
+
 
 
 
@@ -1175,6 +1372,8 @@ public void OnPluginEnable() {
     ConsoleWrite("^bEnabled!^n Version = " + GetPluginVersion());
     DebugWrite("^b^3State = " + fPluginState, 6);
     DebugWrite("^b^3Game state = " + fGameState, 6);
+
+    GatherProconGoodies();
 
     StartThreads();
 
@@ -1395,7 +1594,7 @@ public override void OnPlayerKilled(Kill kKillerVictimDetails) {
     try {
     
         if (fGameState == GameState.Unknown) {
-            fGameState = (TotalPlayerCount() < 4) ? GameState.Warmup : GameState.Playing;
+            fGameState = (TotalPlayerCount < 4) ? GameState.Warmup : GameState.Playing;
             DebugWrite("^b^3Game state = " + fGameState, 6);  
         }
     
@@ -1433,7 +1632,7 @@ public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subs
         Since these detections are not completely reliable, do a minimal  amount of recovery,
         don't do a full reset
         */
-        if (fServerCrashed || fGotVersion || (players.Count + CRASH_COUNT_HEURISTIC) <  TotalPlayerCount() || TotalPlayerCount() > MaximumServerSize)  {
+        if (fServerCrashed || fGotVersion || (players.Count + CRASH_COUNT_HEURISTIC) <  TotalPlayerCount || TotalPlayerCount > MaximumServerSize)  {
             fServerCrashed = false;
             fGotVersion = false;
             ValidateModel(players);
@@ -1458,7 +1657,7 @@ public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subs
     
         /* Special handling for JustEnabled state */
         if (fPluginState == PluginState.JustEnabled) {
-            fPluginState = (TotalPlayerCount() < 4) ? PluginState.WaitingForPlayers : PluginState.Active;
+            fPluginState = (TotalPlayerCount < 4) ? PluginState.WaitingForPlayers : PluginState.Active;
             if (fPluginState == PluginState.Active) fRoundStartTimestamp = DateTime.Now;
             DebugWrite("^b^3State = " + fPluginState, 6);  
         }
@@ -1550,7 +1749,7 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
     
     try {
         if (fGameState == GameState.Unknown) {
-            fGameState = (TotalPlayerCount() < 4) ? GameState.Warmup : GameState.Playing;
+            fGameState = (TotalPlayerCount < 4) ? GameState.Warmup : GameState.Playing;
             DebugWrite("^b^3Game state = " + fGameState, 6);  
         }
 
@@ -1561,7 +1760,7 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
             // First spawn after Level Loaded is the official start of a round
             DebugWrite(":::::::::::: ^b^1First spawn detected^0^n ::::::::::::", 2);
 
-            fGameState = (TotalPlayerCount() < 4) ? GameState.Warmup : GameState.Playing;
+            fGameState = (TotalPlayerCount < 4) ? GameState.Warmup : GameState.Playing;
             DebugWrite("^b^3Game state = " + fGameState, 6);
 
             ResetRound();
@@ -1609,15 +1808,59 @@ public override void OnReservedSlotsList(List<String> lstSoldierNames) {
 
 
 private void BalanceAndUnstack(String name) {
+    /* Sanity checks */
+
+    if (fServerInfo == null) return;
+
+    int totalPlayerCount = TotalPlayerCount;
+
+    if (totalPlayerCount < ((IsSQDM()) ? 8 : 6)) {
+        DebugBalance("Not enough players in server, minimum is " + ((IsSQDM()) ? 8 : 6));
+        return;
+    }
+
+    if (totalPlayerCount >= (MaximumServerSize-1)) {
+        if (DebugLevel > 4) DebugBalance("Server is full, no balancing or unstacking will be attempted!");
+        return;
+    }
+
+    /* Useful variables */
+
     PlayerModel player = null;
+    String simpleMode = String.Empty;
+    PerModeSettings perMode = null;
+
     lock (fKnownPlayers) {
-        if (!fKnownPlayers.ContainsKey(name)) return;
+        if (!fKnownPlayers.ContainsKey(name)) {
+            DebugBalance("Unknown player: ^b" + name);
+            return;
+        }
         player = fKnownPlayers[name];
+    }
+    if (player == null) {
+        DebugBalance("No model for player: ^b" + name);
+        return;
+    }
+    if (!fModeToSimple.TryGetValue(fServerInfo.GameMode, out simpleMode)) {
+        DebugBalance("Unknown game mode: " + fServerInfo.GameMode);
+        return;
+    }
+    if (String.IsNullOrEmpty(simpleMode)) {
+        DebugBalance("Simple mode is null for: " + fServerInfo.GameMode);
+        return;
+    }
+    if (!fPerMode.TryGetValue(simpleMode, out perMode)) {
+        DebugBalance("No per-mode settings for: " + simpleMode);
+        return;
+    }
+    if (perMode == null) {
+        DebugBalance("Per-mode settings null for: " + simpleMode);
+        return;
     }
 
     /* Exclusions */
 
-    // On Whitelist or Reserved Slots if enabled
+    // Exclude if on Whitelist or Reserved Slots if enabled
     if (OnWhitelist) {
         List<String> vip = new List<String>(Whitelist);
         if (EnableWhitelistingOfReservedSlotsList) vip.AddRange(fReservedSlots);
@@ -1627,14 +1870,59 @@ private void BalanceAndUnstack(String name) {
         }
         */
         if (vip.Contains(name) || vip.Contains(ExtractTag(player)) || vip.Contains(player.EAGUID)) {
-            DebugBalance("Excluding ^b" + name + "^n: whitelisted");
+            DebugBalance("Excluding ^b" + player.FullName + "^n: whitelisted");
             fExcludedRound = fExcludedRound + 1;
+            IncrementTotal();
+            return;
+        }
+    }
+
+    // Sort player's team by the strong method
+    List<PlayerModel> fromList = GetTeam(player.Team);
+    if (fromList == null) {
+        DebugBalance("Unknown team " + player.Team + " for player ^b" + player.Name);
+        return;
+    }
+    switch (perMode.DetermineStrongPlayersBy) {
+        case DefineStrong.RoundScore:
+            fromList.Sort(DescendingRoundScore);
+            break;
+        case DefineStrong.RoundKills:
+            fromList.Sort(DescendingRoundKills);
+           break;
+        case DefineStrong.RoundKDR:
+            fromList.Sort(DescendingRoundKDR);
+            break;
+        case DefineStrong.PlayerRank:
+            fromList.Sort(DescendingPlayerRank);
+            break;
+        default:
+            fromList.Sort(DescendingRoundScore);
+            break;
+    }
+    int median = fromList.Count / 2;
+
+    // Exclude if TopScorers enabled and a top scorer on the team
+    int topPlayersPerTeam = 0;
+    if (TopScorers) {
+        if (totalPlayerCount < 22) {
+            topPlayersPerTeam = 1;
+        } else if (totalPlayerCount > 42) {
+            topPlayersPerTeam = Math.Min(3, fromList.Count);
+        } else {
+            topPlayersPerTeam = Math.Min(2, fromList.Count);
+        } 
+    }
+    for (int i = 0; i < topPlayersPerTeam; ++i) {
+        if (fromList[i].Name == player.Name) {
+            DebugBalance("Excluding ^b" + player.FullName + "^n: Top Scorers enabled and this player is #" + (i+1) + " on team " + player.Team);
+            fExcludedRound = fExcludedRound + 1;
+            IncrementTotal();
             return;
         }
     }
 
     /* Balance */
-
 
     int diff = 0;
     int toTeam = ToTeam(name, player.Team, out diff);
@@ -1648,6 +1936,8 @@ private void BalanceAndUnstack(String name) {
         // Has this player already been moved for balance or unstacking?
         if (player.MovesRound > 1) {
             DebugBalance("Exempting ^b" + name + "^n, already moved this round");
+            fExemptRound = fExemptRound + 1;
+            IncrementTotal();
             break;
         }
 
@@ -1764,11 +2054,6 @@ private void RemovePlayer(String name) {
     }
 }
 
-private int TotalPlayerCount() {
-    lock (fAllPlayers) {
-        return fAllPlayers.Count;
-    }
-}
 
 private void UpdatePlayerModel(String name, int team, int squad, String eaGUID, int score, int kills, int deaths, int rank) {
     bool known = false;
@@ -1893,8 +2178,8 @@ private void ValidateModel(List<CPlayerInfo> players) {
             }
         }
         /* Special handling for Reconnected state */
-        fPluginState = (TotalPlayerCount() < 4) ? PluginState.WaitingForPlayers : PluginState.Active;
-        fGameState = (TotalPlayerCount() < 4) ? GameState.Warmup : GameState.Playing;
+        fPluginState = (TotalPlayerCount < 4) ? PluginState.WaitingForPlayers : PluginState.Active;
+        fGameState = (TotalPlayerCount < 4) ? GameState.Warmup : GameState.Playing;
         if (fPluginState == PluginState.Active) {
             fRoundStartTimestamp = DateTime.Now;
         }
@@ -2024,7 +2309,8 @@ private void StartMoveImmediate(MoveInfo move, bool sendMessages) {
         case ReasonFor.Unswitch: r = " to unswitch player"; break;
         default: r = " for ???"; break;
     }
-    DebugWrite("^b^1MOVING^0 " + move.Name + "^n from " + move.SourceName + " to " + move.DestinationName + r, DUMMY);
+    String doing = (EnableLoggingOnlyMode || DUMMY == 2) ? "^9(SIMULATING) ^b^1MOVING^0 " : "^b^1MOVING^0 ";
+    DebugWrite(doing + move.Name + "^n from " + move.SourceName + " to " + move.DestinationName + r, DUMMY);
 }
 
 private void FinishMoveImmediate(String name, int team) {
@@ -2101,7 +2387,8 @@ public void MoveLoop() {
 private void Reassign(String name, int fromTeam, int toTeam, int diff) {
     // This is not a known player yet, so not PlayerModel to use
     // Just do a raw move as quickly as possible, not messages, just logging
-    DebugWrite("^b^1REASSIGN^0^n new player ^b" + name + "^n from team " + fromTeam + " to team " + toTeam + " because difference is " + diff, DUMMY);
+    String doing = (EnableLoggingOnlyMode || DUMMY == 2) ? "^9(SIMULATING) ^b^1REASSIGNING^0^n new player ^b" : "^b^1REASSIGNING^0^n new player ^b";
+    DebugWrite(doing + name + "^n from team " + fromTeam + " to team " + toTeam + " because difference is " + diff, DUMMY);
     int toSquad = ToSquad(name, toTeam);
     if (!EnableLoggingOnlyMode) {
         fReassigned.Add(name);
@@ -2163,21 +2450,26 @@ private void ValidateMove(String name) {
 }
 
 private void Chat(String who, String what) {
+    String doing = null;
     if (QuietMode) {
         // ServerCommand("admin.say", ... player
         ProconChatPlayer(who, what);
-        DebugWrite("^b^1CHAT^0^n to ^b" + who + "^n: " + what, DUMMY);
+        doing = (EnableLoggingOnlyMode || DUMMY == 2) ? "^9(SIMULATING) ^b^1CHAT^0^n to ^b" : "^b^1CHAT^0^n to ^b";
+        DebugWrite(doing + who + "^n: " + what, DUMMY);
     } else {
         // ServerCommand("admin.say", ... all
         ProconChat(what);
-        DebugWrite("^b^1CHAT^0^n to all: " + what, DUMMY);
+        doing = (EnableLoggingOnlyMode || DUMMY == 2) ? "^9(SIMULATING) ^b^1CHAT^0^n to all: " : "^b^1CHAT^0^n to all: ";
+        DebugWrite(doing + what, DUMMY);
     }
 }
 
 private void Yell(String who, String what) {
+    String doing = null;
     if (!QuietMode) {
         // ServerCommand("admin.yell", ... player
-        DebugWrite("^b^1YELL^0^n to ^b" + who + "^n: " + what, DUMMY);
+        doing = (EnableLoggingOnlyMode || DUMMY == 2) ? "^9(SIMULATING) ^b^1YELL^0^n to ^b" : "^b^1YELL^0^n to ^b";
+        DebugWrite(doing + who + "^n: " + what, DUMMY);
     }
 }
 
@@ -2293,6 +2585,11 @@ public void DebugWrite(String msg, int level)
 private void ConsoleDebug(String msg)
 {
     if (DebugLevel >= 3) ConsoleWrite(msg, MessageType.Debug);
+}
+
+private void ConsoleDump(String msg)
+{
+    ConsoleWrite("^b[Show In Log]^n ^5" + msg);
 }
 
 
@@ -2518,18 +2815,23 @@ private void UpdateTeams() {
                 throw new Exception("UpdateTeams: " + name + " not in fKnownPlayers");
             }
             lock (fKnownPlayers) {
-                switch (fKnownPlayers[name].Team) {
-                    case 1: fTeam1.Add(fKnownPlayers[name]); break;
-                    case 2: fTeam2.Add(fKnownPlayers[name]); break;
-                    case 3: fTeam3.Add(fKnownPlayers[name]); break;
-                    case 4: fTeam4.Add(fKnownPlayers[name]); break;
-                    default: break;
-                }
+                List<PlayerModel> t = GetTeam(fKnownPlayers[name].Team);
+                if (t != null) t.Add(fKnownPlayers[name]);
             }
         }
     }
 }
 
+private List<PlayerModel> GetTeam(int team) {
+    switch (team) {
+        case 1: return(fTeam1);
+        case 2: return(fTeam2);
+        case 3: if (IsSQDM()) return(fTeam3); break;
+        case 4: if (IsSQDM()) return(fTeam4); break;
+        default: break;
+    }
+    return null;
+}
 
 private void ClearTeams() {
     fTeam1.Clear();
@@ -2549,35 +2851,13 @@ private int GetTeamDiff(ref int fromTeam, ref int toTeam) {
         List<PlayerModel> from = null;
         List<PlayerModel> to = null;
 
-        switch (fromTeam) {
-            case 1: from = fTeam1; break;
-            case 2: from = fTeam2; break;
-            case 3:
-                if (!IsSQDM()) return 0;
-                from = fTeam3;
-                break;
-            case 4:
-                if (!IsSQDM()) return 0;
-                from = fTeam4;
-                break;
-            default: return 0;
-        }
+        from = GetTeam(fromTeam);
+        if (from == null) return 0;
 
-        switch (toTeam) {
-            case 1: to = fTeam1; break;
-            case 2: to = fTeam2; break;
-            case 3:
-                if (!IsSQDM()) return 0;
-                to = fTeam3;
-                break;
-            case 4:
-                if (!IsSQDM()) return 0;
-                to = fTeam4;
-                break;
-            default: return 0;
-        }
+        to = GetTeam(toTeam);
+        if (to == null) return 0;
 
-         return (from.Count - to.Count);
+        return (from.Count - to.Count);
     }
 
     // otherwise find min and max
@@ -2672,13 +2952,8 @@ private int ToSquad(String name, int team) {
 
     List<PlayerModel> teamList = null;
 
-    switch (team) {
-        case 1: teamList = fTeam1; break;
-        case 2: teamList = fTeam2; break;
-        case 3: teamList = fTeam3; break;
-        case 4: teamList = fTeam4; break;
-        default: return 0;
-    }
+    teamList = GetTeam(team);
+    if (teamList == null) return 0;
 
     int[] squads = new int[SQUAD_NAMES.Length];
 
@@ -2850,6 +3125,7 @@ private void ScheduleListPlayers(double delay) {
     DebugWrite("^9Scheduling listPlayers no later than " + r.MaxDelay  + " seconds from " + r.LastUpdate.ToString("HH:mm:ss"), 5);
     lock (fListPlayersQ) {
         fListPlayersQ.Enqueue(r);
+        Monitor.Pulse(fListPlayersQ);
     }
 }
 
@@ -2874,6 +3150,81 @@ private String ExtractTag(PlayerModel m) {
     return tag;
 }
 
+// Sort delegate
+public static int DescendingRoundScore(PlayerModel lhs, PlayerModel rhs) {
+    if (lhs == null) {
+        return ((rhs == null) ? 0 : -1);
+    } else if (rhs == null) {
+        return ((lhs == null) ? 0 : 1);
+    }
+
+    if (lhs.ScoreRound < rhs.ScoreRound) return 1;
+    if (lhs.ScoreRound > rhs.ScoreRound) return -1;
+    return 0;
+}
+
+
+// Sort delegate
+public static int DescendingRoundKills(PlayerModel lhs, PlayerModel rhs) {
+    if (lhs == null) {
+        return ((rhs == null) ? 0 : -1);
+    } else if (rhs == null) {
+        return ((lhs == null) ? 0 : 1);
+    }
+
+    if (lhs.KillsRound < rhs.KillsRound) return 1;
+    if (lhs.KillsRound > rhs.KillsRound) return -1;
+    return 0;
+}
+
+
+// Sort delegate
+public static int DescendingRoundKDR(PlayerModel lhs, PlayerModel rhs) {
+    if (lhs == null) {
+        return ((rhs == null) ? 0 : -1);
+    } else if (rhs == null) {
+        return ((lhs == null) ? 0 : 1);
+    }
+
+    if (lhs.KDRRound < rhs.KDRRound) return 1;
+    if (lhs.KDRRound > rhs.KDRRound) return -1;
+    return 0;
+}
+
+
+// Sort delegate
+public static int DescendingPlayerRank(PlayerModel lhs, PlayerModel rhs) {
+    if (lhs == null) {
+        return ((rhs == null) ? 0 : -1);
+    } else if (rhs == null) {
+        return ((lhs == null) ? 0 : 1);
+    }
+
+    if (lhs.Rank < rhs.Rank) return 1;
+    if (lhs.Rank > rhs.Rank) return -1;
+    return 0;
+}
+
+
+private void GatherProconGoodies() {
+    fFriendlyMaps.Clear();
+    fFriendlyModes.Clear();
+    List<CMap> bf3_defs = this.GetMapDefines();
+    foreach (CMap m in bf3_defs) {
+        if (!fFriendlyMaps.ContainsKey(m.FileName)) fFriendlyMaps[m.FileName] = m.PublicLevelName;
+        if (!fFriendlyModes.ContainsKey(m.PlayList)) fFriendlyModes[m.PlayList] = m.GameMode;
+    }
+    if (DebugLevel >= 8) {
+        foreach (KeyValuePair<String,String> pair in fFriendlyMaps) {
+            DebugWrite("friendlyMaps[" + pair.Key + "] = " + pair.Value, 8);
+        }
+        foreach (KeyValuePair<String,String> pair in fFriendlyModes) {
+            DebugWrite("friendlyModes[" + pair.Key + "] = " + pair.Value, 8);
+        }
+    }
+    DebugWrite("Friendly names loaded", 6);
+}
+
 
 private void LogStatus() {
     
@@ -2885,7 +3236,7 @@ private void LogStatus() {
     String rt = (rm.Success) ? rm.Groups[1].Value : "?";
 
     DebugWrite("^bStatus^n: Plugin state = " + fPluginState + ", game state = " + fGameState + ", Enable Logging Only Mode = " + EnableLoggingOnlyMode, 4);
-    DebugWrite("^bStatus^n: Map = " + fServerInfo.Map + ", mode = " + fServerInfo.GameMode + ", time in round = " + rt + ", tickets = " + tm, 4);
+    DebugWrite("^bStatus^n: Map = " + FriendlyMap + ", mode = " + FriendlyMode + ", time in round = " + rt + ", tickets = " + tm, 4);
 
     if (!IsModelInSync()) DebugWrite("^bStatus^n: fMoving = " + fMoving.Count + ", fReassigned = " + fReassigned.Count, 3);
 
