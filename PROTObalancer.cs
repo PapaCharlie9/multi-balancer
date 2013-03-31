@@ -216,6 +216,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
 
         //  Per-round state
         public int MovesRound;
+        public bool MovedByMB;
         
         public PlayerModel() {
             Name = null;
@@ -238,6 +239,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
             DeathsTotal = 0;
             IsDeployed = false;
             MovesRound = 0;
+            MovedByMB = false;
         }
         
         public PlayerModel(String name, int team) : this() {
@@ -257,6 +259,9 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
             KDRRound = -1;
             SPMRound = -1;
             IsDeployed = false;
+
+            MovesRound = 0;
+            MovedByMB = false;
         }
     } // end PlayerModel
 
@@ -1449,7 +1454,8 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
             DebugWrite("^4New player^0: ^b" + soldierName + "^n, ^b^1REASSIGNED^0^n to team " + teamId + " by " + GetPluginName(), 3);
        } else if (!IsKnownPlayer(soldierName)) {
             int diff = 0;
-            int reassignTo = ToTeam(soldierName, teamId, out diff);
+            bool mustMove = false;
+            int reassignTo = ToTeam(soldierName, teamId, out diff, out mustMove);
             if (reassignTo == 0 || reassignTo == teamId) {
                 // New player was going to the right team anyway
                 IncrementTotal();
@@ -1475,7 +1481,7 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
                 // This is an admin move in correct order, ignore it
                 fPendingTeamChange.Remove(soldierName);
                 DebugWrite("Moved by admin: ^b" + soldierName + "^n to team " + teamId, 6);
-                IncrementTotal();
+                ProvisionalIncrementMoves(soldierName);
                 return;
             }
 
@@ -1533,7 +1539,7 @@ public override void OnPlayerMovedByAdmin(string soldierName, int destinationTea
                 // (unless MB initiated it)
                 fPendingTeamChange.Remove(soldierName);
                 DebugWrite("(REVERSED) Moved by admin: ^b" + soldierName + " to team " + destinationTeamId, 6);
-                IncrementTotal();
+                ProvisionalIncrementMoves(soldierName);
             } else if (!fUnassigned.Contains(soldierName)) {
                 // this is an admin move in correct order, add to pending table and let OnPlayerTeamChange handle it
                 fPendingTeamChange[soldierName] = destinationTeamId;
@@ -1714,7 +1720,7 @@ public override void OnRoundOver(int winningTeamId) {
     DebugWrite("^9^bGot OnRoundOver^n: winner " + winningTeamId, 7);
 
     try {
-        DebugWrite(":::::::::::: ^b^1Round over detected^0^n ::::::::::::", 2);
+        DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1Round over detected^0^n ::::::::::::::::::::::::::::::::::::", 2);
     
         if (fGameState == GameState.Playing || fGameState == GameState.Unknown) {
             fGameState = GameState.RoundEnding;
@@ -1731,7 +1737,7 @@ public override void OnLevelLoaded(String mapFileName, String Gamemode, int roun
     DebugWrite("^9^bGot OnLevelLoaded^n: " + mapFileName + " " + Gamemode + " " + roundsPlayed + "/" + roundsTotal, 7);
 
     try {
-        DebugWrite(":::::::::::: ^b^1Level loaded detected^0^n ::::::::::::", 2);
+        DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1Level loaded detected^0^n ::::::::::::::::::::::::::::::::::::", 2);
 
         if (fGameState == GameState.RoundEnding || fGameState == GameState.Unknown) {
             fGameState = GameState.RoundStarting;
@@ -1758,7 +1764,7 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
             LogStatus();
 
             // First spawn after Level Loaded is the official start of a round
-            DebugWrite(":::::::::::: ^b^1First spawn detected^0^n ::::::::::::", 2);
+            DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1First spawn detected^0^n ::::::::::::::::::::::::::::::::::::", 2);
 
             fGameState = (TotalPlayerCount < 4) ? GameState.Warmup : GameState.Playing;
             DebugWrite("^b^3Game state = " + fGameState, 6);
@@ -1815,12 +1821,12 @@ private void BalanceAndUnstack(String name) {
     int totalPlayerCount = TotalPlayerCount;
 
     if (totalPlayerCount < ((IsSQDM()) ? 8 : 6)) {
-        DebugBalance("Not enough players in server, minimum is " + ((IsSQDM()) ? 8 : 6));
+        if (DebugLevel > 6) DebugBalance("Not enough players in server, minimum is " + ((IsSQDM()) ? 8 : 6));
         return;
     }
 
     if (totalPlayerCount >= (MaximumServerSize-1)) {
-        if (DebugLevel > 4) DebugBalance("Server is full, no balancing or unstacking will be attempted!");
+        if (DebugLevel > 6) DebugBalance("Server is full, no balancing or unstacking will be attempted!");
         return;
     }
 
@@ -1829,6 +1835,14 @@ private void BalanceAndUnstack(String name) {
     PlayerModel player = null;
     String simpleMode = String.Empty;
     PerModeSettings perMode = null;
+    bool isStrong = false; // this player
+    int winningTeam = 0;
+    int losingTeam = 0;
+    int biggestTeam = 0;
+    int smallestTeam = 0;
+    String strongMsg = String.Empty;
+
+    /* Pre-conditions */
 
     lock (fKnownPlayers) {
         if (!fKnownPlayers.ContainsKey(name)) {
@@ -1886,21 +1900,27 @@ private void BalanceAndUnstack(String name) {
     switch (perMode.DetermineStrongPlayersBy) {
         case DefineStrong.RoundScore:
             fromList.Sort(DescendingRoundScore);
+            strongMsg = "Determing strong by: Round Score";
             break;
         case DefineStrong.RoundKills:
             fromList.Sort(DescendingRoundKills);
-           break;
+            strongMsg = "Determing strong by: Round Kills";
+            break;
         case DefineStrong.RoundKDR:
             fromList.Sort(DescendingRoundKDR);
+            strongMsg = "Determing strong by: Round KDR";
             break;
         case DefineStrong.PlayerRank:
             fromList.Sort(DescendingPlayerRank);
+            strongMsg = "Determing strong by: Player Rank";
             break;
         default:
             fromList.Sort(DescendingRoundScore);
+            strongMsg = "Determing strong by: Round Score";
             break;
     }
-    int median = fromList.Count / 2;
+    int median = Math.Max(0, (fromList.Count / 2) - 1);
+    int playerIndex = 0;
 
     // Exclude if TopScorers enabled and a top scorer on the team
     int topPlayersPerTeam = 0;
@@ -1913,19 +1933,29 @@ private void BalanceAndUnstack(String name) {
             topPlayersPerTeam = Math.Min(2, fromList.Count);
         } 
     }
-    for (int i = 0; i < topPlayersPerTeam; ++i) {
+    for (int i = 0; i < fromList.Count; ++i) {
         if (fromList[i].Name == player.Name) {
-            DebugBalance("Excluding ^b" + player.FullName + "^n: Top Scorers enabled and this player is #" + (i+1) + " on team " + player.Team);
-            fExcludedRound = fExcludedRound + 1;
-            IncrementTotal();
-            return;
+            if (topPlayersPerTeam != 0 && i < topPlayersPerTeam) {
+                DebugBalance("Excluding ^b" + player.FullName + "^n: Top Scorers enabled and this player is #" + (i+1) + " on team " + player.Team);
+                fExcludedRound = fExcludedRound + 1;
+                IncrementTotal();
+                return;
+            } else {
+                playerIndex = i;
+                break;
+            }
         }
     }
+    isStrong = (playerIndex < median);
 
     /* Balance */
 
     int diff = 0;
-    int toTeam = ToTeam(name, player.Team, out diff);
+    bool mustMove = false;
+
+    AnalyzeTeams(out diff, out biggestTeam, out smallestTeam, out winningTeam, out losingTeam);
+    
+    int toTeam = ToTeam(name, player.Team, out diff, out mustMove); // take into account dispersal by Rank, etc.
 
     if (diff > MaxDiff()) DebugBalance("Autobalancing because difference of " + diff + " is greater than " + MaxDiff());
 
@@ -1933,13 +1963,41 @@ private void BalanceAndUnstack(String name) {
 
         /* Exemptions */
 
+        // Already on the smallest team
+        if (!mustMove && player.Team == smallestTeam) {
+            DebugBalance("Exempting ^b" + name + "^n, already on the smallest team");
+            fExemptRound = fExemptRound + 1;
+            IncrementTotal();
+            break;
+        }
+
         // Has this player already been moved for balance or unstacking?
-        if (player.MovesRound > 1) {
+        if (!mustMove && player.MovesRound > 1) {
             DebugBalance("Exempting ^b" + name + "^n, already moved this round");
             fExemptRound = fExemptRound + 1;
             IncrementTotal();
             break;
         }
+
+        // if (!mustMove && phase/population for this mode indicates unstacking should occur) { // TBD
+            if (DebugLevel > 5) DebugBalance(strongMsg);
+            // don't move weak player to losing team
+            if (!isStrong && toTeam == losingTeam) {
+                DebugBalance("Exempting ^b" + name + "^n, don't move weak player to losing team (#" + (playerIndex+1) + " of " + fromList.Count + ", median " + (median+1) + ")");
+                fExemptRound = fExemptRound + 1;
+                IncrementTotal();
+                break;
+            }
+
+            // don't move strong player to winning team
+            if (isStrong && toTeam == winningTeam) {
+                DebugBalance("Exempting ^b" + name + "^n, don't move strong player to winning team (#" + (playerIndex+1) + " of " + fromList.Count + ", median " + (median+1) + ")");
+                fExemptRound = fExemptRound + 1;
+                IncrementTotal();
+                break;
+           }
+        // }
+
 
         // TBD
 
@@ -2335,6 +2393,7 @@ private void FinishMoveImmediate(String name, int team) {
     if (move != null) {
         Yell(move.Name, move.YellAfter);
         Chat(move.Name, move.ChatAfter);
+        IncrementTotal();
     }
 }
 
@@ -2890,36 +2949,24 @@ private int GetTeamDiff(ref int fromTeam, ref int toTeam) {
     return (maxTeam.Roster.Count - minTeam.Roster.Count);
 }
 
-private int ToTeam(String name, int fromTeam, out int diff) {
+
+private void AnalyzeTeams(out int diff, out int biggestTeam, out int smallestTeam, out int winningTeam, out int losingTeam) {
+    biggestTeam = 0;
+    smallestTeam = 0;
+    winningTeam = 0;
+    losingTeam = 0;
     diff = 0;
-    if (fromTeam < 1 || fromTeam > 4) return 0;
+
+    if (fServerInfo == null) return;
 
     List<TeamRoster> teams = new List<TeamRoster>();
-    List<PlayerModel> from = null;
-    
-    if (fromTeam == 1) {
-        from = fTeam1;
-    }
+
     teams.Add(new TeamRoster(1, fTeam1));
-
-    if (fromTeam == 2) {
-        from = fTeam2;
-    } 
     teams.Add(new TeamRoster(2, fTeam2));
-
     if (IsSQDM()) {
-        if (fromTeam == 3) {
-            from = fTeam3;
-        }
         teams.Add(new TeamRoster(3, fTeam3));
-
-        if (fromTeam == 4) {
-            from = fTeam4;
-        }
         teams.Add(new TeamRoster(4, fTeam4));
     }
-
-    if (from != null && from.Count == 0) return 0;
 
     teams.Sort(delegate(TeamRoster lhs, TeamRoster rhs) {
         // Sort ascending order by count
@@ -2929,17 +2976,94 @@ private int ToTeam(String name, int fromTeam, out int diff) {
         return 0;
     });
 
-    TeamRoster to = teams[0];
+    TeamRoster small = teams[0];
+    TeamRoster big = teams[teams.Count-1];
+    smallestTeam = small.Team;
+    biggestTeam = big.Team;
+    diff = big.Roster.Count - small.Roster.Count;
 
-    if (from == null) return to.Team;
+    List<TeamScore> byScore = new List<TeamScore>();
+    if (fServerInfo.TeamScores == null || fServerInfo.TeamScores.Count == 0) return;
+    byScore.AddRange(fServerInfo.TeamScores);
 
-    if (to.Roster.Count >= from.Count) return 0;
+    byScore.Sort(delegate(TeamScore lhs, TeamScore rhs) {
+        // Sort descending order by score
+        if (lhs == null || rhs == null) return 0;
+        if (lhs.Score < rhs.Score) return 1;
+        if (lhs.Score > rhs.Score) return -1;
+        return 0;
+    });
 
-    diff = (from.Count - to.Roster.Count);
+    winningTeam = byScore[0].TeamID;
+    losingTeam = byScore[byScore.Count-1].TeamID;
+}
+
+private int GetTeamDifference(int fromTeam) {
+    int biggestTeam = 0;
+    int smallestTeam = 0;
+    int winningTeam = 0;
+    int losingTeam = 0;
+    int diff = 0;
+
+    List<TeamRoster> teams = new List<TeamRoster>();
+
+    teams.Add(new TeamRoster(1, fTeam1));
+    teams.Add(new TeamRoster(2, fTeam2));
+    if (IsSQDM()) {
+        teams.Add(new TeamRoster(3, fTeam3));
+        teams.Add(new TeamRoster(4, fTeam4));
+    }
+
+    if (!IsSQDM()) {
+        AnalyzeTeams(out diff, out biggestTeam, out smallestTeam, out winningTeam, out losingTeam);
+        return (teams[biggestTeam].Roster.Count - teams[smallestTeam].Roster.Count);
+    }
+
+    // Otherwise do SQDM
+    if (fromTeam < 1 || fromTeam > 4) return 0;
+    return(teams[fromTeam-1].Roster.Count - teams[smallestTeam].Roster.Count);
+}
+
+
+private int ToTeam(String name, int fromTeam, out int diff, out bool mustMove) {
+    diff = 0;
+    mustMove = false;
+    if (fromTeam < 1 || fromTeam > 4) return 0;
+
+    List<PlayerModel> from = null;
+    
+    if (fromTeam == 1) {
+        from = fTeam1;
+    }
+
+    if (fromTeam == 2) {
+        from = fTeam2;
+    } 
+
+    if (IsSQDM()) {
+        if (fromTeam == 3) {
+            from = fTeam3;
+        }
+
+        if (fromTeam == 4) {
+            from = fTeam4;
+        }
+    }
+
+    if (from != null && from.Count == 0) return 0;
+
+    int biggestTeam = 0;
+    int smallestTeam = 0;
+    int winningTeam = 0;
+    int losingTeam = 0;
+
+    AnalyzeTeams(out diff, out biggestTeam, out smallestTeam, out winningTeam, out losingTeam);
 
     if (diff <= MaxDiff()) return 0;
 
-    return to.Team;
+    // TBD, for SQDM, based on name, might need to take into account dispersal by Rank, etc.
+    // mustMove set to True if dispersal policy (etc) must override other policies
+    return smallestTeam;
 }
 
 private int ToSquad(String name, int team) {
@@ -3060,15 +3184,33 @@ private void IncrementMoves(String name) {
     lock (fKnownPlayers) {
         PlayerModel m = fKnownPlayers[name];
         m.MovesRound = m.MovesRound + 1;
+        m.MovedByMB = true;
     }
 }
 
+private void ProvisionalIncrementMoves(String name) {
+    /*
+    If some other plugin did an admin move on this player, increment
+    the move counter so that this player will be exempted from balancing and unstacking
+    for the rest of this round, but don't set the flag, since MB didn't move this player.
+    */
+    if (!IsKnownPlayer(name)) return;
+    lock (fKnownPlayers) {
+        PlayerModel m = fKnownPlayers[name];
+        if (!m.MovedByMB) {
+            m.MovesRound = m.MovesRound + 1;
+        }
+    }
+}
+
+/*
 private int GetMoves(String name) {
     if (!IsKnownPlayer(name)) return 99;
     lock (fKnownPlayers) {
         return fKnownPlayers[name].MovesRound;
     }
 }
+*/
 
 private void IncrementTotal()
 {
@@ -3226,6 +3368,18 @@ private void GatherProconGoodies() {
 }
 
 
+private PlayerModel GetPlayer(String name) {
+    if (String.IsNullOrEmpty(name)) return null;
+    PlayerModel p = null;
+    lock (fKnownPlayers) {
+        if (!fKnownPlayers.TryGetValue(name, out p)) {
+            return null;
+        }
+    }
+    return p;
+}
+
+
 private void LogStatus() {
     
     String tm = fTickets[1] + "/" + fTickets[2];
@@ -3240,7 +3394,7 @@ private void LogStatus() {
 
     if (!IsModelInSync()) DebugWrite("^bStatus^n: fMoving = " + fMoving.Count + ", fReassigned = " + fReassigned.Count, 3);
 
-    DebugWrite("^bStatus^n: " + fReassignedRound + " reassigned, " + fBalancedRound + " balanced, " + fUnstackedRound + " unstacked, " + fUnswitchedRound + " unswitched, " + fExcludedRound + " excluded, " + fExemptRound + " exempt, " + fFailedRound + " failed; of " + fTotalRound + " TOTAL", 3);
+    DebugWrite("^bStatus^n: " + fReassignedRound + " reassigned, " + fBalancedRound + " balanced, " + fUnstackedRound + " unstacked, " + fUnswitchedRound + " unswitched, " + fExcludedRound + " excluded, " + fExemptRound + " exempted, " + fFailedRound + " failed; of " + fTotalRound + " TOTAL", 3);
     
     if (IsSQDM()) {
         DebugWrite("^bStatus^n: Team counts = " + fTeam1.Count + "(A) vs " + fTeam2.Count + "(B) vs " + fTeam3.Count + "(C) vs " + fTeam4.Count + "(D), with " + fUnassigned.Count + " unassigned", 3);
