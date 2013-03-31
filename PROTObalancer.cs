@@ -2279,7 +2279,7 @@ private void KillUpdate(String killer, String victim) {
         int fromTeam = 0;
         int level = (GetTeamDiff(ref fromTeam, ref toTeam) > MaxDiff()) ? DUMMY : 8;
 
-        DebugWrite("^9STATS: ^b" + vn + "^n [T: " + team + ", S:" + score + ", K:" + kills + ", D:" + deaths + ", KDR: " + kdr.ToString("F2") + ", SPM: " + spm.ToString("F0") + ", TIR: " + sTIR + "]", level);
+        DebugWrite("^9STATS: ^b" + vn + "^n [T:" + team + ", S:" + score + ", K:" + kills + ", D:" + deaths + ", KDR:" + kdr.ToString("F2") + ", SPM:" + spm.ToString("F0") + ", TIR: " + sTIR + "]", level);
     }
 }
 
@@ -3122,7 +3122,7 @@ private void ListPlayersLoop() {
 
 private void ScheduleListPlayers(double delay) {
     ListPlayersRequest r = new ListPlayersRequest(delay, fListPlayersTimestamp);
-    DebugWrite("^9Scheduling listPlayers no later than " + r.MaxDelay  + " seconds from " + r.LastUpdate.ToString("HH:mm:ss"), 5);
+    DebugWrite("^9Scheduling listPlayers no sooner than " + r.MaxDelay  + " seconds from " + r.LastUpdate.ToString("HH:mm:ss"), 5);
     lock (fListPlayersQ) {
         fListPlayersQ.Enqueue(r);
         Monitor.Pulse(fListPlayersQ);
