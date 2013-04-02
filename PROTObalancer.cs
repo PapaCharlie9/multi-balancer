@@ -2853,6 +2853,7 @@ private void ResetRound() {
     fExemptRound = 0;
     fFailedRound = 0;
     fTotalRound = 0;
+    fReassignedRound = 0;
 }
 
 private bool IsSQDM() {
