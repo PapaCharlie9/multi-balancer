@@ -1478,7 +1478,7 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
              * event, if it exists.
              */
             if (fPendingTeamChange.ContainsKey(soldierName)) {
-                // This is an admin move in correct order, ignore it
+                // This is an admin move in correct order, do not treat it as a team switch
                 fPendingTeamChange.Remove(soldierName);
                 DebugWrite("Moved by admin: ^b" + soldierName + "^n to team " + teamId, 6);
                 ProvisionalIncrementMoves(soldierName);
@@ -2193,14 +2193,20 @@ private void UpdatePlayerTeam(String name, int team) {
             isKnown = fKnownPlayers.ContainsKey(name);
         }
         if (!isKnown) {
-            ConsoleDebug(" UpdatePlayerTeam(" + name + ", " + team + ") not known!");
+            ConsoleDebug("UpdatePlayerTeam(" + name + ", " + team + ") not known!");
             return;
+        }
+        lock (fAllPlayers) {
+            fAllPlayers.Add(name);
         }
     }
     
     PlayerModel m = null;
     lock (fKnownPlayers) {
-        m = fKnownPlayers[name];
+        if (!fKnownPlayers.TryGetValue(name, out m)) {
+            ConsoleDebug("UpdatePlayerTeam(" + name + ", " + team + ") no model for player!");
+            return;            
+        }
     }
     
     if (m.Team != team) {
@@ -2391,9 +2397,14 @@ private void FinishMoveImmediate(String name, int team) {
         }
     }
     if (move != null) {
+        // MB move for balance/unstacking/unswitching
         Yell(move.Name, move.YellAfter);
         Chat(move.Name, move.ChatAfter);
         IncrementTotal();
+    } else {
+        // Some other admin.movePlayer, so update to account for it
+        UpdatePlayerTeam(name, team);
+        UpdateTeams();
     }
 }
 
