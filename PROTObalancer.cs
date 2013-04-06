@@ -617,7 +617,7 @@ public PROTObalancer() {
 
     ShowInLog = String.Empty;
     LogChat = true;
-    EnableLoggingOnlyMode = false;
+    EnableLoggingOnlyMode = true; // TBD false
 }
 
 public PROTObalancer(PresetItems preset) : this() {
@@ -765,7 +765,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "0.0.0.7";
+    return "0.0.0.8";
 }
 
 public String GetPluginAuthor() {
@@ -2341,7 +2341,7 @@ private void KillUpdate(String killer, String victim) {
         String vn = (!String.IsNullOrEmpty(tag)) ? "[" + tag + "]" + victim : victim;
         int toTeam = 0;
         int fromTeam = 0;
-        int level = (GetTeamDiff(ref fromTeam, ref toTeam) > MaxDiff()) ? DUMMY : 8;
+        int level = (GetTeamDifference(ref fromTeam, ref toTeam) > MaxDiff()) ? DUMMY : 8;
 
         DebugWrite("^9STATS: ^b" + vn + "^n [T:" + team + ", S:" + score + ", K:" + kills + ", D:" + deaths + ", KDR:" + kdr.ToString("F2") + ", SPM:" + spm.ToString("F0") + ", TIR: " + sTIR + "]", level);
     }
@@ -2364,8 +2364,10 @@ private void StartMoveImmediate(MoveInfo move, bool sendMessages) {
         if (!fMoving.ContainsKey(move.Name)) fMoving[move.Name] = move;
     }
     // Do the move
-    // ServerCommand("admin.movePlayer", ...
-    // ScheduleListPlayers(10);
+    if (!EnableLoggingOnlyMode) {
+        ServerCommand("admin.movePlayer", move.Destination.ToString(), "0", "false"); // TBD, assign to squad also
+        ScheduleListPlayers(10);
+    }
     String r = null;
     switch (move.Reason) {
         case ReasonFor.Balance: r = " for balance"; break;
@@ -2436,8 +2438,12 @@ public void MoveLoop() {
             if (!fIsEnabled) return;
 
             // Make sure player is dead
-            // ServerCommand("admin.killPlayer", ...
-            DebugWrite("^b^1ADMIN KILL^0 " + move.Name, DUMMY);
+            if (!EnableLoggingOnlyMode) {
+                ServerCommand("admin.killPlayer", move.Name);
+                DebugWrite("^b^1ADMIN KILL^0 " + move.Name, DUMMY);
+            } else {
+                DebugWrite("^9(SIMULATING) ^b^1ADMIN KILL^0 " + move.Name, DUMMY);
+            }
 
             // Pause
             Thread.Sleep(1*1000);
@@ -2522,12 +2528,16 @@ private void ValidateMove(String name) {
 private void Chat(String who, String what) {
     String doing = null;
     if (QuietMode) {
-        // ServerCommand("admin.say", ... player
+        if (!EnableLoggingOnlyMode) {
+            ServerCommand("admin.say", what, "player", who); // chat player only
+        }
         ProconChatPlayer(who, what);
         doing = (EnableLoggingOnlyMode || DUMMY == 2) ? "^9(SIMULATING) ^b^1CHAT^0^n to ^b" : "^b^1CHAT^0^n to ^b";
         DebugWrite(doing + who + "^n: " + what, DUMMY);
     } else {
-        // ServerCommand("admin.say", ... all
+        if (!EnableLoggingOnlyMode) {
+            ServerCommand("admin.say", what); // chat all
+        }
         ProconChat(what);
         doing = (EnableLoggingOnlyMode || DUMMY == 2) ? "^9(SIMULATING) ^b^1CHAT^0^n to all: " : "^b^1CHAT^0^n to all: ";
         DebugWrite(doing + what, DUMMY);
@@ -2537,7 +2547,9 @@ private void Chat(String who, String what) {
 private void Yell(String who, String what) {
     String doing = null;
     if (!QuietMode) {
-        // ServerCommand("admin.yell", ... player
+        if (!EnableLoggingOnlyMode) {
+            ServerCommand("admin.yell", what, "player", who); // yell to player
+        }
         doing = (EnableLoggingOnlyMode || DUMMY == 2) ? "^9(SIMULATING) ^b^1YELL^0^n to ^b" : "^b^1YELL^0^n to ^b";
         DebugWrite(doing + who + "^n: " + what, DUMMY);
     }
@@ -2912,7 +2924,7 @@ private void ClearTeams() {
 }
 
 // Negative return value means toTeam is larger than fromTeam
-private int GetTeamDiff(ref int fromTeam, ref int toTeam) {
+private int GetTeamDifference(ref int fromTeam, ref int toTeam) {
     // 0 vs 0 means assign the max team to fromTeam and min team to toTeam and return the difference
     if (fromTeam < 0 || fromTeam > 4) return 0;
     if (toTeam < 0 || toTeam > 4) return 0;
@@ -2962,12 +2974,12 @@ private int GetTeamDiff(ref int fromTeam, ref int toTeam) {
 }
 
 
-private void AnalyzeTeams(out int diff, out int biggestTeam, out int smallestTeam, out int winningTeam, out int losingTeam) {
+private void AnalyzeTeams(out int maxDiff, out int biggestTeam, out int smallestTeam, out int winningTeam, out int losingTeam) {
     biggestTeam = 0;
     smallestTeam = 0;
     winningTeam = 0;
     losingTeam = 0;
-    diff = 0;
+    maxDiff = 0;
 
     if (fServerInfo == null) return;
 
@@ -2992,7 +3004,7 @@ private void AnalyzeTeams(out int diff, out int biggestTeam, out int smallestTea
     TeamRoster big = teams[teams.Count-1];
     smallestTeam = small.Team;
     biggestTeam = big.Team;
-    diff = big.Roster.Count - small.Roster.Count;
+    maxDiff = big.Roster.Count - small.Roster.Count;
 
     List<TeamScore> byScore = new List<TeamScore>();
     if (fServerInfo.TeamScores == null || fServerInfo.TeamScores.Count == 0) return;
@@ -3010,7 +3022,7 @@ private void AnalyzeTeams(out int diff, out int biggestTeam, out int smallestTea
     losingTeam = byScore[byScore.Count-1].TeamID;
 }
 
-private int GetTeamDifference(int fromTeam) {
+private int DifferenceFromSmallest(int fromTeam) {
     int biggestTeam = 0;
     int smallestTeam = 0;
     int winningTeam = 0;
@@ -3027,13 +3039,16 @@ private int GetTeamDifference(int fromTeam) {
     }
 
     if (!IsSQDM()) {
-        AnalyzeTeams(out diff, out biggestTeam, out smallestTeam, out winningTeam, out losingTeam);
-        return (teams[biggestTeam].Roster.Count - teams[smallestTeam].Roster.Count);
+        if (fromTeam < 1 || fromTeam > 2) return 0;
+    } else {
+        if (fromTeam < 1 || fromTeam > 4) return 0;
     }
 
-    // Otherwise do SQDM
-    if (fromTeam < 1 || fromTeam > 4) return 0;
-    return(teams[fromTeam-1].Roster.Count - teams[smallestTeam].Roster.Count);
+    AnalyzeTeams(out diff, out biggestTeam, out smallestTeam, out winningTeam, out losingTeam);
+
+    if (fromTeam == smallestTeam || smallestTeam < 1 || smallestTeam > teams.Count) return 0;
+
+    return(teams[fromTeam-1].Roster.Count - teams[smallestTeam-1].Roster.Count);
 }
 
 
@@ -3071,11 +3086,24 @@ private int ToTeam(String name, int fromTeam, out int diff, out bool mustMove) {
 
     AnalyzeTeams(out diff, out biggestTeam, out smallestTeam, out winningTeam, out losingTeam);
 
+    // diff is maximum difference between any two teams
+
     if (diff <= MaxDiff()) return 0;
+
+    int targetTeam = smallestTeam;
+    
+    // Special handling for SQDM, when small teams are equal, pick the lowest numbered ID
+    if (IsSQDM()) {
+        if (targetTeam == 4 && fTeam3.Count == fTeam4.Count) targetTeam = 3;
+        if (targetTeam == 3 && fTeam2.Count == fTeam3.Count) targetTeam = 2;
+    }
+
+    // recompute diff to be difference between fromTeam and target team
+    diff = GetTeamDifference(ref fromTeam, ref targetTeam);
 
     // TBD, for SQDM, based on name, might need to take into account dispersal by Rank, etc.
     // mustMove set to True if dispersal policy (etc) must override other policies
-    return smallestTeam;
+    return targetTeam;
 }
 
 private int ToSquad(String name, int team) {
