@@ -58,6 +58,10 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     public enum ReasonFor { Balance, Unstack, Unswitch };
 
+    public enum Phase {Early, Mid, Late};
+
+    public enum Population {Low, Medium, High};
+
     /* Constants & Statics */
 
     public const int DUMMY = 2;
@@ -122,8 +126,8 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     CheckTeamStackingAfterFirstMinutes = 5;
                     DefinitionOfHighPopulationForPlayers = 14;
                     DefinitionOfLowPopulationForPlayers = 8;
-                    DefinitionOfEarlyPhase = 80;
-                    DefinitionOfLatePhase = 20;
+                    DefinitionOfEarlyPhase = 10;
+                    DefinitionOfLatePhase = 40;
                     break;
                 case "Superiority":
                     MaxPlayers = 24;
@@ -138,8 +142,8 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     CheckTeamStackingAfterFirstMinutes = 5;
                     DefinitionOfHighPopulationForPlayers = 48;
                     DefinitionOfLowPopulationForPlayers = 16;
-                    DefinitionOfEarlyPhase = 80;
-                    DefinitionOfLatePhase = 20;
+                    DefinitionOfEarlyPhase = 20;
+                    DefinitionOfLatePhase = 80;
                     break;
                 case "Squad Rush":
                     MaxPlayers = 8;
@@ -369,7 +373,8 @@ private List<String> fReservedSlots = null;
 private bool fGotVersion = false;
 private int fServerUptime = -1;
 private bool fServerCrashed = false; // because fServerUptime >  fServerInfo.ServerUptime
-private bool fRevalidate = false;
+private DateTime fLastBalancedTimestamp = DateTime.MinValue;
+private DateTime fLastUnbalancedTimestamp = DateTime.MinValue;
 
 // Data model
 private List<String> fAllPlayers = null;
@@ -391,6 +396,7 @@ private DateTime fListPlayersTimestamp;
 private Queue<ListPlayersRequest> fListPlayersQ = null;
 private Dictionary<String,String> fFriendlyMaps = null;
 private Dictionary<String,String> fFriendlyModes = null;
+private double fMaxTickets = -1;
 
 // Operational statistics
 private int fReassignedRound = 0;
@@ -422,6 +428,7 @@ public bool EnableWhitelistingOfReservedSlotsList;
 public String[] Whitelist;
 public String[] DisperseEvenlyList;
 public PresetItems Preset;
+public double MaximumPassiveBalanceSeconds;
 
 public bool OnWhitelist;
 public bool TopScorers;
@@ -491,7 +498,6 @@ public PROTObalancer() {
     fGotVersion = false;
     fServerUptime = 0;
     fServerCrashed = false;
-    fRevalidate = false;
 
     fBalancedRound = 0;
     fUnstackedRound = 0;
@@ -546,6 +552,9 @@ public PROTObalancer() {
     fTickets = new int[5]{0,0,0,0,0};
     fFriendlyMaps = new Dictionary<String,String>();
     fFriendlyModes = new Dictionary<String,String>();
+    fMaxTickets = -1;
+    fLastBalancedTimestamp = DateTime.MinValue;
+    fLastUnbalancedTimestamp = DateTime.MinValue;
     
     /* Settings */
 
@@ -564,6 +573,7 @@ public PROTObalancer() {
     Whitelist = new String[] {"[-- name, tag, or EA_GUID --]"};
     DisperseEvenlyList = new String[] {"[-- name, tag, or EA_GUID --]"};
     Preset = PresetItems.Standard;
+    MaximumPassiveBalanceSeconds = 3*60;
     
     /* ===== SECTION 2 - Exclusions ===== */
     
@@ -837,6 +847,8 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         lstReturn.Add(new CPluginVariable("1 - Settings|Enable @#!recruit Command", EnablerecruitCommand.GetType(), EnablerecruitCommand));
 */
 
+        lstReturn.Add(new CPluginVariable("1 - Settings|Maximum Passive Balance Seconds", MaximumPassiveBalanceSeconds.GetType(), MaximumPassiveBalanceSeconds));
+        
         lstReturn.Add(new CPluginVariable("1 - Settings|Enable Whitelisting Of Reserved Slots List", EnableWhitelistingOfReservedSlotsList.GetType(), EnableWhitelistingOfReservedSlotsList));
 
         lstReturn.Add(new CPluginVariable("1 - Settings|Whitelist", Whitelist.GetType(), Whitelist));
@@ -1033,7 +1045,7 @@ public void SetPluginVariable(String strVariable, String strValue) {
                 fieldType = typeof(Speed[]);
                 try {
                     // Parse the list into an array of enum vals
-                    Speed[] items = PROTObalancerUtils.ParseSpeedArray(strValue); // also validates
+                    Speed[] items = PROTObalancerUtils.ParseSpeedArray(this, strValue); // also validates
                     field.SetValue(this, items);
                 } catch (Exception e) {
                     ConsoleException(e.ToString());
@@ -1114,6 +1126,10 @@ public void SetPluginVariable(String strVariable, String strValue) {
             ShowInLog = String.Empty;
         }
 
+        if (MaximumPassiveBalanceSeconds < 120) {
+            ConsoleWarn("Maximum Passive Balance Seconds must be 120 or greater!");
+            MaximumPassiveBalanceSeconds = 120;
+        }
                 
         /*
         switch (perModeSetting) {
@@ -1690,10 +1706,17 @@ public override void OnServerInfo(CServerInfo serverInfo) {
         fServerUptime = serverInfo.ServerUptime;
 
         int i = 1;
+        double maxTickets = 0;
         if (fServerInfo.TeamScores != null) foreach (TeamScore ts in fServerInfo.TeamScores) {
             fTickets[i] = ts.Score;
+            if (ts.Score > maxTickets) maxTickets = ts.Score;
             i = i + 1;
             if (i >= fTickets.Length) break;
+        }
+
+        if (fMaxTickets == -1) {
+            fMaxTickets = maxTickets;
+            DebugWrite("ServerInfo update: fMaxTickets = " + fMaxTickets.ToString("F0"), 3);
         }
     } catch (Exception e) {
         ConsoleException(e.ToString());
@@ -1743,6 +1766,9 @@ public override void OnLevelLoaded(String mapFileName, String Gamemode, int roun
             fGameState = GameState.RoundStarting;
             DebugWrite("^b^3Game state = " + fGameState, 6);  
         }
+
+        fMaxTickets = -1; // flag to pay attention to next serverInfo
+        ServerCommand("serverInfo");
     } catch (Exception e) {
         ConsoleException(e.ToString());
     }
@@ -1814,19 +1840,29 @@ public override void OnReservedSlotsList(List<String> lstSoldierNames) {
 
 
 private void BalanceAndUnstack(String name) {
+    DateTime now = DateTime.Now;
+
     /* Sanity checks */
 
-    if (fServerInfo == null) return;
+    if (fServerInfo == null) {
+        fLastBalancedTimestamp = now;
+        fLastUnbalancedTimestamp = now;
+        return;
+    }
 
     int totalPlayerCount = TotalPlayerCount;
 
     if (totalPlayerCount < ((IsSQDM()) ? 8 : 6)) {
-        if (DebugLevel > 6) DebugBalance("Not enough players in server, minimum is " + ((IsSQDM()) ? 8 : 6));
+        if (DebugLevel >= 7) DebugBalance("Not enough players in server, minimum is " + ((IsSQDM()) ? 8 : 6));
+        fLastBalancedTimestamp = now;
+        fLastUnbalancedTimestamp = now;
         return;
     }
 
     if (totalPlayerCount >= (MaximumServerSize-1)) {
-        if (DebugLevel > 6) DebugBalance("Server is full, no balancing or unstacking will be attempted!");
+        if (DebugLevel >= 7) DebugBalance("Server is full, no balancing or unstacking will be attempted!");
+        fLastBalancedTimestamp = now;
+        fLastUnbalancedTimestamp = now;
         return;
     }
 
@@ -1872,10 +1908,25 @@ private void BalanceAndUnstack(String name) {
         return;
     }
 
+    /* Per-mode settings */
+    Speed balanceSpeed = GetBalanceSpeed(perMode);
+    double unstackTicketRatio = GetUnstackTicketRatio(perMode);
+
+    // Adjust for duration of balance active
+    if (balanceSpeed == Speed.Adaptive
+      && fLastUnbalancedTimestamp != DateTime.MinValue && fLastBalancedTimestamp != DateTime.MinValue 
+      && fLastUnbalancedTimestamp.CompareTo(fLastBalancedTimestamp) > 0) {
+        double secs = fLastUnbalancedTimestamp.Subtract(fLastBalancedTimestamp).TotalSeconds;
+        if (secs > MaximumPassiveBalanceSeconds) {
+            DebugBalance("^8^bBalancing taking too long (" + secs + " secs)!^n^0 Forcing to Fast balance speed.");
+            balanceSpeed = Speed.Fast;
+        }
+    }
+
     /* Exclusions */
 
     // Exclude if on Whitelist or Reserved Slots if enabled
-    if (OnWhitelist) {
+    if (balanceSpeed != Speed.Fast && OnWhitelist) {
         List<String> vip = new List<String>(Whitelist);
         if (EnableWhitelistingOfReservedSlotsList) vip.AddRange(fReservedSlots);
         /*
@@ -1924,7 +1975,7 @@ private void BalanceAndUnstack(String name) {
 
     // Exclude if TopScorers enabled and a top scorer on the team
     int topPlayersPerTeam = 0;
-    if (TopScorers) {
+    if (balanceSpeed != Speed.Fast && TopScorers) {
         if (totalPlayerCount < 22) {
             topPlayersPerTeam = 1;
         } else if (totalPlayerCount > 42) {
@@ -1957,9 +2008,17 @@ private void BalanceAndUnstack(String name) {
     
     int toTeam = ToTeam(name, player.Team, out diff, out mustMove); // take into account dispersal by Rank, etc.
 
-    if (diff > MaxDiff()) DebugBalance("Autobalancing because difference of " + diff + " is greater than " + MaxDiff());
+    bool balanceActive = false;
 
-    while (diff > MaxDiff() && toTeam != 0) {
+    while (balanceSpeed != Speed.Stop && diff > MaxDiff() && toTeam != 0) {
+        DebugBalance("Autobalancing because difference of " + diff + " is greater than " + MaxDiff());
+        balanceActive = true;
+        double abTime = fLastUnbalancedTimestamp.Subtract(fLastBalancedTimestamp).TotalSeconds;
+        if (abTime > 0) {
+            DebugBalance("^2^bAutobalance has been active for " + abTime.ToString("F0") + " seconds!");
+        }
+        fLastUnbalancedTimestamp = now;
+        if (DebugLevel >= 8) DebugBalance("fLastUnbalancedTimestamp = " + fLastUnbalancedTimestamp.ToString("HH:mm:ss"));
 
         /* Exemptions */
 
@@ -1979,7 +2038,7 @@ private void BalanceAndUnstack(String name) {
             break;
         }
 
-        // if (!mustMove && phase/population for this mode indicates unstacking should occur) { // TBD
+        if (!mustMove && balanceSpeed != Speed.Fast) { // TBD
             if (DebugLevel > 5) DebugBalance(strongMsg);
             // don't move weak player to losing team
             if (!isStrong && toTeam == losingTeam) {
@@ -1996,7 +2055,7 @@ private void BalanceAndUnstack(String name) {
                 IncrementTotal();
                 break;
            }
-        // }
+        }
 
 
         // TBD
@@ -2018,6 +2077,15 @@ private void BalanceAndUnstack(String name) {
             OnPlayerMovedByAdmin(name, toTeam, 0, false); // simulate reverse order
         }
         break;
+    }
+
+    if (!balanceActive) {
+        double dur = fLastUnbalancedTimestamp.Subtract(fLastBalancedTimestamp).TotalSeconds;
+        if (dur > 0) {
+            DebugBalance("^2^bAutobalance was active for " + dur.ToString("F0") + " seconds!");
+        }
+        fLastBalancedTimestamp = now;
+        if (DebugLevel >= 8) DebugBalance("fLastBalancedTimestamp = " + fLastBalancedTimestamp.ToString("HH:mm:ss"));
     }
 
     /* Unstack */
@@ -2566,7 +2634,6 @@ private void ProconChatPlayer(String who, String what) {
 private void GarbageCollectKnownPlayers()
 {
     int n = 0;
-    bool revalidate = false;
     lock (fKnownPlayers) {
         List<String> garbage = new List<String>();
 
@@ -2596,11 +2663,170 @@ private void GarbageCollectKnownPlayers()
     }
 }
 
+private Phase GetPhase(PerModeSettings perMode, bool verbose) {
+    if (fServerInfo == null | fServerInfo.TeamScores == null || fServerInfo.TeamScores.Count == 0) return Phase.Mid;
+
+    double earlyTickets = perMode.DefinitionOfEarlyPhase;
+    double lateTickets = perMode.DefinitionOfLatePhase;
+    Phase phase = Phase.Early;
+
+    double tickets = -1;
+    double goal = 0;
+    bool countDown = true;
+
+    if (Regex.Match(fServerInfo.GameMode, @"(?:TeamDeathMatch|SquadDeathMatch)").Success) {
+        countDown = false;
+        goal = fServerInfo.TeamScores[0].WinningScore;
+    }
+
+    foreach (TeamScore ts in fServerInfo.TeamScores) {
+        if (tickets == -1) {
+            tickets = ts.Score;
+        } else {
+            if (countDown) {
+                if (ts.Score < tickets) {
+                    tickets = ts.Score;
+                }
+            } else {
+                if (ts.Score > tickets) {
+                    tickets = ts.Score;
+                }
+            }
+        }
+    }
+
+    if (countDown) {
+        if (tickets >= earlyTickets) {
+            phase = Phase.Early;
+        } else if (tickets <= lateTickets) {
+            phase = Phase.Late;
+        } else {
+            phase = Phase.Mid;
+        }
+    } else {
+        // count up
+        if (tickets <= earlyTickets) {
+            phase = Phase.Early;
+        } else if (tickets >= lateTickets) {
+            phase = Phase.Late;
+        } else {
+            phase = Phase.Mid;
+        }
+    }
+
+    if (verbose && DebugLevel >= 8) DebugBalance("Phase: " + phase + " (" + tickets + " of " + fMaxTickets + " to " + goal + ", " + RemainingTicketPercent(tickets, goal).ToString("F0") + "%)");
+
+    return phase;
+}
+
+private Population GetPopulation(PerModeSettings perMode, bool verbose) {
+    if (fServerInfo == null | fServerInfo.TeamScores == null || fServerInfo.TeamScores.Count == 0) return Population.Medium;
+
+    double highPop = perMode.DefinitionOfHighPopulationForPlayers;
+    double lowPop = perMode.DefinitionOfLowPopulationForPlayers;
+    Population pop = Population.Low;
+
+    int totalPop = TotalPlayerCount;
+
+    if (totalPop <= lowPop) {
+        pop = Population.Low;
+    } else if (totalPop >= highPop) {
+        pop = Population.High;
+    } else {
+        pop = Population.Medium;
+    }
+
+    if (verbose && DebugLevel >= 8) DebugBalance("Population: " + pop + " (" + totalPop + " [" + lowPop + " - " + highPop + "])");
+
+    return pop;
+}
+
+private double GetUnstackTicketRatio(PerModeSettings perMode) {
+    Phase phase = GetPhase(perMode, false);
+    Population pop = GetPopulation(perMode, false);
+    double unstackTicketRatio = 0;
+
+    switch (phase) {
+        case Phase.Early:
+            switch (pop) {
+                case Population.Low: unstackTicketRatio = EarlyPhaseTicketPercentageToUnstack[0]; break;
+                case Population.Medium: unstackTicketRatio = EarlyPhaseTicketPercentageToUnstack[1]; break;
+                case Population.High: unstackTicketRatio = EarlyPhaseTicketPercentageToUnstack[2]; break;
+                default: break;
+            }
+            break;
+        case Phase.Mid:
+            switch (pop) {
+                case Population.Low: unstackTicketRatio = MidPhaseTicketPercentageToUnstack[0]; break;
+                case Population.Medium: unstackTicketRatio = MidPhaseTicketPercentageToUnstack[1]; break;
+                case Population.High: unstackTicketRatio = MidPhaseTicketPercentageToUnstack[2]; break;
+                default: break;
+            }
+            break;
+        case Phase.Late:
+            switch (pop) {
+                case Population.Low: unstackTicketRatio = LatePhaseTicketPercentageToUnstack[0]; break;
+                case Population.Medium: unstackTicketRatio = LatePhaseTicketPercentageToUnstack[1]; break;
+                case Population.High: unstackTicketRatio = LatePhaseTicketPercentageToUnstack[2]; break;
+                default: break;
+            }
+            break;
+        default: break;
+    }
+    return (unstackTicketRatio/100.0);
+}
+
+private Speed GetBalanceSpeed(PerModeSettings perMode) {
+    Phase phase = GetPhase(perMode, true);
+    Population pop = GetPopulation(perMode, true);
+    Speed speed = Speed.Adaptive;
+
+    switch (phase) {
+        case Phase.Early:
+            switch (pop) {
+                case Population.Low: speed = EarlyPhaseBalanceSpeed[0]; break;
+                case Population.Medium: speed = EarlyPhaseBalanceSpeed[1]; break;
+                case Population.High: speed = EarlyPhaseBalanceSpeed[2]; break;
+                default: break;
+            }
+            break;
+        case Phase.Mid:
+            switch (pop) {
+                case Population.Low: speed = MidPhaseBalanceSpeed[0]; break;
+                case Population.Medium: speed = MidPhaseBalanceSpeed[1]; break;
+                case Population.High: speed = MidPhaseBalanceSpeed[2]; break;
+                default: break;
+            }
+            break;
+        case Phase.Late:
+            switch (pop) {
+                case Population.Low: speed = LatePhaseBalanceSpeed[0]; break;
+                case Population.Medium: speed = LatePhaseBalanceSpeed[1]; break;
+                case Population.High: speed = LatePhaseBalanceSpeed[2]; break;
+                default: break;
+            }
+            break;
+        default: break;
+    }
+    return speed;
+}
+
+
+
+
+
+
+
+
+
+
 
 
 
 
 /* ======================== SUPPORT FUNCTIONS ============================= */
+
+
 
 
 
@@ -2629,32 +2855,32 @@ private String FormatMessage(String msg, MessageType type) {
 }
 
 
-private void LogWrite(String msg)
+public void LogWrite(String msg)
 {
     this.ExecuteCommand("procon.protected.pluginconsole.write", msg);
 }
 
-private void ConsoleWrite(String msg, MessageType type)
+public void ConsoleWrite(String msg, MessageType type)
 {
     LogWrite(FormatMessage(msg, type));
 }
 
-private void ConsoleWrite(String msg)
+public void ConsoleWrite(String msg)
 {
     ConsoleWrite(msg, MessageType.Normal);
 }
 
-private void ConsoleWarn(String msg)
+public void ConsoleWarn(String msg)
 {
     ConsoleWrite(msg, MessageType.Warning);
 }
 
-private void ConsoleError(String msg)
+public void ConsoleError(String msg)
 {
     ConsoleWrite(msg, MessageType.Error);
 }
 
-private void ConsoleException(String msg)
+public void ConsoleException(String msg)
 {
     if (DebugLevel >= 3) ConsoleWrite(msg, MessageType.Exception);
 }
@@ -2664,12 +2890,12 @@ public void DebugWrite(String msg, int level)
     if (DebugLevel >= level) ConsoleWrite(msg, MessageType.Normal);
 }
 
-private void ConsoleDebug(String msg)
+public void ConsoleDebug(String msg)
 {
     if (DebugLevel >= 3) ConsoleWrite(msg, MessageType.Debug);
 }
 
-private void ConsoleDump(String msg)
+public void ConsoleDump(String msg)
 {
     ConsoleWrite("^b[Show In Log]^n ^5" + msg);
 }
@@ -3419,6 +3645,15 @@ private PlayerModel GetPlayer(String name) {
     return p;
 }
 
+private double RemainingTicketPercent(double tickets, double goal) {
+    if (goal == 0) {
+        return ((tickets / fMaxTickets) * 100.0);
+    }
+    return (((goal - tickets) / goal) * 100.0);
+}
+
+
+
 
 private void LogStatus() {
     
@@ -3431,7 +3666,16 @@ private void LogStatus() {
 
     DebugWrite("^bStatus^n: Plugin state = " + fPluginState + ", game state = " + fGameState + ", Enable Logging Only Mode = " + EnableLoggingOnlyMode, 4);
     DebugWrite("^bStatus^n: Map = " + FriendlyMap + ", mode = " + FriendlyMode + ", time in round = " + rt + ", tickets = " + tm, 4);
-
+    if (fPluginState == PluginState.Active) {
+        double secs = fLastUnbalancedTimestamp.Subtract(fLastBalancedTimestamp).TotalSeconds;
+        PerModeSettings perMode = null;
+        String simpleMode = String.Empty;
+        if (fModeToSimple.TryGetValue(fServerInfo.GameMode, out simpleMode) 
+          && fPerMode.TryGetValue(simpleMode, out perMode)) {
+            String activeTime = (secs > 0) ? "^1active (" + secs.ToString("F0") + " secs)^0" : "not active";
+            DebugWrite("^bStatus^n: Autobalance is " + activeTime + ", phase = " + GetPhase(perMode, false) + ", population = " + GetPopulation(perMode, false), 4);
+        }
+    }
     if (!IsModelInSync()) DebugWrite("^bStatus^n: fMoving = " + fMoving.Count + ", fReassigned = " + fReassigned.Count, 3);
 
     DebugWrite("^bStatus^n: " + fReassignedRound + " reassigned, " + fBalancedRound + " balanced, " + fUnstackedRound + " unstacked, " + fUnswitchedRound + " unswitched, " + fExcludedRound + " excluded, " + fExemptRound + " exempted, " + fFailedRound + " failed; of " + fTotalRound + " TOTAL", 3);
@@ -3575,11 +3819,11 @@ static class PROTObalancerUtils {
         return nums;
     }
 
-    public static PROTObalancer.Speed[] ParseSpeedArray(String s) {
+    public static PROTObalancer.Speed[] ParseSpeedArray(PROTObalancer plugin, String s) {
         PROTObalancer.Speed[] speeds = new PROTObalancer.Speed[3] {
-            PROTObalancer.Speed.Click_Here_For_Speed_Names,
-            PROTObalancer.Speed.Click_Here_For_Speed_Names,
-            PROTObalancer.Speed.Click_Here_For_Speed_Names
+            PROTObalancer.Speed.Adaptive,
+            PROTObalancer.Speed.Adaptive,
+            PROTObalancer.Speed.Adaptive
         };
         if (String.IsNullOrEmpty(s)) return speeds;
         if (!s.Contains(",")) return speeds;
@@ -3589,8 +3833,8 @@ static class PROTObalancerUtils {
             try {
                 speeds[i] = (PROTObalancer.Speed)Enum.Parse(typeof(PROTObalancer.Speed), strs[i]);
             } catch (Exception e) {
-                // TBD log an error about a bogus value?
-                speeds[i] = PROTObalancer.Speed.Click_Here_For_Speed_Names;
+                plugin.ConsoleWarn("Bad balance speed value: " + strs[i]);
+                speeds[i] = PROTObalancer.Speed.Adaptive;
             }
         }
         return speeds;
