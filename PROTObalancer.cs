@@ -408,6 +408,7 @@ private int fExcludedRound = 0;
 private int fExemptRound = 0;
 private int fFailedRound = 0;
 private int fTotalRound = 0;
+private bool fBalanceIsActive = false;
 
 // Settings support
 private Dictionary<int, Type> fEasyTypeDict = null;
@@ -507,6 +508,7 @@ public PROTObalancer() {
     fExemptRound = 0;
     fFailedRound = 0;
     fTotalRound = 0;
+    fBalanceIsActive = false;
 
     fMoveThread = null;
     fListPlayersThread = null;
@@ -1896,6 +1898,9 @@ private void BalanceAndUnstack(String name) {
 
     /* Sanity checks */
 
+    if (fLastBalancedTimestamp == DateTime.MinValue) fLastBalancedTimestamp = now;
+    if (fLastUnbalancedTimestamp == DateTime.MinValue) fLastUnbalancedTimestamp = now;
+
     if (fServerInfo == null) {
         fLastBalancedTimestamp = now;
         fLastUnbalancedTimestamp = now;
@@ -2050,16 +2055,27 @@ private void BalanceAndUnstack(String name) {
 
     bool mustMove = false;
 
-    int toTeam = ToTeam(name, player.Team, out diff, out mustMove); // take into account dispersal by Rank, etc.
+    int toTeamDiff = 0;
+    int toTeam = ToTeam(name, player.Team, out toTeamDiff, out mustMove); // take into account dispersal by Rank, etc.
 
-    bool balanceActive = false;
+    if (balanceSpeed != Speed.Stop && diff > MaxDiff()) {
+        if (!fBalanceIsActive) DebugBalance("^2^bActivating autobalance!");
+        fBalanceIsActive = true;
+    } else if (fBalanceIsActive) {
+        fBalanceIsActive = false;
+        double dur = now.Subtract(fLastBalancedTimestamp).TotalSeconds;
+        if (fLastBalancedTimestamp == DateTime.MinValue) dur = 0;
+        if (dur > 0) {
+            DebugBalance("^2^bDeactiving autobalance! Was active for " + dur.ToString("F0") + " seconds!");
+        }
+    }
 
-    while (balanceSpeed != Speed.Stop && diff > MaxDiff() && toTeam != 0) {
+    while (fBalanceIsActive && toTeam != 0) {
         DebugBalance("Autobalancing because difference of " + diff + " is greater than " + MaxDiff());
-        balanceActive = true;
         double abTime = fLastUnbalancedTimestamp.Subtract(fLastBalancedTimestamp).TotalSeconds;
+        if (fLastBalancedTimestamp == DateTime.MinValue) abTime = 0;
         if (abTime > 0) {
-            DebugBalance("^2^bAutobalance has been active for " + abTime.ToString("F0") + " seconds!");
+            DebugBalance("^2^bAutobalance has been active for " + abTime.ToString("F1") + " seconds!");
         }
         fLastUnbalancedTimestamp = now;
         if (DebugLevel >= 8) DebugBalance("fLastUnbalancedTimestamp = " + fLastUnbalancedTimestamp.ToString("HH:mm:ss"));
@@ -2123,11 +2139,7 @@ private void BalanceAndUnstack(String name) {
         break;
     }
 
-    if (!balanceActive) {
-        double dur = fLastUnbalancedTimestamp.Subtract(fLastBalancedTimestamp).TotalSeconds;
-        if (dur > 0) {
-            DebugBalance("^2^bAutobalance was active for " + dur.ToString("F0") + " seconds!");
-        }
+    if (!fBalanceIsActive) {
         fLastBalancedTimestamp = now;
         if (DebugLevel >= 8) DebugBalance("fLastBalancedTimestamp = " + fLastBalancedTimestamp.ToString("HH:mm:ss"));
     }
@@ -3080,6 +3092,7 @@ private void Reset() {
     fServerCrashed  = false;
     fFinalStatus = false;
     fMaxTickets = -1;
+    fBalanceIsActive = false;
 }
 
 private void ResetRound() {
@@ -3681,6 +3694,7 @@ private void LogStatus() {
     DebugWrite("^bStatus^n: Map = " + FriendlyMap + ", mode = " + FriendlyMode + ", time in round = " + rt + ", tickets = " + tm, 4);
     if (fPluginState == PluginState.Active) {
         double secs = fLastUnbalancedTimestamp.Subtract(fLastBalancedTimestamp).TotalSeconds;
+        if (fLastBalancedTimestamp == DateTime.MinValue) secs = 0;
         PerModeSettings perMode = null;
         String simpleMode = String.Empty;
         if (fModeToSimple.TryGetValue(fServerInfo.GameMode, out simpleMode) 
@@ -3861,7 +3875,7 @@ static class PROTObalancerUtils {
 <p>For BF3, this plugin does live round team balancing and unstacking for all game modes, including Squad Deathmatch (SQDM).</p>
 
 <h2>THIS IS JUST A PROTOTYPE FOR FEEDBACK!</h2>
-<p>Only new player reassignment is enabled. All other balancing and unstacking features do logging only. If you plan to test this on a live server, <FONT color='#FF0000'><b>DISABLE</b> TrueBalancer Balance Guard or Insane Limits limits that evaluate OnTeamChange or ProconRulz that evaluate on team changes, such as player team unswitching or unstacking.</FONT>. Alternatively, set PROTObalancer's <b>Enable Logging Only Mode</b> to true, which will make new player reassignment do logging only. If you do not do this, the two plugins will conflict with each other and a player might be moved back and forth between teams repeatedly.</p>
+<p>This version of the plugin is capable of doing balancing and reassignment by moving players. <font color=#FF0000>Set PROTObalancer's <b>Enable Logging Only Mode</b> to true</font>, which insures that actions are logged only, not actually applied to your server. If you do not do this, this prototype will conflict with other balancing or player switching plugins and a player might be moved back and forth between teams repeatedly.</p>
 
 <p><font color=#0000FF>The purpose of this prototype is to get feedback about usage and behavior.</font></p>
 
