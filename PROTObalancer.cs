@@ -1879,31 +1879,6 @@ public override void OnReservedSlotsList(List<String> lstSoldierNames) {
 
 
 private void BalanceAndUnstack(String name) {
-    DateTime now = DateTime.Now;
-
-    /* Sanity checks */
-
-    if (fServerInfo == null) {
-        fLastBalancedTimestamp = now;
-        fLastUnbalancedTimestamp = now;
-        return;
-    }
-
-    int totalPlayerCount = TotalPlayerCount;
-
-    if (totalPlayerCount < ((IsSQDM()) ? 8 : 6)) {
-        if (DebugLevel >= 7) DebugBalance("Not enough players in server, minimum is " + ((IsSQDM()) ? 8 : 6));
-        fLastBalancedTimestamp = now;
-        fLastUnbalancedTimestamp = now;
-        return;
-    }
-
-    if (totalPlayerCount >= (MaximumServerSize-1)) {
-        if (DebugLevel >= 7) DebugBalance("Server is full, no balancing or unstacking will be attempted!");
-        fLastBalancedTimestamp = now;
-        fLastUnbalancedTimestamp = now;
-        return;
-    }
 
     /* Useful variables */
 
@@ -1916,6 +1891,36 @@ private void BalanceAndUnstack(String name) {
     int biggestTeam = 0;
     int smallestTeam = 0;
     String strongMsg = String.Empty;
+    int diff = 0;
+    DateTime now = DateTime.Now;
+
+    /* Sanity checks */
+
+    if (fServerInfo == null) {
+        fLastBalancedTimestamp = now;
+        fLastUnbalancedTimestamp = now;
+        return;
+    }
+
+    int totalPlayerCount = TotalPlayerCount;
+
+    if (totalPlayerCount > 0) AnalyzeTeams(out diff, out biggestTeam, out smallestTeam, out winningTeam, out losingTeam);
+
+    if (diff > MaxDiff()) {
+        if (totalPlayerCount < ((IsSQDM()) ? 8 : 6)) {
+            if (DebugLevel >= 7) DebugBalance("Not enough players in server, minimum is " + ((IsSQDM()) ? 8 : 6));
+            fLastBalancedTimestamp = now;
+            fLastUnbalancedTimestamp = now;
+            return;
+        }
+
+        if (totalPlayerCount >= (MaximumServerSize-1)) {
+            if (DebugLevel >= 7) DebugBalance("Server is full, no balancing or unstacking will be attempted!");
+            fLastBalancedTimestamp = now;
+            fLastUnbalancedTimestamp = now;
+            return;
+        }
+    }
 
     /* Pre-conditions */
 
@@ -1952,7 +1957,8 @@ private void BalanceAndUnstack(String name) {
     double unstackTicketRatio = GetUnstackTicketRatio(perMode);
 
     // Adjust for duration of balance active
-    if (balanceSpeed == Speed.Adaptive
+    if (diff > MaxDiff()
+      && balanceSpeed == Speed.Adaptive
       && fLastUnbalancedTimestamp != DateTime.MinValue && fLastBalancedTimestamp != DateTime.MinValue 
       && fLastUnbalancedTimestamp.CompareTo(fLastBalancedTimestamp) > 0) {
         double secs = fLastUnbalancedTimestamp.Subtract(fLastBalancedTimestamp).TotalSeconds;
@@ -1965,7 +1971,7 @@ private void BalanceAndUnstack(String name) {
     /* Exclusions */
 
     // Exclude if on Whitelist or Reserved Slots if enabled
-    if (balanceSpeed != Speed.Fast && OnWhitelist) {
+    if (diff > MaxDiff() && balanceSpeed != Speed.Fast && (OnWhitelist || balanceSpeed == Speed.Slow)) {
         List<String> vip = new List<String>(Whitelist);
         if (EnableWhitelistingOfReservedSlotsList) vip.AddRange(fReservedSlots);
         /*
@@ -1974,7 +1980,7 @@ private void BalanceAndUnstack(String name) {
         }
         */
         if (vip.Contains(name) || vip.Contains(ExtractTag(player)) || vip.Contains(player.EAGUID)) {
-            DebugBalance("Excluding ^b" + player.FullName + "^n: whitelisted");
+            DebugBalance("Excluding ^b" + player.FullName + "^n: whitelisted (or Slow)");
             fExcludedRound = fExcludedRound + 1;
             IncrementTotal();
             return;
@@ -2025,7 +2031,7 @@ private void BalanceAndUnstack(String name) {
     }
     for (int i = 0; i < fromList.Count; ++i) {
         if (fromList[i].Name == player.Name) {
-            if (topPlayersPerTeam != 0 && i < topPlayersPerTeam) {
+            if (diff > MaxDiff() && balanceSpeed != Speed.Fast && topPlayersPerTeam != 0 && i < topPlayersPerTeam) {
                 DebugBalance("Excluding ^b" + player.FullName + "^n: Top Scorers enabled and this player is #" + (i+1) + " on team " + player.Team);
                 fExcludedRound = fExcludedRound + 1;
                 IncrementTotal();
@@ -2040,11 +2046,8 @@ private void BalanceAndUnstack(String name) {
 
     /* Balance */
 
-    int diff = 0;
     bool mustMove = false;
 
-    AnalyzeTeams(out diff, out biggestTeam, out smallestTeam, out winningTeam, out losingTeam);
-    
     int toTeam = ToTeam(name, player.Team, out diff, out mustMove); // take into account dispersal by Rank, etc.
 
     bool balanceActive = false;
@@ -3706,7 +3709,7 @@ private void LogStatus() {
     
     counts.Sort();
     int diff = Math.Abs(counts[0] - counts[counts.Count-1]);
-    String next = (diff > MaxDiff()) ? "^n^0 ... autobalance will activate on next death!" : "^n";
+    String next = (diff > MaxDiff() && fGameState == GameState.Playing) ? "^n^0 ... autobalance will activate on next death!" : "^n";
     
     DebugWrite("^bStatus^n: Team difference = " + ((diff > MaxDiff()) ? "^8^b" : "^b") + diff + next, 3);
 }
