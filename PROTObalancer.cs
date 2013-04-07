@@ -397,7 +397,7 @@ private Queue<ListPlayersRequest> fListPlayersQ = null;
 private Dictionary<String,String> fFriendlyMaps = null;
 private Dictionary<String,String> fFriendlyModes = null;
 private double fMaxTickets = -1;
-private bool fFinalStatus = false;
+private List<TeamScore> fFinalStatus = null;
 
 // Operational statistics
 private int fReassignedRound = 0;
@@ -558,7 +558,7 @@ public PROTObalancer() {
     fMaxTickets = -1;
     fLastBalancedTimestamp = DateTime.MinValue;
     fLastUnbalancedTimestamp = DateTime.MinValue;
-    fFinalStatus = false;
+    fFinalStatus = null;
     
     /* Settings */
 
@@ -1709,12 +1709,18 @@ public override void OnServerInfo(CServerInfo serverInfo) {
             }
         }
 
-        if (fFinalStatus) {
+        int i = 1;
+        if (fFinalStatus != null) {
             try {
                 DebugWrite("^bFINAL STATUS FOR PREVIOUS ROUND:^n", 3);
+                foreach (TeamScore ts in fFinalStatus) {
+                    fTickets[i] = ts.Score;
+                    i = i + 1;
+                    if (i >= fTickets.Length) break;
+                }
                 LogStatus();
             } catch (Exception) {}
-            fFinalStatus = false;
+            fFinalStatus = null;
         }
 
         if (fServerInfo == null || fServerInfo.GameMode != serverInfo.GameMode || fServerInfo.Map != serverInfo.Map) {
@@ -1727,7 +1733,6 @@ public override void OnServerInfo(CServerInfo serverInfo) {
         fServerInfo = serverInfo;
         fServerUptime = serverInfo.ServerUptime;
 
-        int i = 1;
         double maxTickets = 0;
         if (fServerInfo.TeamScores != null) foreach (TeamScore ts in fServerInfo.TeamScores) {
             fTickets[i] = ts.Score;
@@ -1773,7 +1778,8 @@ public override void OnRoundOverTeamScores(List<TeamScore> teamScores) {
     DebugWrite("^9^bGot OnRoundOverTeamScores^n", 7);
 
     try {
-        // TBD
+        fFinalStatus = teamScores;
+        ServerCommand("serverInfo"); // get info for final status report
     } catch (Exception e) {
         ConsoleException(e.ToString());
     }
@@ -1791,9 +1797,6 @@ public override void OnRoundOver(int winningTeamId) {
             fGameState = GameState.RoundEnding;
             DebugWrite("OnRoundOver: ^b^3Game state = " + fGameState, 6);
         }
-
-        fFinalStatus = true;
-        ServerCommand("serverInfo"); // get info for final status report
     } catch (Exception e) {
         ConsoleException(e.ToString());
     }
@@ -3090,7 +3093,7 @@ private void Reset() {
     fGotVersion = false;
     fServerUptime = 0;
     fServerCrashed  = false;
-    fFinalStatus = false;
+    fFinalStatus = null;
     fMaxTickets = -1;
     fBalanceIsActive = false;
 }
@@ -3682,7 +3685,8 @@ private double RemainingTicketPercent(double tickets, double goal) {
 
 
 private void LogStatus() {
-    
+    Speed balanceSpeed = Speed.Adaptive;
+
     String tm = fTickets[1] + "/" + fTickets[2];
     if (IsSQDM()) tm = tm + "/" + fTickets[3] + "/" + fTickets[4];
 
@@ -3699,7 +3703,7 @@ private void LogStatus() {
         String simpleMode = String.Empty;
         if (fModeToSimple.TryGetValue(fServerInfo.GameMode, out simpleMode) 
           && fPerMode.TryGetValue(simpleMode, out perMode) && perMode != null) {
-            Speed balanceSpeed = GetBalanceSpeed(perMode);
+            balanceSpeed = GetBalanceSpeed(perMode);
             double unstackRatio = GetUnstackTicketRatio(perMode);
             String activeTime = (secs > 0) ? "^1active (" + secs.ToString("F0") + " secs)^0" : "not active";
             DebugWrite("^bStatus^n: Autobalance is " + activeTime + ", phase = " + GetPhase(perMode, false) + ", population = " + GetPopulation(perMode, false) + ", speed = " + balanceSpeed + ", unstack when ticket ratio >= " + (unstackRatio * 100).ToString("F0") + "%", 3);
@@ -3725,7 +3729,7 @@ private void LogStatus() {
     
     counts.Sort();
     int diff = Math.Abs(counts[0] - counts[counts.Count-1]);
-    String next = (diff > MaxDiff() && fGameState == GameState.Playing) ? "^n^0 ... autobalance will activate on next death!" : "^n";
+    String next = (diff > MaxDiff() && fGameState == GameState.Playing && balanceSpeed != Speed.Stop) ? "^n^0 ... autobalance will activate on next death!" : "^n";
     
     DebugWrite("^bStatus^n: Team difference = " + ((diff > MaxDiff()) ? "^8^b" : "^b") + diff + next, 3);
 }
