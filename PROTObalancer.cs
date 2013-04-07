@@ -1967,6 +1967,7 @@ private void BalanceAndUnstack(String name) {
             balanceSpeed = Speed.Fast;
         }
     }
+    String andSlow = (balanceSpeed == Speed.Slow) ? " and speed is Slow" : String.Empty;
 
     /* Exclusions */
 
@@ -1980,7 +1981,7 @@ private void BalanceAndUnstack(String name) {
         }
         */
         if (vip.Contains(name) || vip.Contains(ExtractTag(player)) || vip.Contains(player.EAGUID)) {
-            DebugBalance("Excluding ^b" + player.FullName + "^n: whitelisted (or Slow)");
+            DebugBalance("Excluding ^b" + player.FullName + "^n: whitelisted" + andSlow);
             fExcludedRound = fExcludedRound + 1;
             IncrementTotal();
             return;
@@ -2020,7 +2021,7 @@ private void BalanceAndUnstack(String name) {
 
     // Exclude if TopScorers enabled and a top scorer on the team
     int topPlayersPerTeam = 0;
-    if (balanceSpeed != Speed.Fast && TopScorers) {
+    if (balanceSpeed != Speed.Fast && (TopScorers || balanceSpeed == Speed.Slow)) {
         if (totalPlayerCount < 22) {
             topPlayersPerTeam = 1;
         } else if (totalPlayerCount > 42) {
@@ -2032,7 +2033,8 @@ private void BalanceAndUnstack(String name) {
     for (int i = 0; i < fromList.Count; ++i) {
         if (fromList[i].Name == player.Name) {
             if (diff > MaxDiff() && balanceSpeed != Speed.Fast && topPlayersPerTeam != 0 && i < topPlayersPerTeam) {
-                DebugBalance("Excluding ^b" + player.FullName + "^n: Top Scorers enabled and this player is #" + (i+1) + " on team " + player.Team);
+                String why = (balanceSpeed == Speed.Slow) ? "Speed is slow, excluding top scorers" : "Top Scorers enabled";
+                DebugBalance("Excluding ^b" + player.FullName + "^n: " + why + " and this player is #" + (i+1) + " on team " + player.Team);
                 fExcludedRound = fExcludedRound + 1;
                 IncrementTotal();
                 return;
