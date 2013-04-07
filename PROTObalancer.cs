@@ -52,7 +52,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     public enum DefineStrong { RoundScore, RoundKDR, RoundKills, PlayerRank };
     
-    public enum PluginState { Disabled, JustEnabled, WaitingForPlayers, Active, Error, Reconnected };
+    public enum PluginState { Disabled, JustEnabled, Active, Error, Reconnected };
     
     public enum GameState { RoundEnding, RoundStarting, Playing, Warmup, Unknown };
 
@@ -397,6 +397,7 @@ private Queue<ListPlayersRequest> fListPlayersQ = null;
 private Dictionary<String,String> fFriendlyMaps = null;
 private Dictionary<String,String> fFriendlyModes = null;
 private double fMaxTickets = -1;
+private bool fFinalStatus = false;
 
 // Operational statistics
 private int fReassignedRound = 0;
@@ -555,6 +556,7 @@ public PROTObalancer() {
     fMaxTickets = -1;
     fLastBalancedTimestamp = DateTime.MinValue;
     fLastUnbalancedTimestamp = DateTime.MinValue;
+    fFinalStatus = false;
     
     /* Settings */
 
@@ -775,7 +777,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "0.0.0.8";
+    return "0.0.0.9";
 }
 
 public String GetPluginAuthor() {
@@ -1460,6 +1462,7 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
     try {
         // Only teamId is valid for BF3, squad change is sent on separate event
 
+        // Handle team change event
         if (fReassigned.Contains(soldierName)) {
             // We reassigned this new player
             fReassigned.Remove(soldierName);
@@ -1520,10 +1523,10 @@ public override void OnPlayerIsAlive(string soldierName, bool isAlive) {
     try {
         if (fPluginState != PluginState.Active) return;
         /*
-         This may be the return leg of the round-trip to insure that
-         an admin move event, if any, has been processed. If the player's
-         name is still in fPendingTeamChange, it's a real player instigated move
-         */
+        This may be the return leg of the round-trip to insure that
+        an admin move event, if any, has been processed. If the player's
+        name is still in fPendingTeamChange, it's a real player instigated move
+        */
         if (fPendingTeamChange.ContainsKey(soldierName)) {
             int team = fPendingTeamChange[soldierName];
             fPendingTeamChange.Remove(soldierName);
@@ -1604,7 +1607,7 @@ public override void OnSquadListPlayers(int teamId, int squadId, int playerCount
 
 public override void OnPlayerKilled(Kill kKillerVictimDetails) {
     if (!fIsEnabled) return;
-    
+
     String killer = kKillerVictimDetails.Killer.SoldierName;
     String victim = kKillerVictimDetails.Victim.SoldierName;
     String weapon = kKillerVictimDetails.DamageType;
@@ -1615,9 +1618,10 @@ public override void OnPlayerKilled(Kill kKillerVictimDetails) {
 
     try {
     
-        if (fGameState == GameState.Unknown) {
+        if (fGameState == GameState.Unknown || fGameState == GameState.Warmup) {
+            bool wasUnknown = (fGameState == GameState.Unknown);
             fGameState = (TotalPlayerCount < 4) ? GameState.Warmup : GameState.Playing;
-            DebugWrite("^b^3Game state = " + fGameState, 6);  
+            if (wasUnknown || fGameState == GameState.Playing) DebugWrite("OnPlayerKilled: ^b^3Game state = " + fGameState, 6);  
         }
     
         KillUpdate(killer, victim);
@@ -1679,8 +1683,8 @@ public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subs
     
         /* Special handling for JustEnabled state */
         if (fPluginState == PluginState.JustEnabled) {
-            fPluginState = (TotalPlayerCount < 4) ? PluginState.WaitingForPlayers : PluginState.Active;
-            if (fPluginState == PluginState.Active) fRoundStartTimestamp = DateTime.Now;
+            fPluginState = PluginState.Active;
+            fRoundStartTimestamp = DateTime.Now;
             DebugWrite("^b^3State = " + fPluginState, 6);  
         }
     } catch (Exception e) {
@@ -1695,6 +1699,22 @@ public override void OnServerInfo(CServerInfo serverInfo) {
     DebugWrite("^9^bGot OnServerInfo^n: Debug level = " + DebugLevel, 8);
     
     try {
+        // Update game state if just enabled
+        if (fGameState == GameState.Unknown) {
+            if (serverInfo.TeamScores == null || serverInfo.TeamScores.Count < 2) {
+                fGameState = GameState.RoundEnding;
+                DebugWrite("OnServerInfo: ^b^3Game state = " + fGameState, 6);  
+            }
+        }
+
+        if (fFinalStatus) {
+            try {
+                DebugWrite("^bFINAL STATUS FOR PREVIOUS ROUND:^n", 3);
+                LogStatus();
+            } catch (Exception) {}
+            fFinalStatus = false;
+        }
+
         if (fServerInfo == null || fServerInfo.GameMode != serverInfo.GameMode || fServerInfo.Map != serverInfo.Map) {
             DebugWrite("ServerInfo update: " + serverInfo.Map + "/" + serverInfo.GameMode, 3);
         }
@@ -1733,9 +1753,29 @@ public override void OnTeamChat(String speaker, String message, int teamId) { }
 
 public override void OnSquadChat(String speaker, String message, int teamId, int squadId) { }
 
-public override void OnRoundOverPlayers(List<CPlayerInfo> players) { }
+public override void OnRoundOverPlayers(List<CPlayerInfo> players) {
+    if (!fIsEnabled) return;
+    
+    DebugWrite("^9^bGot OnRoundOverPlayers^n", 7);
 
-public override void OnRoundOverTeamScores(List<TeamScore> teamScores) { }
+    try {
+        // TBD
+    } catch (Exception e) {
+        ConsoleException(e.ToString());
+    }
+}
+
+public override void OnRoundOverTeamScores(List<TeamScore> teamScores) {
+    if (!fIsEnabled) return;
+    
+    DebugWrite("^9^bGot OnRoundOverTeamScores^n", 7);
+
+    try {
+        // TBD
+    } catch (Exception e) {
+        ConsoleException(e.ToString());
+    }
+}
 
 public override void OnRoundOver(int winningTeamId) {
     if (!fIsEnabled) return;
@@ -1747,8 +1787,11 @@ public override void OnRoundOver(int winningTeamId) {
     
         if (fGameState == GameState.Playing || fGameState == GameState.Unknown) {
             fGameState = GameState.RoundEnding;
-            DebugWrite("^b^3Game state = " + fGameState, 6);  
+            DebugWrite("OnRoundOver: ^b^3Game state = " + fGameState, 6);
         }
+
+        fFinalStatus = true;
+        ServerCommand("serverInfo"); // get info for final status report
     } catch (Exception e) {
         ConsoleException(e.ToString());
     }
@@ -1764,7 +1807,7 @@ public override void OnLevelLoaded(String mapFileName, String Gamemode, int roun
 
         if (fGameState == GameState.RoundEnding || fGameState == GameState.Unknown) {
             fGameState = GameState.RoundStarting;
-            DebugWrite("^b^3Game state = " + fGameState, 6);  
+            DebugWrite("OnLevelLoaded: ^b^3Game state = " + fGameState, 6);  
         }
 
         fMaxTickets = -1; // flag to pay attention to next serverInfo
@@ -1780,25 +1823,21 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
     DebugWrite("^9^bGot OnPlayerSpawned: ^n" + soldierName, 8);
     
     try {
-        if (fGameState == GameState.Unknown) {
+        if (fGameState == GameState.Unknown || fGameState == GameState.Warmup) {
+            bool wasUnknown = (fGameState == GameState.Unknown);
             fGameState = (TotalPlayerCount < 4) ? GameState.Warmup : GameState.Playing;
-            DebugWrite("^b^3Game state = " + fGameState, 6);  
-        }
-
-        if (fGameState == GameState.RoundStarting) {
-            DebugWrite("^bFINAL STATUS FOR PREVIOUS ROUND:^n", 3);
-            LogStatus();
-
+            if (wasUnknown || fGameState == GameState.Playing) DebugWrite("OnPlayerSpawned: ^b^3Game state = " + fGameState, 6);  
+        } else if (fGameState == GameState.RoundStarting) {
             // First spawn after Level Loaded is the official start of a round
             DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1First spawn detected^0^n ::::::::::::::::::::::::::::::::::::", 2);
 
             fGameState = (TotalPlayerCount < 4) ? GameState.Warmup : GameState.Playing;
-            DebugWrite("^b^3Game state = " + fGameState, 6);
+            DebugWrite("OnPlayerSpawned: ^b^3Game state = " + fGameState, 6);
 
             ResetRound();
         }
     
-        if (fPluginState == PluginState.Active) {
+        if (fPluginState == PluginState.Active && fGameState != GameState.RoundEnding) {
             ValidateMove(soldierName);
             SpawnUpdate(soldierName);
         }
@@ -2108,8 +2147,6 @@ private bool IsKnownPlayer(String name) {
 }
 
 private bool AddNewPlayer(String name, int team) {
-    bool stateChange = false;
-    bool gameChange = false;
     bool known = false;
     lock (fKnownPlayers) {
         if (!fKnownPlayers.ContainsKey(name)) {
@@ -2122,33 +2159,11 @@ private bool AddNewPlayer(String name, int team) {
     }
     lock (fAllPlayers) {
         if (!fAllPlayers.Contains(name)) fAllPlayers.Add(name);
-        if (fAllPlayers.Count < 4) {
-            if (fGameState == GameState.Unknown) {
-                fGameState = GameState.Warmup;
-                gameChange = true;
-            }
-        } else {
-            if (fPluginState == PluginState.WaitingForPlayers) {
-                fPluginState = PluginState.Active;
-                stateChange = true;
-            }
-            if (fGameState == GameState.Warmup || fGameState == GameState.Unknown) {
-                fGameState = GameState.Playing;
-                gameChange = true;
-            }
-        }
-    }
-    if (stateChange) {
-        DebugWrite("^b^3State = " + fPluginState, 6);
-    }
-    if (gameChange) {
-        DebugWrite("^b^3Game state = " + fGameState, 6);
     }
     return known;
 }
 
 private void RemovePlayer(String name) {
-    bool stateChange = false;
     bool gameChange = false;
     lock (fKnownPlayers) {
         if (fKnownPlayers.ContainsKey(name)) {
@@ -2162,21 +2177,14 @@ private void RemovePlayer(String name) {
         if (fAllPlayers.Contains(name)) fAllPlayers.Remove(name);
     
         if (fAllPlayers.Count < 4) {
-            if (fPluginState != PluginState.WaitingForPlayers) {
-                fPluginState = PluginState.WaitingForPlayers;
-                stateChange = true;
-            }
             if (fGameState != GameState.Warmup) {
                 fGameState = GameState.Warmup;
                 gameChange = true;
             }
         }
     }
-    if (stateChange) {
-        DebugWrite("^b^3State = " + fPluginState, 6);
-    }
     if (gameChange) {
-        DebugWrite("^b^3Game state = " + fGameState, 6);
+        DebugWrite("RemovePlayer: ^b^3Game state = " + fGameState, 6);
     }
 }
 
@@ -2199,11 +2207,9 @@ private void UpdatePlayerModel(String name, int team, int squad, String eaGUID, 
                 }
                 break;
             case PluginState.Active:
-            case PluginState.WaitingForPlayers:
                 DebugWrite("Update waiting for ^b" + name + "^n to be assigned a team", 3);
                 if (!fUnassigned.Contains(name)) fUnassigned.Add(name);
                 return;
-                break;
             case PluginState.Error:
                 DebugWrite("Error state, adding new player: ^b" + name, 3);
                 AddNewPlayer(name, team);
@@ -2219,7 +2225,6 @@ private void UpdatePlayerModel(String name, int team, int squad, String eaGUID, 
         return;
     }
     
-    bool unex = false;
     int unTeam = -1;
     
     lock (fKnownPlayers) {
@@ -2297,11 +2302,11 @@ private void ValidateModel(List<CPlayerInfo> players) {
 
     if (players.Count == 0) {
         // no players, so waiting state
-        fPluginState = PluginState.WaitingForPlayers;
         fGameState = GameState.Warmup;
     } else {
         // rebuild the data model
         fPluginState = PluginState.Reconnected;
+        DebugWrite("ValidateModel: ^b^3State = " + fPluginState, 6);  
         foreach (CPlayerInfo p in players) {
             try {
                 UpdatePlayerModel(p.SoldierName, p.TeamID, p.SquadID, p.GUID, p.Score, p.Kills, p.Deaths, p.Rank);
@@ -2310,15 +2315,13 @@ private void ValidateModel(List<CPlayerInfo> players) {
             }
         }
         /* Special handling for Reconnected state */
-        fPluginState = (TotalPlayerCount < 4) ? PluginState.WaitingForPlayers : PluginState.Active;
-        fGameState = (TotalPlayerCount < 4) ? GameState.Warmup : GameState.Playing;
-        if (fPluginState == PluginState.Active) {
-            fRoundStartTimestamp = DateTime.Now;
-        }
+        fGameState = (TotalPlayerCount < 4) ? GameState.Warmup : GameState.Unknown;
+        fRoundStartTimestamp = DateTime.Now;
         UpdateTeams();
     }
-    DebugWrite("^b^3State = " + fPluginState, 6);  
-    DebugWrite("^b^3Game state = " + fGameState, 6);
+    fPluginState = PluginState.Active;
+    DebugWrite("ValidateModel: ^b^3State = " + fPluginState, 6);  
+    DebugWrite("ValidateModel: ^b^3Game state = " + fGameState, 6);
 }
 
 private void RevalidateModel() {
@@ -2409,7 +2412,7 @@ private void KillUpdate(String killer, String victim) {
         String vn = (!String.IsNullOrEmpty(tag)) ? "[" + tag + "]" + victim : victim;
         int toTeam = 0;
         int fromTeam = 0;
-        int level = (GetTeamDifference(ref fromTeam, ref toTeam) > MaxDiff()) ? DUMMY : 8;
+        int level = (GetTeamDifference(ref fromTeam, ref toTeam) > MaxDiff()) ? 4 : 8;
 
         DebugWrite("^9STATS: ^b" + vn + "^n [T:" + team + ", S:" + score + ", K:" + kills + ", D:" + deaths + ", KDR:" + kdr.ToString("F2") + ", SPM:" + spm.ToString("F0") + ", TIR: " + sTIR + "]", level);
     }
@@ -3061,15 +3064,17 @@ private void Reset() {
     fUnassigned.Clear();
     
     /*
-     fKnownPlayers is not cleared right away, since we want to retain stats from previous plugin sessions.
-     It will be garbage collected after MODEL_MINUTES.
-     */
+    fKnownPlayers is not cleared right away, since we want to retain stats from previous plugin sessions.
+    It will be garbage collected after MODEL_MINUTES.
+    */
 
-     fServerInfo = null; // release Procon reference
-     fListPlayersTimestamp = DateTime.MinValue;
-     fGotVersion = false;
-     fServerUptime = 0;
-     fServerCrashed  = false;
+    fServerInfo = null; // release Procon reference
+    fListPlayersTimestamp = DateTime.MinValue;
+    fGotVersion = false;
+    fServerUptime = 0;
+    fServerCrashed  = false;
+    fFinalStatus = false;
+    fMaxTickets = -1;
 }
 
 private void ResetRound() {
@@ -3103,6 +3108,9 @@ private void ResetRound() {
     fFailedRound = 0;
     fTotalRound = 0;
     fReassignedRound = 0;
+
+    fLastBalancedTimestamp = DateTime.MinValue;
+    fLastUnbalancedTimestamp = DateTime.MinValue;
 }
 
 private bool IsSQDM() {
@@ -3671,14 +3679,16 @@ private void LogStatus() {
         PerModeSettings perMode = null;
         String simpleMode = String.Empty;
         if (fModeToSimple.TryGetValue(fServerInfo.GameMode, out simpleMode) 
-          && fPerMode.TryGetValue(simpleMode, out perMode)) {
+          && fPerMode.TryGetValue(simpleMode, out perMode) && perMode != null) {
+            Speed balanceSpeed = GetBalanceSpeed(perMode);
+            double unstackRatio = GetUnstackTicketRatio(perMode);
             String activeTime = (secs > 0) ? "^1active (" + secs.ToString("F0") + " secs)^0" : "not active";
-            DebugWrite("^bStatus^n: Autobalance is " + activeTime + ", phase = " + GetPhase(perMode, false) + ", population = " + GetPopulation(perMode, false), 4);
+            DebugWrite("^bStatus^n: Autobalance is " + activeTime + ", phase = " + GetPhase(perMode, false) + ", population = " + GetPopulation(perMode, false) + ", speed = " + balanceSpeed + ", unstack when ticket ratio >= " + (unstackRatio * 100).ToString("F0") + "%", 3);
         }
     }
     if (!IsModelInSync()) DebugWrite("^bStatus^n: fMoving = " + fMoving.Count + ", fReassigned = " + fReassigned.Count, 3);
 
-    DebugWrite("^bStatus^n: " + fReassignedRound + " reassigned, " + fBalancedRound + " balanced, " + fUnstackedRound + " unstacked, " + fUnswitchedRound + " unswitched, " + fExcludedRound + " excluded, " + fExemptRound + " exempted, " + fFailedRound + " failed; of " + fTotalRound + " TOTAL", 3);
+    DebugWrite("^bStatus^n: " + fReassignedRound + " reassigned, " + fBalancedRound + " balanced, " + fUnstackedRound + " unstacked, " + fUnswitchedRound + " unswitched, " + fExcludedRound + " excluded, " + fExemptRound + " exempted, " + fFailedRound + " failed; of " + fTotalRound + " TOTAL", 5);
     
     if (IsSQDM()) {
         DebugWrite("^bStatus^n: Team counts = " + fTeam1.Count + "(A) vs " + fTeam2.Count + "(B) vs " + fTeam3.Count + "(C) vs " + fTeam4.Count + "(D), with " + fUnassigned.Count + " unassigned", 3);
@@ -3696,8 +3706,9 @@ private void LogStatus() {
     
     counts.Sort();
     int diff = Math.Abs(counts[0] - counts[counts.Count-1]);
+    String next = (diff > MaxDiff()) ? "^n^0 ... autobalance will activate on next death!" : "^n";
     
-    DebugWrite("^bStatus^n: Team difference = " + ((diff > MaxDiff()) ? "^8^b" : "^b") + diff, 3);
+    DebugWrite("^bStatus^n: Team difference = " + ((diff > MaxDiff()) ? "^8^b" : "^b") + diff + next, 3);
 }
 
 
@@ -3832,7 +3843,7 @@ static class PROTObalancerUtils {
         for (int i = 0; i < speeds.Length; ++i) {
             try {
                 speeds[i] = (PROTObalancer.Speed)Enum.Parse(typeof(PROTObalancer.Speed), strs[i]);
-            } catch (Exception e) {
+            } catch (Exception) {
                 plugin.ConsoleWarn("Bad balance speed value: " + strs[i]);
                 speeds[i] = PROTObalancer.Speed.Adaptive;
             }
