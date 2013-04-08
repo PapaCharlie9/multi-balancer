@@ -92,72 +92,72 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     CheckTeamStackingAfterFirstMinutes = 10;
                     DefinitionOfHighPopulationForPlayers = 28;
                     DefinitionOfLowPopulationForPlayers = 8;
-                    DefinitionOfEarlyPhase = 160;
-                    DefinitionOfLatePhase = 40;
+                    DefinitionOfEarlyPhaseFromStart = 50; // assuming 200 tickets typical
+                    DefinitionOfLatePhaseFromEnd = 50; // assuming 200 tickets typical
                     break;
                 case "Conquest Large":
                     MaxPlayers = 64;
                     CheckTeamStackingAfterFirstMinutes = 10;
                     DefinitionOfHighPopulationForPlayers = 48;
                     DefinitionOfLowPopulationForPlayers = 16;
-                    DefinitionOfEarlyPhase = 240;
-                    DefinitionOfLatePhase = 60;
+                    DefinitionOfEarlyPhaseFromStart = 100; // assuming 300 tickets typical
+                    DefinitionOfLatePhaseFromEnd = 100; // assuming 300 tickets typical
                     break;
                 case "CTF":
                     MaxPlayers = 64;
                     CheckTeamStackingAfterFirstMinutes = 5;
                     DefinitionOfHighPopulationForPlayers = 48;
                     DefinitionOfLowPopulationForPlayers = 16;
-                    DefinitionOfEarlyPhase = 5; // minutes
-                    DefinitionOfLatePhase = 15; // minutes
+                    DefinitionOfEarlyPhaseFromStart = 5; // minutes
+                    DefinitionOfLatePhaseFromEnd = 5; // minutes
                     break;
                 case "Rush":
                     MaxPlayers = 32;
                     CheckTeamStackingAfterFirstMinutes = 10;
                     DefinitionOfHighPopulationForPlayers = 24;
                     DefinitionOfLowPopulationForPlayers = 8;
-                    DefinitionOfEarlyPhase = 60;
-                    DefinitionOfLatePhase = 15;
+                    DefinitionOfEarlyPhaseFromStart = 25; // assuming 75 tickets typical
+                    DefinitionOfLatePhaseFromEnd = 25; // assuming 75 tickets typical
                     break;
                 case "Squad Deathmatch":
                     MaxPlayers = 16;
                     CheckTeamStackingAfterFirstMinutes = 5;
                     DefinitionOfHighPopulationForPlayers = 14;
                     DefinitionOfLowPopulationForPlayers = 8;
-                    DefinitionOfEarlyPhase = 10;
-                    DefinitionOfLatePhase = 40;
+                    DefinitionOfEarlyPhaseFromStart = 10; // assuming 50 tickets typical
+                    DefinitionOfLatePhaseFromEnd = 10; // assuming 50 tickets typical
                     break;
                 case "Superiority":
                     MaxPlayers = 24;
                     CheckTeamStackingAfterFirstMinutes = 15;
                     DefinitionOfHighPopulationForPlayers = 48;
                     DefinitionOfLowPopulationForPlayers = 16;
-                    DefinitionOfEarlyPhase = 160;
-                    DefinitionOfLatePhase = 40;
+                    DefinitionOfEarlyPhaseFromStart = 50; // assuming 250 tickets typical
+                    DefinitionOfLatePhaseFromEnd = 50; // assuming 250 tickets typical
                     break;
                 case "Team Deathmatch":
                     MaxPlayers = 64;
                     CheckTeamStackingAfterFirstMinutes = 5;
                     DefinitionOfHighPopulationForPlayers = 48;
                     DefinitionOfLowPopulationForPlayers = 16;
-                    DefinitionOfEarlyPhase = 20;
-                    DefinitionOfLatePhase = 80;
+                    DefinitionOfEarlyPhaseFromStart = 20; // assuming 100 tickets typical
+                    DefinitionOfLatePhaseFromEnd = 20; // assuming 100 tickets typical
                     break;
                 case "Squad Rush":
                     MaxPlayers = 8;
                     CheckTeamStackingAfterFirstMinutes = 2;
                     DefinitionOfHighPopulationForPlayers = 6;
                     DefinitionOfLowPopulationForPlayers = 4;
-                    DefinitionOfEarlyPhase = 18;
-                    DefinitionOfLatePhase = 2;
+                    DefinitionOfEarlyPhaseFromStart = 5; // assuming 20 tickets typical
+                    DefinitionOfLatePhaseFromEnd = 5; // assuming 20 tickets typical
                     break;
                 case "Gun Master":
                     MaxPlayers = 16;
                     CheckTeamStackingAfterFirstMinutes = 2;
                     DefinitionOfHighPopulationForPlayers = 12;
                     DefinitionOfLowPopulationForPlayers = 6;
-                    DefinitionOfEarlyPhase = 0;
-                    DefinitionOfLatePhase = 0;
+                    DefinitionOfEarlyPhaseFromStart = 0;
+                    DefinitionOfLatePhaseFromEnd = 0;
                     break;
                 case "Unknown or New Mode":
                 default:
@@ -165,8 +165,8 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     CheckTeamStackingAfterFirstMinutes = 10;
                     DefinitionOfHighPopulationForPlayers = 28;
                     DefinitionOfLowPopulationForPlayers = 8;
-                    DefinitionOfEarlyPhase = 160;
-                    DefinitionOfLatePhase = 40;
+                    DefinitionOfEarlyPhaseFromStart = 50;
+                    DefinitionOfLatePhaseFromEnd = 50;
                     break;
             }
         }
@@ -176,8 +176,8 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         public DefineStrong DetermineStrongPlayersBy = DefineStrong.RoundScore;
         public double DefinitionOfHighPopulationForPlayers = 48;
         public double DefinitionOfLowPopulationForPlayers = 16;
-        public double DefinitionOfEarlyPhase = 80;
-        public double DefinitionOfLatePhase = 20;
+        public double DefinitionOfEarlyPhaseFromStart = 50;
+        public double DefinitionOfLatePhaseFromEnd = 50;
         public int DisperseEvenlyForRank = 145;
         
         //public double MinTicketsPercentage = 10.0; // TBD
@@ -396,6 +396,7 @@ private Dictionary<String,String> fFriendlyMaps = null;
 private Dictionary<String,String> fFriendlyModes = null;
 private double fMaxTickets = -1;
 private List<TeamScore> fFinalStatus = null;
+private bool fIsFullRound = false;
 
 // Operational statistics
 private int fReassignedRound = 0;
@@ -417,26 +418,26 @@ private Dictionary<String,PerModeSettings> fPerMode = null;
 // Settings
 public int DebugLevel;
 public int MaximumServerSize;
-public bool EnableBattlelogRequests;
-public int MaximumRequestRate;
+public bool EnableBattlelogRequests; // TBD
+public int MaximumRequestRate; // TBD
 public int MaxTeamSwitchesByStrongPlayers; // disabled
 public int MaxTeamSwitchesByWeakPlayers; // disabled
-public double UnlimitedTeamSwitchingDuringFirstMinutesOfRound;
+public double UnlimitedTeamSwitchingDuringFirstMinutesOfRound; // TBD
 public bool Enable2SlotReserve; // disabled
 public bool EnablerecruitCommand; // disabled
 public bool EnableWhitelistingOfReservedSlotsList;
 public String[] Whitelist;
-public String[] DisperseEvenlyList;
+public String[] DisperseEvenlyList; // TBD
 public PresetItems Preset;
-public double MaximumPassiveBalanceSeconds;
+public double SecondsUntilFastBalanceSpeed;
 
 public bool OnWhitelist;
 public bool TopScorers;
-public bool SameClanTagsInSquad;
+public bool SameClanTagsInSquad; // TBD
 public double MinutesAfterJoining;
-public bool JoinedEarlyPhase;
-public bool JoinedMidPhase;
-public bool JoinedLatePhase;
+public bool JoinedEarlyPhase; // TBD
+public bool JoinedMidPhase; // TBD
+public bool JoinedLatePhase; // TBD
 
 public double[] EarlyPhaseTicketPercentageToUnstack;
 public double[] MidPhaseTicketPercentageToUnstack;
@@ -462,7 +463,6 @@ public String ChatDetectedSwitchByDispersalPlayer;
 public String YellDetectedSwitchByDispersalPlayer;
 public String ChatAfterUnswitchingDispersalPlayer;
 public String YellAfterUnswitchingDispersalPlayer;
-
 public String ShowInLog; // command line to show info in plugin.log
 public bool LogChat;
 public bool EnableLoggingOnlyMode;
@@ -557,6 +557,7 @@ public PROTObalancer() {
     fLastBalancedTimestamp = DateTime.MinValue;
     fLastUnbalancedTimestamp = DateTime.MinValue;
     fFinalStatus = null;
+    fIsFullRound = false;
     
     /* Settings */
 
@@ -575,7 +576,7 @@ public PROTObalancer() {
     Whitelist = new String[] {"[-- name, tag, or EA_GUID --]"};
     DisperseEvenlyList = new String[] {"[-- name, tag, or EA_GUID --]"};
     Preset = PresetItems.Standard;
-    MaximumPassiveBalanceSeconds = 3*60;
+    SecondsUntilFastBalanceSpeed = 3*60; // 3 minutes default
     
     /* ===== SECTION 2 - Exclusions ===== */
     
@@ -849,7 +850,7 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         lstReturn.Add(new CPluginVariable("1 - Settings|Enable @#!recruit Command", EnablerecruitCommand.GetType(), EnablerecruitCommand));
 */
 
-        lstReturn.Add(new CPluginVariable("1 - Settings|Maximum Passive Balance Seconds", MaximumPassiveBalanceSeconds.GetType(), MaximumPassiveBalanceSeconds));
+        lstReturn.Add(new CPluginVariable("1 - Settings|Seconds Until Fast Balance Speed", SecondsUntilFastBalanceSpeed.GetType(), SecondsUntilFastBalanceSpeed));
         
         lstReturn.Add(new CPluginVariable("1 - Settings|Enable Whitelisting Of Reserved Slots List", EnableWhitelistingOfReservedSlotsList.GetType(), EnableWhitelistingOfReservedSlotsList));
 
@@ -945,8 +946,6 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
             
             bool isCTF = (sm == "CTF");
             bool isGM = (sm == "Gun Master");
-            String earlyEq = (sm.Contains("Deathmatch")) ? "<=" :  ">=";
-            String lateEq = (sm.Contains("Deathmatch")) ? ">=" : "<=";
 
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Max Players", oneSet.MaxPlayers.GetType(), oneSet.MaxPlayers));
 
@@ -966,13 +965,13 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Low Population For Players <=", oneSet.DefinitionOfLowPopulationForPlayers.GetType(), oneSet.DefinitionOfLowPopulationForPlayers));
 
             if (isCTF) {
-                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Early Phase For Minutes <=", oneSet.DefinitionOfEarlyPhase.GetType(), oneSet.DefinitionOfEarlyPhase));
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Early Phase As Minutes From Start", oneSet.DefinitionOfEarlyPhaseFromStart.GetType(), oneSet.DefinitionOfEarlyPhaseFromStart));
 
-                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Late Phase For Minutes >=", oneSet.DefinitionOfLatePhase.GetType(), oneSet.DefinitionOfLatePhase));
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Late Phase As Minutes From End", oneSet.DefinitionOfLatePhaseFromEnd.GetType(), oneSet.DefinitionOfLatePhaseFromEnd));
             } else if (!isGM) {
-                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Early Phase For Tickets " + earlyEq, oneSet.DefinitionOfEarlyPhase.GetType(), oneSet.DefinitionOfEarlyPhase));
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Early Phase As Tickets From Start", oneSet.DefinitionOfEarlyPhaseFromStart.GetType(), oneSet.DefinitionOfEarlyPhaseFromStart));
 
-                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Late Phase For Tickets " + lateEq, oneSet.DefinitionOfLatePhase.GetType(), oneSet.DefinitionOfLatePhase));
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Late Phase As Tickets From End", oneSet.DefinitionOfLatePhaseFromEnd.GetType(), oneSet.DefinitionOfLatePhaseFromEnd));
             }
 
         }
@@ -1081,7 +1080,7 @@ public void SetPluginVariable(String strVariable, String strValue) {
                 String fieldPart = m.Groups[2].Value.Replace(" ","");
                 String perModeSetting = Regex.Replace(fieldPart, @"[^a-zA-Z_0-9]", String.Empty);
 
-                perModeSetting = Regex.Replace(perModeSetting, @"(?:ForTickets|ForMinutes)", String.Empty);
+                perModeSetting = Regex.Replace(perModeSetting, @"(?:AsTickets|AsMinutes)", String.Empty);
                 
                 if (!fPerMode.ContainsKey(mode)) {
                     fPerMode[mode] = new PerModeSettings(mode);
@@ -1128,9 +1127,9 @@ public void SetPluginVariable(String strVariable, String strValue) {
             ShowInLog = String.Empty;
         }
 
-        if (MaximumPassiveBalanceSeconds < 120) {
-            ConsoleWarn("Maximum Passive Balance Seconds must be 120 or greater!");
-            MaximumPassiveBalanceSeconds = 120;
+        if (SecondsUntilFastBalanceSpeed < 120) {
+            ConsoleWarn("Seconds Until Fast Balance Speed must be 120 or greater!");
+            SecondsUntilFastBalanceSpeed = 120;
         }
                 
         /*
@@ -1838,6 +1837,7 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
             DebugWrite("OnPlayerSpawned: ^b^3Game state = " + fGameState, 6);
 
             ResetRound();
+            fIsFullRound = true;
         }
     
         if (fPluginState == PluginState.Active && fGameState != GameState.RoundEnding) {
@@ -1896,6 +1896,7 @@ private void BalanceAndUnstack(String name) {
     String strongMsg = String.Empty;
     int diff = 0;
     DateTime now = DateTime.Now;
+    bool needsBalancing = false;
 
     /* Sanity checks */
 
@@ -1926,16 +1927,17 @@ private void BalanceAndUnstack(String name) {
             fLastUnbalancedTimestamp = now;
             return;
         }
+
+        needsBalancing = true;
     }
 
     /* Pre-conditions */
 
     lock (fKnownPlayers) {
-        if (!fKnownPlayers.ContainsKey(name)) {
+        if (!fKnownPlayers.TryGetValue(name, out player)) {
             DebugBalance("Unknown player: ^b" + name);
             return;
         }
-        player = fKnownPlayers[name];
     }
     if (player == null) {
         DebugBalance("No model for player: ^b" + name);
@@ -1959,16 +1961,17 @@ private void BalanceAndUnstack(String name) {
     }
 
     /* Per-mode settings */
+
     Speed balanceSpeed = GetBalanceSpeed(perMode);
     double unstackTicketRatio = GetUnstackTicketRatio(perMode);
 
     // Adjust for duration of balance active
-    if (diff > MaxDiff()
+    if (needsBalancing
       && balanceSpeed == Speed.Adaptive
       && fLastUnbalancedTimestamp != DateTime.MinValue && fLastBalancedTimestamp != DateTime.MinValue 
       && fLastUnbalancedTimestamp.CompareTo(fLastBalancedTimestamp) > 0) {
         double secs = fLastUnbalancedTimestamp.Subtract(fLastBalancedTimestamp).TotalSeconds;
-        if (secs > MaximumPassiveBalanceSeconds) {
+        if (secs > SecondsUntilFastBalanceSpeed) {
             DebugBalance("^8^bBalancing taking too long (" + secs + " secs)!^n^0 Forcing to Fast balance speed.");
             balanceSpeed = Speed.Fast;
         }
@@ -1978,7 +1981,7 @@ private void BalanceAndUnstack(String name) {
     /* Exclusions */
 
     // Exclude if on Whitelist or Reserved Slots if enabled
-    if (diff > MaxDiff() && balanceSpeed != Speed.Fast && (OnWhitelist || balanceSpeed == Speed.Slow)) {
+    if (needsBalancing && balanceSpeed != Speed.Fast && (OnWhitelist || balanceSpeed == Speed.Slow)) {
         List<String> vip = new List<String>(Whitelist);
         if (EnableWhitelistingOfReservedSlotsList) vip.AddRange(fReservedSlots);
         /*
@@ -2038,7 +2041,7 @@ private void BalanceAndUnstack(String name) {
     }
     for (int i = 0; i < fromList.Count; ++i) {
         if (fromList[i].Name == player.Name) {
-            if (diff > MaxDiff() && balanceSpeed != Speed.Fast && topPlayersPerTeam != 0 && i < topPlayersPerTeam) {
+            if (needsBalancing && balanceSpeed != Speed.Fast && topPlayersPerTeam != 0 && i < topPlayersPerTeam) {
                 String why = (balanceSpeed == Speed.Slow) ? "Speed is slow, excluding top scorers" : "Top Scorers enabled";
                 DebugBalance("Excluding ^b" + player.FullName + "^n: " + why + " and this player is #" + (i+1) + " on team " + player.Team);
                 fExcludedRound = fExcludedRound + 1;
@@ -2052,6 +2055,15 @@ private void BalanceAndUnstack(String name) {
     }
     isStrong = (playerIndex < median);
 
+    // Exclude if player joined less than MinutesAfterJoining
+    double joinedMinutesAgo = GetPlayerJoinedTimeSpan(player).TotalMinutes;
+    if (needsBalancing && balanceSpeed != Speed.Fast && (joinedMinutesAgo < MinutesAfterJoining)) {
+        DebugBalance("Excluding ^b" + player.FullName + "^n: joined less than " + MinutesAfterJoining.ToString("F1") + " minutes ago (" + joinedMinutesAgo.ToString("F1") + ")");
+        fExcludedRound = fExcludedRound + 1;
+        IncrementTotal();
+        return;   
+    }
+
     /* Balance */
 
     bool mustMove = false;
@@ -2059,7 +2071,7 @@ private void BalanceAndUnstack(String name) {
     int toTeamDiff = 0;
     int toTeam = ToTeam(name, player.Team, out toTeamDiff, out mustMove); // take into account dispersal by Rank, etc.
 
-    if (balanceSpeed != Speed.Stop && diff > MaxDiff()) {
+    if (balanceSpeed != Speed.Stop && needsBalancing) {
         if (!fBalanceIsActive) DebugBalance("^2^bActivating autobalance!");
         fBalanceIsActive = true;
     } else if (fBalanceIsActive) {
@@ -2149,10 +2161,6 @@ private void BalanceAndUnstack(String name) {
 
     // TBD
 
-}
-
-private void DebugBalance(String msg) {
-    DebugWrite("^5(AUTO)^9 " + msg, 4);
 }
 
 
@@ -2685,10 +2693,12 @@ private void GarbageCollectKnownPlayers()
 }
 
 private Phase GetPhase(PerModeSettings perMode, bool verbose) {
-    if (fServerInfo == null | fServerInfo.TeamScores == null || fServerInfo.TeamScores.Count == 0) return Phase.Mid;
+    if (fServerInfo == null || fServerInfo.TeamScores == null || fServerInfo.TeamScores.Count == 0) return Phase.Mid;
 
-    double earlyTickets = perMode.DefinitionOfEarlyPhase;
-    double lateTickets = perMode.DefinitionOfLatePhase;
+    // earlyTickets relative to max for count down, 0 for count up
+    // lateTickets relative to 0 for count down, max for count up
+    double earlyTickets = perMode.DefinitionOfEarlyPhaseFromStart;
+    double lateTickets = perMode.DefinitionOfLatePhaseFromEnd;
     Phase phase = Phase.Early;
 
     double tickets = -1;
@@ -2700,6 +2710,7 @@ private Phase GetPhase(PerModeSettings perMode, bool verbose) {
         goal = fServerInfo.TeamScores[0].WinningScore;
     }
 
+    // Find ticket count closest to end
     foreach (TeamScore ts in fServerInfo.TeamScores) {
         if (tickets == -1) {
             tickets = ts.Score;
@@ -2717,19 +2728,19 @@ private Phase GetPhase(PerModeSettings perMode, bool verbose) {
     }
 
     if (countDown) {
-        if (tickets >= earlyTickets) {
-            phase = Phase.Early;
-        } else if (tickets <= lateTickets) {
+        if (tickets <= lateTickets) {
             phase = Phase.Late;
+        } else if (fIsFullRound && (earlyTickets < fMaxTickets) && tickets >= (fMaxTickets - earlyTickets)) {
+            phase = Phase.Early;
         } else {
             phase = Phase.Mid;
         }
     } else {
         // count up
-        if (tickets <= earlyTickets) {
-            phase = Phase.Early;
-        } else if (tickets >= lateTickets) {
+        if (lateTickets < goal && tickets >= (goal - lateTickets)) {
             phase = Phase.Late;
+        } else if (tickets <= earlyTickets) {
+            phase = Phase.Early;
         } else {
             phase = Phase.Mid;
         }
@@ -3094,6 +3105,7 @@ private void Reset() {
     fFinalStatus = null;
     fMaxTickets = -1;
     fBalanceIsActive = false;
+    fIsFullRound = false;
 }
 
 private void ResetRound() {
@@ -3679,7 +3691,16 @@ private double RemainingTicketPercent(double tickets, double goal) {
     return (((goal - tickets) / goal) * 100.0);
 }
 
+private TimeSpan GetPlayerJoinedTimeSpan(PlayerModel player) {
+    if (player != null) {
+        return(DateTime.Now.Subtract(player.FirstSeenTimestamp));
+    }
+    return TimeSpan.FromMinutes(0);
+}
 
+private void DebugBalance(String msg) {
+    DebugWrite("^5(AUTO)^9 " + msg, 4);
+}
 
 
 private void LogStatus() {
