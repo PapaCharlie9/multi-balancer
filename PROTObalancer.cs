@@ -62,7 +62,11 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     public enum Population {Low, Medium, High};
 
+    public enum UnstackState {Off, SwappedStrong, SwappedWeak};
+
     /* Constants & Statics */
+
+    public const double SWAP_TIMEOUT = 60; // in seconds
 
     public const double MODEL_TIMEOUT = 24*60; // in minutes
 
@@ -90,6 +94,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                 case "Conq Small, Dom, Scav":
                     MaxPlayers = 32;
                     CheckTeamStackingAfterFirstMinutes = 10;
+                    MaxUnstackingSwapsPerRound = 6;
                     DefinitionOfHighPopulationForPlayers = 28;
                     DefinitionOfLowPopulationForPlayers = 8;
                     DefinitionOfEarlyPhaseFromStart = 50; // assuming 200 tickets typical
@@ -98,6 +103,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                 case "Conquest Large":
                     MaxPlayers = 64;
                     CheckTeamStackingAfterFirstMinutes = 10;
+                    MaxUnstackingSwapsPerRound = 12;
                     DefinitionOfHighPopulationForPlayers = 48;
                     DefinitionOfLowPopulationForPlayers = 16;
                     DefinitionOfEarlyPhaseFromStart = 100; // assuming 300 tickets typical
@@ -106,6 +112,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                 case "CTF":
                     MaxPlayers = 64;
                     CheckTeamStackingAfterFirstMinutes = 5;
+                    MaxUnstackingSwapsPerRound = 12;
                     DefinitionOfHighPopulationForPlayers = 48;
                     DefinitionOfLowPopulationForPlayers = 16;
                     DefinitionOfEarlyPhaseFromStart = 5; // minutes
@@ -114,6 +121,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                 case "Rush":
                     MaxPlayers = 32;
                     CheckTeamStackingAfterFirstMinutes = 10;
+                    MaxUnstackingSwapsPerRound = 6;
                     DefinitionOfHighPopulationForPlayers = 24;
                     DefinitionOfLowPopulationForPlayers = 8;
                     DefinitionOfEarlyPhaseFromStart = 25; // assuming 75 tickets typical
@@ -122,6 +130,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                 case "Squad Deathmatch":
                     MaxPlayers = 16;
                     CheckTeamStackingAfterFirstMinutes = 5;
+                    MaxUnstackingSwapsPerRound = 6;
                     DefinitionOfHighPopulationForPlayers = 14;
                     DefinitionOfLowPopulationForPlayers = 8;
                     DefinitionOfEarlyPhaseFromStart = 10; // assuming 50 tickets typical
@@ -130,6 +139,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                 case "Superiority":
                     MaxPlayers = 24;
                     CheckTeamStackingAfterFirstMinutes = 15;
+                    MaxUnstackingSwapsPerRound = 6;
                     DefinitionOfHighPopulationForPlayers = 48;
                     DefinitionOfLowPopulationForPlayers = 16;
                     DefinitionOfEarlyPhaseFromStart = 50; // assuming 250 tickets typical
@@ -138,6 +148,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                 case "Team Deathmatch":
                     MaxPlayers = 64;
                     CheckTeamStackingAfterFirstMinutes = 5;
+                    MaxUnstackingSwapsPerRound = 12;
                     DefinitionOfHighPopulationForPlayers = 48;
                     DefinitionOfLowPopulationForPlayers = 16;
                     DefinitionOfEarlyPhaseFromStart = 20; // assuming 100 tickets typical
@@ -146,6 +157,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                 case "Squad Rush":
                     MaxPlayers = 8;
                     CheckTeamStackingAfterFirstMinutes = 2;
+                    MaxUnstackingSwapsPerRound = 3;
                     DefinitionOfHighPopulationForPlayers = 6;
                     DefinitionOfLowPopulationForPlayers = 4;
                     DefinitionOfEarlyPhaseFromStart = 5; // assuming 20 tickets typical
@@ -154,6 +166,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                 case "Gun Master":
                     MaxPlayers = 16;
                     CheckTeamStackingAfterFirstMinutes = 2;
+                    MaxUnstackingSwapsPerRound = 6;
                     DefinitionOfHighPopulationForPlayers = 12;
                     DefinitionOfLowPopulationForPlayers = 6;
                     DefinitionOfEarlyPhaseFromStart = 0;
@@ -163,6 +176,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                 default:
                     MaxPlayers = 32;
                     CheckTeamStackingAfterFirstMinutes = 10;
+                    MaxUnstackingSwapsPerRound = 6;
                     DefinitionOfHighPopulationForPlayers = 28;
                     DefinitionOfLowPopulationForPlayers = 8;
                     DefinitionOfEarlyPhaseFromStart = 50;
@@ -173,6 +187,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         
         public int MaxPlayers = 64; // will be corrected later
         public double CheckTeamStackingAfterFirstMinutes = 10;
+        public int MaxUnstackingSwapsPerRound = 6;
         public DefineStrong DetermineStrongPlayersBy = DefineStrong.RoundScore;
         public double DefinitionOfHighPopulationForPlayers = 48;
         public double DefinitionOfLowPopulationForPlayers = 16;
@@ -373,6 +388,8 @@ private int fServerUptime = -1;
 private bool fServerCrashed = false; // because fServerUptime >  fServerInfo.ServerUptime
 private DateTime fLastBalancedTimestamp = DateTime.MinValue;
 private DateTime fLastUnbalancedTimestamp = DateTime.MinValue;
+private DateTime fEnabledTimestamp = DateTime.MinValue;
+private String fLastMsg = null;
 
 // Data model
 private List<String> fAllPlayers = null;
@@ -397,6 +414,8 @@ private Dictionary<String,String> fFriendlyModes = null;
 private double fMaxTickets = -1;
 private List<TeamScore> fFinalStatus = null;
 private bool fIsFullRound = false;
+private UnstackState fUnstackState = UnstackState.Off;
+private DateTime fFullUnstackSwapTimestamp;
 
 // Operational statistics
 private int fReassignedRound = 0;
@@ -543,6 +562,7 @@ public PROTObalancer() {
     fUnassigned = new List<String>();
     fRoundStartTimestamp = DateTime.MinValue;
     fListPlayersTimestamp = DateTime.MinValue;
+    fFullUnstackSwapTimestamp = DateTime.MinValue;
     fListPlayersQ = new Queue<ListPlayersRequest>();
 
     fPendingTeamChange = new Dictionary<String,int>();
@@ -556,8 +576,11 @@ public PROTObalancer() {
     fMaxTickets = -1;
     fLastBalancedTimestamp = DateTime.MinValue;
     fLastUnbalancedTimestamp = DateTime.MinValue;
+    fEnabledTimestamp = DateTime.MinValue;
     fFinalStatus = null;
     fIsFullRound = false;
+    fUnstackState = UnstackState.Off;
+    fLastMsg = null;
     
     /* Settings */
 
@@ -951,6 +974,8 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
             if (!isGM) {
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Check Team Stacking After First Minutes", oneSet.CheckTeamStackingAfterFirstMinutes.GetType(), oneSet.CheckTeamStackingAfterFirstMinutes));
+
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Max Unstacking Swaps Per Round", oneSet.MaxUnstackingSwapsPerRound.GetType(), oneSet.MaxUnstackingSwapsPerRound));
 
                 var_name = "8 - Settings for " + sm + "|" + sm + ": " + "Determine Strong Players By";
                 var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(DefineStrong))) + ")";
@@ -1389,6 +1414,7 @@ public void OnPluginEnable() {
     fIsEnabled = true;
     fPluginState = PluginState.JustEnabled;
     fGameState = GameState.Unknown;
+    fEnabledTimestamp = DateTime.Now;
     fRoundStartTimestamp = DateTime.Now;
 
     ConsoleWrite("^bEnabled!^n Version = " + GetPluginVersion());
@@ -1409,6 +1435,8 @@ public void OnPluginDisable() {
     fIsEnabled = false;
 
     try {
+        fEnabledTimestamp = DateTime.MinValue;
+
         StopThreads();
 
         Reset();
@@ -1897,6 +1925,7 @@ private void BalanceAndUnstack(String name) {
     int diff = 0;
     DateTime now = DateTime.Now;
     bool needsBalancing = false;
+    bool loggedStats = false;
 
     /* Sanity checks */
 
@@ -1945,19 +1974,19 @@ private void BalanceAndUnstack(String name) {
     }
     if (!fModeToSimple.TryGetValue(fServerInfo.GameMode, out simpleMode)) {
         DebugBalance("Unknown game mode: " + fServerInfo.GameMode);
-        return;
+        simpleMode = fServerInfo.GameMode;
     }
     if (String.IsNullOrEmpty(simpleMode)) {
         DebugBalance("Simple mode is null for: " + fServerInfo.GameMode);
         return;
     }
     if (!fPerMode.TryGetValue(simpleMode, out perMode)) {
-        DebugBalance("No per-mode settings for: " + simpleMode);
-        return;
+        DebugBalance("No per-mode settings for " + simpleMode + ", using defaults");
+        perMode = new PerModeSettings();
     }
     if (perMode == null) {
-        DebugBalance("Per-mode settings null for: " + simpleMode);
-        return;
+        DebugBalance("Per-mode settings null for " + simpleMode + ", using defaults");
+        perMode = new PerModeSettings();
     }
 
     /* Per-mode settings */
@@ -2043,6 +2072,10 @@ private void BalanceAndUnstack(String name) {
         if (fromList[i].Name == player.Name) {
             if (needsBalancing && balanceSpeed != Speed.Fast && topPlayersPerTeam != 0 && i < topPlayersPerTeam) {
                 String why = (balanceSpeed == Speed.Slow) ? "Speed is slow, excluding top scorers" : "Top Scorers enabled";
+                if (!loggedStats) {
+                    DebugBalance(GetPlayerStatsString(name));
+                    loggedStats = true;
+                }
                 DebugBalance("Excluding ^b" + player.FullName + "^n: " + why + " and this player is #" + (i+1) + " on team " + player.Team);
                 fExcludedRound = fExcludedRound + 1;
                 IncrementTotal();
@@ -2057,7 +2090,12 @@ private void BalanceAndUnstack(String name) {
 
     // Exclude if player joined less than MinutesAfterJoining
     double joinedMinutesAgo = GetPlayerJoinedTimeSpan(player).TotalMinutes;
-    if (needsBalancing && balanceSpeed != Speed.Fast && (joinedMinutesAgo < MinutesAfterJoining)) {
+    double enabledForMinutes = now.Subtract(fEnabledTimestamp).TotalMinutes;
+    if (needsBalancing && (enabledForMinutes > MinutesAfterJoining) && balanceSpeed != Speed.Fast && (joinedMinutesAgo < MinutesAfterJoining)) {
+        if (!loggedStats) {
+            DebugBalance(GetPlayerStatsString(name));
+            loggedStats = true;
+        }
         DebugBalance("Excluding ^b" + player.FullName + "^n: joined less than " + MinutesAfterJoining.ToString("F1") + " minutes ago (" + joinedMinutesAgo.ToString("F1") + ")");
         fExcludedRound = fExcludedRound + 1;
         IncrementTotal();
@@ -2083,7 +2121,7 @@ private void BalanceAndUnstack(String name) {
         }
     }
 
-    while (fBalanceIsActive && toTeam != 0) {
+    if (fBalanceIsActive && toTeam != 0) {
         DebugBalance("Autobalancing because difference of " + diff + " is greater than " + MaxDiff());
         double abTime = fLastUnbalancedTimestamp.Subtract(fLastBalancedTimestamp).TotalSeconds;
         if (fLastBalancedTimestamp == DateTime.MinValue) abTime = 0;
@@ -2093,6 +2131,11 @@ private void BalanceAndUnstack(String name) {
         fLastUnbalancedTimestamp = now;
         if (DebugLevel >= 8) DebugBalance("fLastUnbalancedTimestamp = " + fLastUnbalancedTimestamp.ToString("HH:mm:ss"));
 
+        if (!loggedStats) {
+            DebugBalance(GetPlayerStatsString(name));
+            loggedStats = true;
+        }
+
         /* Exemptions */
 
         // Already on the smallest team
@@ -2100,7 +2143,7 @@ private void BalanceAndUnstack(String name) {
             DebugBalance("Exempting ^b" + name + "^n, already on the smallest team");
             fExemptRound = fExemptRound + 1;
             IncrementTotal();
-            break;
+            return;
         }
 
         // Has this player already been moved for balance or unstacking?
@@ -2108,7 +2151,7 @@ private void BalanceAndUnstack(String name) {
             DebugBalance("Exempting ^b" + name + "^n, already moved this round");
             fExemptRound = fExemptRound + 1;
             IncrementTotal();
-            break;
+            return;
         }
 
         if (!mustMove && balanceSpeed != Speed.Fast) { // TBD
@@ -2118,7 +2161,7 @@ private void BalanceAndUnstack(String name) {
                 DebugBalance("Exempting ^b" + name + "^n, don't move weak player to losing team (#" + (playerIndex+1) + " of " + fromList.Count + ", median " + (median+1) + ")");
                 fExemptRound = fExemptRound + 1;
                 IncrementTotal();
-                break;
+                return;
             }
 
             // don't move strong player to winning team
@@ -2126,8 +2169,8 @@ private void BalanceAndUnstack(String name) {
                 DebugBalance("Exempting ^b" + name + "^n, don't move strong player to winning team (#" + (playerIndex+1) + " of " + fromList.Count + ", median " + (median+1) + ")");
                 fExemptRound = fExemptRound + 1;
                 IncrementTotal();
-                break;
-           }
+                return;
+            }
         }
 
 
@@ -2149,7 +2192,7 @@ private void BalanceAndUnstack(String name) {
             OnPlayerTeamChange(name, toTeam, 0);
             OnPlayerMovedByAdmin(name, toTeam, 0, false); // simulate reverse order
         }
-        break;
+        return;
     }
 
     if (!fBalanceIsActive) {
@@ -2159,10 +2202,102 @@ private void BalanceAndUnstack(String name) {
 
     /* Unstack */
 
-    // TBD
+    if (winningTeam <= 0 || winningTeam >= fTickets.Length || losingTeam <= 0 || losingTeam >= fTickets.Length || balanceSpeed == Speed.Stop) {
+        return;
+    }
 
+    int tpc = TotalPlayerCount;
+    if (tpc > (MaximumServerSize-2) || tpc > (perMode.MaxPlayers-2)) {
+        // TBD - kick idle players?
+        if (DebugLevel >= 7) DebugBalance("No room to swap players for unstacking");
+        return;
+    }
+
+    if ((fUnstackedRound/2) >= perMode.MaxUnstackingSwapsPerRound) {
+        if (DebugLevel >= 7) DebugBalance("Maximum swaps have already occurred this round (" + (fUnstackedRound/2) + ")");
+        return;
+    }
+
+    double ratio = Convert.ToDouble(fTickets[winningTeam]) / Convert.ToDouble(fTickets[losingTeam]);
+
+    String um = "Ticket ratio " + (ratio*100.0).ToString("F0") + " vs. unstack ratio of " + (unstackTicketRatio*100.0).ToString("F0");
+
+    if (ratio < unstackTicketRatio) {
+        if (DebugLevel >= 7) DebugBalance("No unstacking needed: " + um);
+        return;
+    }
+
+    double nsis = NextSwapInSeconds();
+    if (nsis > 0 && fUnstackState == UnstackState.SwappedWeak) {
+        if (DebugLevel >= 7) DebugBalance("Too soon to do another unstack swap, wait another " + nsis.ToString("F1") + " seconds!");
+        return;
+    }
+
+    // Otherwise, unstack!
+    DebugBalance("^6Unstacking!^0 " + um);
+
+    if (!loggedStats) {
+        DebugBalance(GetPlayerStatsString(name));
+        loggedStats = true;
+    }
+
+    MoveInfo moveUnstack = null;
+
+    switch (fUnstackState) {
+        case UnstackState.Off:
+            // First swap
+        case UnstackState.SwappedWeak:
+            // Swap strong to losing team
+            if (isStrong) {
+                DebugBalance("Sending strong player " + player.FullName + " to losing team " + GetTeamName(losingTeam));
+                moveUnstack = new MoveInfo(name, player.Tag, player.Team, GetTeamName(player.Team), losingTeam, GetTeamName(losingTeam));
+                toTeam = losingTeam;
+                fUnstackedRound = fUnstackedRound + 1;
+                IncrementTotal();
+                fUnstackState = UnstackState.SwappedStrong;
+            } else {
+                DebugBalance("Skipping ^b" + name + "^n, don't move weak player to losing team (#" + (playerIndex+1) + " of " + fromList.Count + ", median " + (median+1) + ")");
+                return;
+            }
+            break;
+        case UnstackState.SwappedStrong:
+            // Swap weak to winning team
+            if (!isStrong) {
+                DebugBalance("Sending weak player " + player.FullName + " to winning team " + GetTeamName(winningTeam));
+                moveUnstack = new MoveInfo(name, player.Tag, player.Team, GetTeamName(player.Team), winningTeam, GetTeamName(winningTeam));
+                toTeam = winningTeam;
+                fUnstackedRound = fUnstackedRound + 1;
+                IncrementTotal();
+                fUnstackState = UnstackState.SwappedWeak;
+                fFullUnstackSwapTimestamp = now;
+                if ((fUnstackedRound/2) >= perMode.MaxUnstackingSwapsPerRound) {
+                    DebugBalance("^1Maximum unstacking swaps has been reached for this round, no more unstacking will occur!");
+                    fUnstackState = UnstackState.Off;
+                }
+            } else {
+                DebugBalance("Skipping ^b" + name + "^n, don't move strong player to winning team (#" + (playerIndex+1) + " of " + fromList.Count + ", median " + (median+1) + ")");
+                return;
+            }
+            break;
+        default: return;
+    }
+
+    /* Move for unstacking */
+
+    moveUnstack.Reason = ReasonFor.Unstack;
+    moveUnstack.Format(ChatMovedToUnstack, false, false);
+    moveUnstack.Format(YellMovedToUnstack, true, false);
+
+    DebugWrite("^9" + moveUnstack, 6);
+
+    StartMoveImmediate(moveUnstack, false);
+
+    if (EnableLoggingOnlyMode) {
+        // Simulate completion of move
+        OnPlayerTeamChange(name, toTeam, 0);
+        OnPlayerMovedByAdmin(name, toTeam, 0, false); // simulate reverse order
+    }
 }
-
 
 private bool IsKnownPlayer(String name) {
     bool check = false;
@@ -2394,13 +2529,6 @@ private void KillUpdate(String killer, String victim) {
     bool okVictim = false;
     bool okKiller = false;
     DateTime now = DateTime.Now;
-    double score = -1;
-    double kills = -1;
-    double deaths = -1;
-    double kdr = -1;
-    double spm = -1;
-    int team = -1;
-    String tag = String.Empty;
     TimeSpan tir = TimeSpan.FromSeconds(0); // Time In Round
     lock (fKnownPlayers) {
         PlayerModel m = null;
@@ -2415,14 +2543,7 @@ private void KillUpdate(String killer, String victim) {
             okVictim = true;
             m.LastSeenTimestamp = now;
             m.IsDeployed = false;
-            score = m.ScoreRound;
-            kills = m.KillsRound;
-            deaths = m.DeathsRound;
-            kdr = m.KDRRound;
-            spm = m.SPMRound;
             tir = now.Subtract((m.FirstSpawnTimestamp != DateTime.MinValue) ? m.FirstSpawnTimestamp : now);
-            team = m.Team;
-            tag = ExtractTag(m);
         }
     }
 
@@ -2433,16 +2554,14 @@ private void KillUpdate(String killer, String victim) {
     if (!okVictim) {
         ConsoleDebug("player ^b" + victim + "^n is a victim, but not a known player!");
     } else {
-        Match rm = Regex.Match(tir.ToString(), @"([0-9]+:[0-9]+:[0-9]+)");
-        String sTIR = (rm.Success) ? rm.Groups[1].Value : "?";
-        String vn = (!String.IsNullOrEmpty(tag)) ? "[" + tag + "]" + victim : victim;
         int toTeam = 0;
         int fromTeam = 0;
         int level = (GetTeamDifference(ref fromTeam, ref toTeam) > MaxDiff()) ? 4 : 8;
 
-        DebugWrite("^9STATS: ^b" + vn + "^n [T:" + team + ", S:" + score + ", K:" + kills + ", D:" + deaths + ", KDR:" + kdr.ToString("F2") + ", SPM:" + spm.ToString("F0") + ", TIR: " + sTIR + "]", level);
+        // XXX DebugWrite("^9" + GetPlayerStatsString(victim), level);
     }
 }
+
 
 private void StartMoveImmediate(MoveInfo move, bool sendMessages) {
     // Do an immediate move, also used by the move thread
@@ -3106,6 +3225,7 @@ private void Reset() {
     fMaxTickets = -1;
     fBalanceIsActive = false;
     fIsFullRound = false;
+    fLastMsg = null;
 }
 
 private void ResetRound() {
@@ -3116,6 +3236,7 @@ private void ResetRound() {
     }
             
     fRoundStartTimestamp = DateTime.Now;
+    fFullUnstackSwapTimestamp = DateTime.MinValue;
 
     lock (fAllPlayers) {
         foreach (String name in fAllPlayers) {
@@ -3139,6 +3260,7 @@ private void ResetRound() {
     fFailedRound = 0;
     fTotalRound = 0;
     fReassignedRound = 0;
+    fUnstackState = UnstackState.Off;
 
     fLastBalancedTimestamp = DateTime.MinValue;
     fLastUnbalancedTimestamp = DateTime.MinValue;
@@ -3699,7 +3821,69 @@ private TimeSpan GetPlayerJoinedTimeSpan(PlayerModel player) {
 }
 
 private void DebugBalance(String msg) {
-    DebugWrite("^5(AUTO)^9 " + msg, 4);
+    // Filter out repeat messages
+    int level = 4;
+    if (fLastMsg != null) {
+        if (msg.Equals(fLastMsg)) {
+            level = 8;
+        } else {
+            String[] mWords = msg.Split(new Char[] {' '});
+            String[] lWords = fLastMsg.Split(new Char[] {' '});
+
+            int n = Math.Min(mWords.Length, lWords.Length);
+            int i = 0;
+            for (i = 0; i < n; ++i) {
+                if (!mWords[i].Equals(lWords[i])) break;
+            }
+            if ((i+1) >= 5) level = 8;
+        }
+    }
+    DebugWrite("^5(AUTO)^9 " + msg, level);
+    fLastMsg = msg;
+}
+
+private double NextSwapInSeconds() {
+    if (fFullUnstackSwapTimestamp == DateTime.MinValue) return 0;
+    double since = DateTime.Now.Subtract(fFullUnstackSwapTimestamp).TotalSeconds;
+    if (since > SWAP_TIMEOUT) return 0;
+    return (SWAP_TIMEOUT - since);
+}
+
+
+private String GetPlayerStatsString(String name) {
+    DateTime now = DateTime.Now;
+    double score = -1;
+    double kills = -1;
+    double deaths = -1;
+    double kdr = -1;
+    double spm = -1;
+    int team = -1;
+    bool ok = false;
+    TimeSpan tir = TimeSpan.FromSeconds(0); // Time In Round
+    PlayerModel m = null;
+
+    lock (fKnownPlayers) {
+        if (fKnownPlayers.TryGetValue(name, out m)) {
+            ok = true;
+            m.LastSeenTimestamp = now;
+            m.IsDeployed = false;
+            score = m.ScoreRound;
+            kills = m.KillsRound;
+            deaths = m.DeathsRound;
+            kdr = m.KDRRound;
+            spm = m.SPMRound;
+            tir = now.Subtract((m.FirstSpawnTimestamp != DateTime.MinValue) ? m.FirstSpawnTimestamp : now);
+            team = m.Team;
+        }
+    }
+
+    if (!ok) return("NO STATS FOR: " + name);
+
+    Match rm = Regex.Match(tir.ToString(), @"([0-9]+:[0-9]+:[0-9]+)");
+    String sTIR = (rm.Success) ? rm.Groups[1].Value : "?";
+    String vn = m.FullName;
+
+    return("STATS: ^b" + vn + "^n [T:" + team + ", S:" + score + ", K:" + kills + ", D:" + deaths + ", KDR:" + kdr.ToString("F2") + ", SPM:" + spm.ToString("F0") + ", TIR: " + sTIR + "]");
 }
 
 
