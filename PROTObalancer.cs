@@ -64,8 +64,6 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     /* Constants & Statics */
 
-    public const int DUMMY = 2;
-
     public const double MODEL_TIMEOUT = 24*60; // in minutes
 
     public const int CRASH_COUNT_HEURISTIC = 6; // player count difference signifies a crash
@@ -1714,7 +1712,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
             try {
                 DebugWrite("^bFINAL STATUS FOR PREVIOUS ROUND:^n", 3);
                 foreach (TeamScore ts in fFinalStatus) {
-                    fTickets[i] = ts.Score;
+                    fTickets[i] = (ts.Score == 1) ? 0 : ts.Score; // fix rounding
                     i = i + 1;
                     if (i >= fTickets.Length) break;
                 }
@@ -2134,7 +2132,7 @@ private void BalanceAndUnstack(String name) {
 
         StartMoveImmediate(move, false);
 
-        if (EnableLoggingOnlyMode || DUMMY == 2) {
+        if (EnableLoggingOnlyMode) {
             // Simulate completion of move
             OnPlayerTeamChange(name, toTeam, 0);
             OnPlayerMovedByAdmin(name, toTeam, 0, false); // simulate reverse order
@@ -2273,7 +2271,7 @@ private void UpdatePlayerModel(String name, int team, int squad, String eaGUID, 
         // TBD
     }
 
-    if (!EnableLoggingOnlyMode && DUMMY != 2) {
+    if (!EnableLoggingOnlyMode) {
         ConsoleDebug("player model for ^b" + name + "^n has team " + unTeam + " but update says " + team + "!");
     }
 }
@@ -2466,8 +2464,8 @@ private void StartMoveImmediate(MoveInfo move, bool sendMessages) {
         case ReasonFor.Unswitch: r = " to unswitch player"; break;
         default: r = " for ???"; break;
     }
-    String doing = (EnableLoggingOnlyMode || DUMMY == 2) ? "^9(SIMULATING) ^b^1MOVING^0 " : "^b^1MOVING^0 ";
-    DebugWrite(doing + move.Name + "^n from " + move.SourceName + " to " + move.DestinationName + r, DUMMY);
+    String doing = (EnableLoggingOnlyMode) ? "^9(SIMULATING) ^b^1MOVING^0 " : "^b^1MOVING^0 ";
+    DebugWrite(doing + move.Name + "^n from " + move.SourceName + " to " + move.DestinationName + r, 2);
 }
 
 private void FinishMoveImmediate(String name, int team) {
@@ -2531,9 +2529,9 @@ public void MoveLoop() {
             // Make sure player is dead
             if (!EnableLoggingOnlyMode) {
                 ServerCommand("admin.killPlayer", move.Name);
-                DebugWrite("^b^1ADMIN KILL^0 " + move.Name, DUMMY);
+                DebugWrite("^b^1ADMIN KILL^0 " + move.Name, 2);
             } else {
-                DebugWrite("^9(SIMULATING) ^b^1ADMIN KILL^0 " + move.Name, DUMMY);
+                DebugWrite("^9(SIMULATING) ^b^1ADMIN KILL^0 " + move.Name, 2);
             }
 
             // Pause
@@ -2554,8 +2552,8 @@ public void MoveLoop() {
 private void Reassign(String name, int fromTeam, int toTeam, int diff) {
     // This is not a known player yet, so not PlayerModel to use
     // Just do a raw move as quickly as possible, not messages, just logging
-    String doing = (EnableLoggingOnlyMode || DUMMY == 2) ? "^9(SIMULATING) ^b^1REASSIGNING^0^n new player ^b" : "^b^1REASSIGNING^0^n new player ^b";
-    DebugWrite(doing + name + "^n from team " + fromTeam + " to team " + toTeam + " because difference is " + diff, DUMMY);
+    String doing = (EnableLoggingOnlyMode) ? "^9(SIMULATING) ^b^1REASSIGNING^0^n new player ^b" : "^b^1REASSIGNING^0^n new player ^b";
+    DebugWrite(doing + name + "^n from team " + fromTeam + " to team " + toTeam + " because difference is " + diff, 2);
     int toSquad = ToSquad(name, toTeam);
     if (!EnableLoggingOnlyMode) {
         fReassigned.Add(name);
@@ -2623,15 +2621,15 @@ private void Chat(String who, String what) {
             ServerCommand("admin.say", what, "player", who); // chat player only
         }
         ProconChatPlayer(who, what);
-        doing = (EnableLoggingOnlyMode || DUMMY == 2) ? "^9(SIMULATING) ^b^1CHAT^0^n to ^b" : "^b^1CHAT^0^n to ^b";
-        DebugWrite(doing + who + "^n: " + what, DUMMY);
+        doing = (EnableLoggingOnlyMode) ? "^9(SIMULATING) ^b^1CHAT^0^n to ^b" : "^b^1CHAT^0^n to ^b";
+        DebugWrite(doing + who + "^n: " + what, 2);
     } else {
         if (!EnableLoggingOnlyMode) {
             ServerCommand("admin.say", what); // chat all
         }
         ProconChat(what);
-        doing = (EnableLoggingOnlyMode || DUMMY == 2) ? "^9(SIMULATING) ^b^1CHAT^0^n to all: " : "^b^1CHAT^0^n to all: ";
-        DebugWrite(doing + what, DUMMY);
+        doing = (EnableLoggingOnlyMode) ? "^9(SIMULATING) ^b^1CHAT^0^n to all: " : "^b^1CHAT^0^n to all: ";
+        DebugWrite(doing + what, 2);
     }
 }
 
@@ -2641,8 +2639,8 @@ private void Yell(String who, String what) {
         if (!EnableLoggingOnlyMode) {
             ServerCommand("admin.yell", what, "player", who); // yell to player
         }
-        doing = (EnableLoggingOnlyMode || DUMMY == 2) ? "^9(SIMULATING) ^b^1YELL^0^n to ^b" : "^b^1YELL^0^n to ^b";
-        DebugWrite(doing + who + "^n: " + what, DUMMY);
+        doing = (EnableLoggingOnlyMode) ? "^9(SIMULATING) ^b^1YELL^0^n to ^b" : "^b^1YELL^0^n to ^b";
+        DebugWrite(doing + who + "^n: " + what, 2);
     }
 }
 
