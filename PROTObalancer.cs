@@ -347,10 +347,10 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
             s += Reason + ",";
             s += Source + "(" + SourceName + "),";
             s += Destination + "(" + DestinationName + "),";
-            s += "C'" + ChatBefore + "',";
-            s += "Y'" + YellBefore + "',";
-            s += "C'" + ChatAfter + "',";
-            s += "Y'" + YellAfter + "')";
+            s += "CB'" + ChatBefore + "',";
+            s += "YB'" + YellBefore + "',";
+            s += "CA'" + ChatAfter + "',";
+            s += "YA'" + YellAfter + "')";
             return s;
         }
     } // end MoveInfo
@@ -387,7 +387,6 @@ private bool fGotVersion = false;
 private int fServerUptime = -1;
 private bool fServerCrashed = false; // because fServerUptime >  fServerInfo.ServerUptime
 private DateTime fLastBalancedTimestamp = DateTime.MinValue;
-private DateTime fLastUnbalancedTimestamp = DateTime.MinValue;
 private DateTime fEnabledTimestamp = DateTime.MinValue;
 private String fLastMsg = null;
 
@@ -448,7 +447,7 @@ public bool EnableWhitelistingOfReservedSlotsList;
 public String[] Whitelist;
 public String[] DisperseEvenlyList; // TBD
 public PresetItems Preset;
-public double SecondsUntilFastBalanceSpeed;
+public double SecondsUntilAdaptiveSpeedBecomesFast;
 
 public bool OnWhitelist;
 public bool TopScorers;
@@ -575,7 +574,6 @@ public PROTObalancer() {
     fFriendlyModes = new Dictionary<String,String>();
     fMaxTickets = -1;
     fLastBalancedTimestamp = DateTime.MinValue;
-    fLastUnbalancedTimestamp = DateTime.MinValue;
     fEnabledTimestamp = DateTime.MinValue;
     fFinalStatus = null;
     fIsFullRound = false;
@@ -599,7 +597,7 @@ public PROTObalancer() {
     Whitelist = new String[] {"[-- name, tag, or EA_GUID --]"};
     DisperseEvenlyList = new String[] {"[-- name, tag, or EA_GUID --]"};
     Preset = PresetItems.Standard;
-    SecondsUntilFastBalanceSpeed = 3*60; // 3 minutes default
+    SecondsUntilAdaptiveSpeedBecomesFast = 3*60; // 3 minutes default
     
     /* ===== SECTION 2 - Exclusions ===== */
     
@@ -801,7 +799,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "0.0.0.9";
+    return "0.0.0.10";
 }
 
 public String GetPluginAuthor() {
@@ -873,7 +871,7 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         lstReturn.Add(new CPluginVariable("1 - Settings|Enable @#!recruit Command", EnablerecruitCommand.GetType(), EnablerecruitCommand));
 */
 
-        lstReturn.Add(new CPluginVariable("1 - Settings|Seconds Until Fast Balance Speed", SecondsUntilFastBalanceSpeed.GetType(), SecondsUntilFastBalanceSpeed));
+        lstReturn.Add(new CPluginVariable("1 - Settings|Seconds Until Adaptive Speed Becomes Fast", SecondsUntilAdaptiveSpeedBecomesFast.GetType(), SecondsUntilAdaptiveSpeedBecomesFast));
         
         lstReturn.Add(new CPluginVariable("1 - Settings|Enable Whitelisting Of Reserved Slots List", EnableWhitelistingOfReservedSlotsList.GetType(), EnableWhitelistingOfReservedSlotsList));
 
@@ -1152,9 +1150,9 @@ public void SetPluginVariable(String strVariable, String strValue) {
             ShowInLog = String.Empty;
         }
 
-        if (SecondsUntilFastBalanceSpeed < 120) {
-            ConsoleWarn("Seconds Until Fast Balance Speed must be 120 or greater!");
-            SecondsUntilFastBalanceSpeed = 120;
+        if (SecondsUntilAdaptiveSpeedBecomesFast < 120) {
+            ConsoleWarn("Seconds Until Adaptive Speed Becomes Fast must be 120 or greater!");
+            SecondsUntilAdaptiveSpeedBecomesFast = 120;
         }
                 
         /*
@@ -1920,40 +1918,33 @@ private void BalanceAndUnstack(String name) {
     int winningTeam = 0;
     int losingTeam = 0;
     int biggestTeam = 0;
+    int nextBiggestTeam = 0;
     int smallestTeam = 0;
     String strongMsg = String.Empty;
     int diff = 0;
     DateTime now = DateTime.Now;
     bool needsBalancing = false;
     bool loggedStats = false;
+    bool isSQDM = IsSQDM();
 
     /* Sanity checks */
 
-    if (fLastBalancedTimestamp == DateTime.MinValue) fLastBalancedTimestamp = now;
-    if (fLastUnbalancedTimestamp == DateTime.MinValue) fLastUnbalancedTimestamp = now;
-
     if (fServerInfo == null) {
-        fLastBalancedTimestamp = now;
-        fLastUnbalancedTimestamp = now;
         return;
     }
 
     int totalPlayerCount = TotalPlayerCount;
 
-    if (totalPlayerCount > 0) AnalyzeTeams(out diff, out biggestTeam, out smallestTeam, out winningTeam, out losingTeam);
+    if (totalPlayerCount > 0) AnalyzeTeams(out diff, out biggestTeam, out nextBiggestTeam, out smallestTeam, out winningTeam, out losingTeam);
 
     if (diff > MaxDiff()) {
-        if (totalPlayerCount < ((IsSQDM()) ? 8 : 6)) {
-            if (DebugLevel >= 7) DebugBalance("Not enough players in server, minimum is " + ((IsSQDM()) ? 8 : 6));
-            fLastBalancedTimestamp = now;
-            fLastUnbalancedTimestamp = now;
+        if (totalPlayerCount < 6) {
+            if (DebugLevel >= 7) DebugBalance("Not enough players in server, minimum is " + 6);
             return;
         }
 
         if (totalPlayerCount >= (MaximumServerSize-1)) {
             if (DebugLevel >= 7) DebugBalance("Server is full, no balancing or unstacking will be attempted!");
-            fLastBalancedTimestamp = now;
-            fLastUnbalancedTimestamp = now;
             return;
         }
 
@@ -1995,13 +1986,10 @@ private void BalanceAndUnstack(String name) {
     double unstackTicketRatio = GetUnstackTicketRatio(perMode);
 
     // Adjust for duration of balance active
-    if (needsBalancing
-      && balanceSpeed == Speed.Adaptive
-      && fLastUnbalancedTimestamp != DateTime.MinValue && fLastBalancedTimestamp != DateTime.MinValue 
-      && fLastUnbalancedTimestamp.CompareTo(fLastBalancedTimestamp) > 0) {
-        double secs = fLastUnbalancedTimestamp.Subtract(fLastBalancedTimestamp).TotalSeconds;
-        if (secs > SecondsUntilFastBalanceSpeed) {
-            DebugBalance("^8^bBalancing taking too long (" + secs + " secs)!^n^0 Forcing to Fast balance speed.");
+    if (needsBalancing && fBalanceIsActive && balanceSpeed == Speed.Adaptive && fLastBalancedTimestamp != DateTime.MinValue) {
+        double secs = now.Subtract(fLastBalancedTimestamp).TotalSeconds;
+        if (secs > SecondsUntilAdaptiveSpeedBecomesFast) {
+            DebugBalance("^8^bBalancing taking too long (" + secs.ToString("F0") + " secs)!^n^0 Forcing to Fast balance speed.");
             balanceSpeed = Speed.Fast;
         }
     }
@@ -2056,6 +2044,7 @@ private void BalanceAndUnstack(String name) {
     }
     int median = Math.Max(0, (fromList.Count / 2) - 1);
     int playerIndex = 0;
+    int minPlayers = (isSQDM) ? 5 : fromList.Count; // for SQDM, apply top/strong/weak only if team has 5 or more players
 
     // Exclude if TopScorers enabled and a top scorer on the team
     int topPlayersPerTeam = 0;
@@ -2070,7 +2059,7 @@ private void BalanceAndUnstack(String name) {
     }
     for (int i = 0; i < fromList.Count; ++i) {
         if (fromList[i].Name == player.Name) {
-            if (needsBalancing && balanceSpeed != Speed.Fast && topPlayersPerTeam != 0 && i < topPlayersPerTeam) {
+            if (needsBalancing && balanceSpeed != Speed.Fast && fromList.Count >= minPlayers && topPlayersPerTeam != 0 && i < topPlayersPerTeam) {
                 String why = (balanceSpeed == Speed.Slow) ? "Speed is slow, excluding top scorers" : "Top Scorers enabled";
                 if (!loggedStats) {
                     DebugBalance(GetPlayerStatsString(name));
@@ -2110,7 +2099,10 @@ private void BalanceAndUnstack(String name) {
     int toTeam = ToTeam(name, player.Team, out toTeamDiff, out mustMove); // take into account dispersal by Rank, etc.
 
     if (balanceSpeed != Speed.Stop && needsBalancing) {
-        if (!fBalanceIsActive) DebugBalance("^2^bActivating autobalance!");
+        if (!fBalanceIsActive) {
+            DebugBalance("^2^bActivating autobalance!");
+            fLastBalancedTimestamp = now;
+        }
         fBalanceIsActive = true;
     } else if (fBalanceIsActive) {
         fBalanceIsActive = false;
@@ -2122,14 +2114,17 @@ private void BalanceAndUnstack(String name) {
     }
 
     if (fBalanceIsActive && toTeam != 0) {
-        DebugBalance("Autobalancing because difference of " + diff + " is greater than " + MaxDiff());
-        double abTime = fLastUnbalancedTimestamp.Subtract(fLastBalancedTimestamp).TotalSeconds;
-        if (fLastBalancedTimestamp == DateTime.MinValue) abTime = 0;
+        String ts = null;
+        if (isSQDM) {
+            ts = fTeam1.Count + "(A) vs " + fTeam2.Count + "(B) vs " + fTeam3.Count + "(C) vs " + fTeam4.Count + "(D)";
+        } else {
+            ts = fTeam1.Count + "(US) vs " + fTeam2.Count + "(RU)";
+        }
+        DebugBalance("Autobalancing because difference of " + diff + " is greater than " + MaxDiff() + ", [" + ts + "]");
+        double abTime = now.Subtract(fLastBalancedTimestamp).TotalSeconds;
         if (abTime > 0) {
             DebugBalance("^2^bAutobalance has been active for " + abTime.ToString("F1") + " seconds!");
         }
-        fLastUnbalancedTimestamp = now;
-        if (DebugLevel >= 8) DebugBalance("fLastUnbalancedTimestamp = " + fLastUnbalancedTimestamp.ToString("HH:mm:ss"));
 
         if (!loggedStats) {
             DebugBalance(GetPlayerStatsString(name));
@@ -2147,17 +2142,25 @@ private void BalanceAndUnstack(String name) {
         }
 
         // Has this player already been moved for balance or unstacking?
-        if (!mustMove && player.MovesRound > 1) {
+        if (!mustMove && player.MovesRound >= 1) {
             DebugBalance("Exempting ^b" + name + "^n, already moved this round");
             fExemptRound = fExemptRound + 1;
             IncrementTotal();
             return;
         }
 
-        if (!mustMove && balanceSpeed != Speed.Fast) { // TBD
+        // SQDM, not on the biggest team nor the next biggest team
+        if (isSQDM && !mustMove && balanceSpeed != Speed.Fast && player.Team != biggestTeam && player.Team != nextBiggestTeam) {
+            DebugBalance("Exempting ^b" + name + "^n, not on the biggest team nor next biggest team");
+            fExemptRound = fExemptRound + 1;
+            IncrementTotal();
+            return;
+        }
+
+        if (!mustMove && balanceSpeed != Speed.Fast && fromList.Count >= minPlayers) { // TBD
             if (DebugLevel > 5) DebugBalance(strongMsg);
             // don't move weak player to losing team
-            if (!isStrong && toTeam == losingTeam) {
+            if (!isStrong  && toTeam == losingTeam) {
                 DebugBalance("Exempting ^b" + name + "^n, don't move weak player to losing team (#" + (playerIndex+1) + " of " + fromList.Count + ", median " + (median+1) + ")");
                 fExemptRound = fExemptRound + 1;
                 IncrementTotal();
@@ -2183,7 +2186,7 @@ private void BalanceAndUnstack(String name) {
         move.Format(ChatMovedForBalance, false, false);
         move.Format(YellMovedForBalance, true, false);
 
-        DebugWrite("^9" + move, 6);
+        DebugWrite("^9" + move, 7);
 
         StartMoveImmediate(move, false);
 
@@ -2218,7 +2221,8 @@ private void BalanceAndUnstack(String name) {
         return;
     }
 
-    double ratio = Convert.ToDouble(fTickets[winningTeam]) / Convert.ToDouble(fTickets[losingTeam]);
+    double ratio = 1;
+    if (fTickets[losingTeam] >= 1) ratio = Convert.ToDouble(fTickets[winningTeam]) / Convert.ToDouble(fTickets[losingTeam]);
 
     String um = "Ticket ratio " + (ratio*100.0).ToString("F0") + " vs. unstack ratio of " + (unstackTicketRatio*100.0).ToString("F0");
 
@@ -2230,6 +2234,22 @@ private void BalanceAndUnstack(String name) {
     double nsis = NextSwapInSeconds();
     if (nsis > 0 && fUnstackState == UnstackState.SwappedWeak) {
         if (DebugLevel >= 7) DebugBalance("Too soon to do another unstack swap, wait another " + nsis.ToString("F1") + " seconds!");
+        return;
+    }
+
+    // Are the minimum number of players present to decide strong vs weak?
+    if (!mustMove && balanceSpeed != Speed.Fast && fromList.Count < minPlayers) {
+        DebugBalance("Skipping ^b" + name + "^n, not enough players in team to determine strong vs weak");
+        fExemptRound = fExemptRound + 1;
+        IncrementTotal();
+        return;
+    }
+
+    // Has this player already been moved for balance or unstacking?
+    if (!mustMove && player.MovesRound >= 1) {
+        DebugBalance("Skipping ^b" + name + "^n, already moved this round");
+        fExemptRound = fExemptRound + 1;
+        IncrementTotal();
         return;
     }
 
@@ -2249,11 +2269,9 @@ private void BalanceAndUnstack(String name) {
         case UnstackState.SwappedWeak:
             // Swap strong to losing team
             if (isStrong) {
-                DebugBalance("Sending strong player " + player.FullName + " to losing team " + GetTeamName(losingTeam));
+                DebugBalance("Sending strong player ^0^b" + player.FullName + "^n^9 to losing team " + GetTeamName(losingTeam));
                 moveUnstack = new MoveInfo(name, player.Tag, player.Team, GetTeamName(player.Team), losingTeam, GetTeamName(losingTeam));
                 toTeam = losingTeam;
-                fUnstackedRound = fUnstackedRound + 1;
-                IncrementTotal();
                 fUnstackState = UnstackState.SwappedStrong;
             } else {
                 DebugBalance("Skipping ^b" + name + "^n, don't move weak player to losing team (#" + (playerIndex+1) + " of " + fromList.Count + ", median " + (median+1) + ")");
@@ -2263,11 +2281,9 @@ private void BalanceAndUnstack(String name) {
         case UnstackState.SwappedStrong:
             // Swap weak to winning team
             if (!isStrong) {
-                DebugBalance("Sending weak player " + player.FullName + " to winning team " + GetTeamName(winningTeam));
+                DebugBalance("Sending weak player ^0^b" + player.FullName + "^n^9 to winning team " + GetTeamName(winningTeam));
                 moveUnstack = new MoveInfo(name, player.Tag, player.Team, GetTeamName(player.Team), winningTeam, GetTeamName(winningTeam));
                 toTeam = winningTeam;
-                fUnstackedRound = fUnstackedRound + 1;
-                IncrementTotal();
                 fUnstackState = UnstackState.SwappedWeak;
                 fFullUnstackSwapTimestamp = now;
                 if ((fUnstackedRound/2) >= perMode.MaxUnstackingSwapsPerRound) {
@@ -2288,7 +2304,7 @@ private void BalanceAndUnstack(String name) {
     moveUnstack.Format(ChatMovedToUnstack, false, false);
     moveUnstack.Format(YellMovedToUnstack, true, false);
 
-    DebugWrite("^9" + moveUnstack, 6);
+    DebugWrite("^9" + moveUnstack, 7);
 
     StartMoveImmediate(moveUnstack, false);
 
@@ -2605,10 +2621,9 @@ private void FinishMoveImmediate(String name, int team) {
             try {
                 UpdatePlayerTeam(name, team);
                 UpdateTeams();
-                if (move.Reason == ReasonFor.Balance || move.Reason == ReasonFor.Unstack) IncrementMoves(name);
-                if (move.Reason == ReasonFor.Balance) fBalancedRound = fBalancedRound + 1;
-                else if (move.Reason == ReasonFor.Unstack) fUnstackedRound = fUnstackedRound + 1;
-                else if (move.Reason == ReasonFor.Unswitch) fUnswitchedRound = fUnswitchedRound + 1;
+                if (move.Reason == ReasonFor.Balance) {fBalancedRound = fBalancedRound + 1; IncrementMoves(name);}
+                else if (move.Reason == ReasonFor.Unstack) {fUnstackedRound = fUnstackedRound + 1; IncrementMoves(name);}
+                else if (move.Reason == ReasonFor.Unswitch) {fUnswitchedRound = fUnswitchedRound + 1; IncrementTotal();}
             } catch (Exception e) {
                 ConsoleException(e.ToString());
             }
@@ -3263,7 +3278,6 @@ private void ResetRound() {
     fUnstackState = UnstackState.Off;
 
     fLastBalancedTimestamp = DateTime.MinValue;
-    fLastUnbalancedTimestamp = DateTime.MinValue;
 }
 
 private bool IsSQDM() {
@@ -3361,8 +3375,9 @@ private int GetTeamDifference(ref int fromTeam, ref int toTeam) {
 }
 
 
-private void AnalyzeTeams(out int maxDiff, out int biggestTeam, out int smallestTeam, out int winningTeam, out int losingTeam) {
+private void AnalyzeTeams(out int maxDiff, out int biggestTeam, out int nextBiggestTeam, out int smallestTeam, out int winningTeam, out int losingTeam) {
     biggestTeam = 0;
+    nextBiggestTeam = 0;
     smallestTeam = 0;
     winningTeam = 0;
     losingTeam = 0;
@@ -3389,8 +3404,10 @@ private void AnalyzeTeams(out int maxDiff, out int biggestTeam, out int smallest
 
     TeamRoster small = teams[0];
     TeamRoster big = teams[teams.Count-1];
+    TeamRoster nextBig = IsSQDM() ? teams[teams.Count-2] : big;
     smallestTeam = small.Team;
     biggestTeam = big.Team;
+    nextBiggestTeam = nextBig.Team;
     maxDiff = big.Roster.Count - small.Roster.Count;
 
     List<TeamScore> byScore = new List<TeamScore>();
@@ -3411,6 +3428,7 @@ private void AnalyzeTeams(out int maxDiff, out int biggestTeam, out int smallest
 
 private int DifferenceFromSmallest(int fromTeam) {
     int biggestTeam = 0;
+    int nextBiggestTeam = 0;
     int smallestTeam = 0;
     int winningTeam = 0;
     int losingTeam = 0;
@@ -3431,7 +3449,7 @@ private int DifferenceFromSmallest(int fromTeam) {
         if (fromTeam < 1 || fromTeam > 4) return 0;
     }
 
-    AnalyzeTeams(out diff, out biggestTeam, out smallestTeam, out winningTeam, out losingTeam);
+    AnalyzeTeams(out diff, out biggestTeam, out nextBiggestTeam, out smallestTeam, out winningTeam, out losingTeam);
 
     if (fromTeam == smallestTeam || smallestTeam < 1 || smallestTeam > teams.Count) return 0;
 
@@ -3467,11 +3485,12 @@ private int ToTeam(String name, int fromTeam, out int diff, out bool mustMove) {
     if (from != null && from.Count == 0) return 0;
 
     int biggestTeam = 0;
+    int nextBiggestTeam = 0;
     int smallestTeam = 0;
     int winningTeam = 0;
     int losingTeam = 0;
 
-    AnalyzeTeams(out diff, out biggestTeam, out smallestTeam, out winningTeam, out losingTeam);
+    AnalyzeTeams(out diff, out biggestTeam, out nextBiggestTeam, out smallestTeam, out winningTeam, out losingTeam);
 
     // diff is maximum difference between any two teams
 
@@ -3900,8 +3919,8 @@ private void LogStatus() {
     DebugWrite("^bStatus^n: Plugin state = " + fPluginState + ", game state = " + fGameState + ", Enable Logging Only Mode = " + EnableLoggingOnlyMode, 4);
     DebugWrite("^bStatus^n: Map = " + FriendlyMap + ", mode = " + FriendlyMode + ", time in round = " + rt + ", tickets = " + tm, 4);
     if (fPluginState == PluginState.Active) {
-        double secs = fLastUnbalancedTimestamp.Subtract(fLastBalancedTimestamp).TotalSeconds;
-        if (fLastBalancedTimestamp == DateTime.MinValue) secs = 0;
+        double secs = DateTime.Now.Subtract(fLastBalancedTimestamp).TotalSeconds;
+        if (!fBalanceIsActive || fLastBalancedTimestamp == DateTime.MinValue) secs = 0;
         PerModeSettings perMode = null;
         String simpleMode = String.Empty;
         if (fModeToSimple.TryGetValue(fServerInfo.GameMode, out simpleMode) 
