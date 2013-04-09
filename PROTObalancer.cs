@@ -606,7 +606,7 @@ public PROTObalancer() {
     OnWhitelist = true;
     TopScorers = true;
     SameClanTagsInSquad = true;
-    MinutesAfterJoining = 15;
+    MinutesAfterJoining = 5;
     JoinedEarlyPhase = true;
     JoinedMidPhase = true;
     JoinedLatePhase = false;
@@ -692,7 +692,7 @@ public PROTObalancer(PresetItems preset) : this() {
             OnWhitelist = true;
             TopScorers = true;
             SameClanTagsInSquad = true;
-            MinutesAfterJoining = 30;
+            MinutesAfterJoining = 15;
             JoinedEarlyPhase = true;
             JoinedMidPhase = true;
             JoinedLatePhase = true;
@@ -712,7 +712,7 @@ public PROTObalancer(PresetItems preset) : this() {
             OnWhitelist = true;
             TopScorers = true;
             SameClanTagsInSquad = false;
-            MinutesAfterJoining = 60;
+            MinutesAfterJoining = 0;
             JoinedEarlyPhase = false;
             JoinedMidPhase = false;
             JoinedLatePhase = true;
@@ -733,7 +733,7 @@ public PROTObalancer(PresetItems preset) : this() {
             OnWhitelist = true;
             TopScorers = true;
             SameClanTagsInSquad = true;
-            MinutesAfterJoining = 30;
+            MinutesAfterJoining = 15;
             JoinedEarlyPhase = true;
             JoinedMidPhase = true;
             JoinedLatePhase = true;
@@ -753,7 +753,7 @@ public PROTObalancer(PresetItems preset) : this() {
             OnWhitelist = true;
             TopScorers = true;
             SameClanTagsInSquad = true;
-            MinutesAfterJoining = 15;
+            MinutesAfterJoining = 5;
             JoinedEarlyPhase = true;
             JoinedMidPhase = true;
             JoinedLatePhase = false;
@@ -773,7 +773,7 @@ public PROTObalancer(PresetItems preset) : this() {
             OnWhitelist = true;
             TopScorers = true;
             SameClanTagsInSquad = true;
-            MinutesAfterJoining = 15;
+            MinutesAfterJoining = 5;
             JoinedEarlyPhase = true;
             JoinedMidPhase = true;
             JoinedLatePhase = false;
