@@ -2240,7 +2240,7 @@ private void BalanceAndUnstack(String name) {
 
     String um = "Ticket ratio " + (ratio*100.0).ToString("F0") + " vs. unstack ratio of " + (unstackTicketRatio*100.0).ToString("F0");
 
-    if (ratio < unstackTicketRatio) {
+    if (unstackTicketRatio == 0 || ratio < unstackTicketRatio) {
         if (DebugLevel >= 7) DebugBalance("No unstacking needed: " + um);
         return;
     }
