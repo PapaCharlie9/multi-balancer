@@ -799,7 +799,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "0.0.0.10";
+    return "0.0.0.11";
 }
 
 public String GetPluginAuthor() {
@@ -1757,6 +1757,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
         fServerUptime = serverInfo.ServerUptime;
 
         double maxTickets = 0;
+        i = 1;
         if (fServerInfo.TeamScores != null) foreach (TeamScore ts in fServerInfo.TeamScores) {
             fTickets[i] = ts.Score;
             if (ts.Score > maxTickets) maxTickets = ts.Score;
@@ -2098,6 +2099,13 @@ private void BalanceAndUnstack(String name) {
     int toTeamDiff = 0;
     int toTeam = ToTeam(name, player.Team, out toTeamDiff, out mustMove); // take into account dispersal by Rank, etc.
 
+    if (needsBalancing && toTeamDiff <= MaxDiff()) {
+        DebugBalance("Exempting ^b" + name + "^n, difference between team " + player.Team + " and " + toTeam + " is only " + toTeamDiff);
+        fExemptRound = fExemptRound + 1;
+        IncrementTotal();
+        return;
+    }
+
     if (balanceSpeed != Speed.Stop && needsBalancing) {
         if (!fBalanceIsActive) {
             DebugBalance("^2^bActivating autobalance!");
@@ -2172,6 +2180,12 @@ private void BalanceAndUnstack(String name) {
                 DebugBalance("Exempting ^b" + name + "^n, don't move strong player to winning team (#" + (playerIndex+1) + " of " + fromList.Count + ", median " + (median+1) + ")");
                 fExemptRound = fExemptRound + 1;
                 IncrementTotal();
+                return;
+            }
+
+            // Don't move to same team
+            if (player.Team == toTeam) {
+                if (DebugLevel >= 7) DebugBalance("Exempting ^b" + name + "^n, don't move player to his own team!");
                 return;
             }
         }
@@ -2269,18 +2283,34 @@ private void BalanceAndUnstack(String name) {
         case UnstackState.SwappedWeak:
             // Swap strong to losing team
             if (isStrong) {
+                // Don't move to same team
+                if (player.Team == losingTeam) {
+                    if (DebugLevel >= 7) DebugBalance("Skipping strong ^b" + name + "^n, don't move player to his own team!");
+                    fExemptRound = fExemptRound + 1;
+                    IncrementTotal();
+                    return;
+                }
                 DebugBalance("Sending strong player ^0^b" + player.FullName + "^n^9 to losing team " + GetTeamName(losingTeam));
                 moveUnstack = new MoveInfo(name, player.Tag, player.Team, GetTeamName(player.Team), losingTeam, GetTeamName(losingTeam));
                 toTeam = losingTeam;
                 fUnstackState = UnstackState.SwappedStrong;
             } else {
                 DebugBalance("Skipping ^b" + name + "^n, don't move weak player to losing team (#" + (playerIndex+1) + " of " + fromList.Count + ", median " + (median+1) + ")");
+                fExemptRound = fExemptRound + 1;
+                IncrementTotal();
                 return;
             }
             break;
         case UnstackState.SwappedStrong:
             // Swap weak to winning team
             if (!isStrong) {
+                // Don't move to same team
+                if (player.Team == winningTeam) {
+                    if (DebugLevel >= 7) DebugBalance("Skipping weak ^b" + name + "^n, don't move player to his own team!");
+                    fExemptRound = fExemptRound + 1;
+                    IncrementTotal();
+                    return;
+                }
                 DebugBalance("Sending weak player ^0^b" + player.FullName + "^n^9 to winning team " + GetTeamName(winningTeam));
                 moveUnstack = new MoveInfo(name, player.Tag, player.Team, GetTeamName(player.Team), winningTeam, GetTeamName(winningTeam));
                 toTeam = winningTeam;
@@ -2292,6 +2322,8 @@ private void BalanceAndUnstack(String name) {
                 }
             } else {
                 DebugBalance("Skipping ^b" + name + "^n, don't move strong player to winning team (#" + (playerIndex+1) + " of " + fromList.Count + ", median " + (median+1) + ")");
+                fExemptRound = fExemptRound + 1;
+                IncrementTotal();
                 return;
             }
             break;
@@ -2402,7 +2434,7 @@ private void UpdatePlayerModel(String name, int team, int squad, String eaGUID, 
         return;
     }
     
-    int unTeam = -1;
+    int unTeam = -2;
     
     lock (fKnownPlayers) {
     
@@ -2430,7 +2462,7 @@ private void UpdatePlayerModel(String name, int team, int squad, String eaGUID, 
         // TBD
     }
 
-    if (!EnableLoggingOnlyMode) {
+    if (!EnableLoggingOnlyMode && unTeam != -2) {
         ConsoleDebug("player model for ^b" + name + "^n has team " + unTeam + " but update says " + team + "!");
     }
 }
@@ -2597,7 +2629,7 @@ private void StartMoveImmediate(MoveInfo move, bool sendMessages) {
     }
     // Do the move
     if (!EnableLoggingOnlyMode) {
-        ServerCommand("admin.movePlayer", move.Destination.ToString(), "0", "false"); // TBD, assign to squad also
+        ServerCommand("admin.movePlayer", move.Name, move.Destination.ToString(), "0", "false"); // TBD, assign to squad also
         ScheduleListPlayers(10);
     }
     String r = null;
@@ -3407,7 +3439,7 @@ private void AnalyzeTeams(out int maxDiff, out int biggestTeam, out int nextBigg
     TeamRoster nextBig = IsSQDM() ? teams[teams.Count-2] : big;
     smallestTeam = small.Team;
     biggestTeam = big.Team;
-    nextBiggestTeam = nextBig.Team;
+    nextBiggestTeam = (nextBig.Roster.Count > small.Roster.Count) ? nextBig.Team : big.Team;
     maxDiff = big.Roster.Count - small.Roster.Count;
 
     List<TeamScore> byScore = new List<TeamScore>();
