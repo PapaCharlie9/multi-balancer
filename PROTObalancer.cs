@@ -120,7 +120,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     break;
                 case "Rush":
                     MaxPlayers = 32;
-                    CheckTeamStackingAfterFirstMinutes = 10;
+                    CheckTeamStackingAfterFirstMinutes = 0;
                     MaxUnstackingSwapsPerRound = 6;
                     DefinitionOfHighPopulationForPlayers = 24;
                     DefinitionOfLowPopulationForPlayers = 8;
@@ -129,8 +129,8 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     break;
                 case "Squad Deathmatch":
                     MaxPlayers = 16;
-                    CheckTeamStackingAfterFirstMinutes = 5;
-                    MaxUnstackingSwapsPerRound = 6;
+                    CheckTeamStackingAfterFirstMinutes = 0;
+                    MaxUnstackingSwapsPerRound = 0;
                     DefinitionOfHighPopulationForPlayers = 14;
                     DefinitionOfLowPopulationForPlayers = 8;
                     DefinitionOfEarlyPhaseFromStart = 10; // assuming 50 tickets typical
@@ -799,7 +799,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "0.0.0.11";
+    return "0.0.0.12";
 }
 
 public String GetPluginAuthor() {
@@ -1969,7 +1969,7 @@ private void BalanceAndUnstack(String name) {
         simpleMode = fServerInfo.GameMode;
     }
     if (String.IsNullOrEmpty(simpleMode)) {
-        DebugBalance("Simple mode is null for: " + fServerInfo.GameMode);
+        DebugBalance("Simple mode is null: " + fServerInfo.GameMode);
         return;
     }
     if (!fPerMode.TryGetValue(simpleMode, out perMode)) {
@@ -1995,6 +1995,23 @@ private void BalanceAndUnstack(String name) {
         }
     }
     String andSlow = (balanceSpeed == Speed.Slow) ? " and speed is Slow" : String.Empty;
+
+    /* Activation check */
+
+    if (balanceSpeed != Speed.Stop && needsBalancing) {
+        if (!fBalanceIsActive) {
+            DebugBalance("^2^bActivating autobalance!");
+            fLastBalancedTimestamp = now;
+        }
+        fBalanceIsActive = true;
+    } else if (fBalanceIsActive) {
+        fBalanceIsActive = false;
+        double dur = now.Subtract(fLastBalancedTimestamp).TotalSeconds;
+        if (fLastBalancedTimestamp == DateTime.MinValue) dur = 0;
+        if (dur > 0) {
+            DebugBalance("^2^bDeactiving autobalance! Was active for " + dur.ToString("F0") + " seconds!");
+        }
+    }
 
     /* Exclusions */
 
@@ -2099,26 +2116,18 @@ private void BalanceAndUnstack(String name) {
     int toTeamDiff = 0;
     int toTeam = ToTeam(name, player.Team, out toTeamDiff, out mustMove); // take into account dispersal by Rank, etc.
 
-    if (needsBalancing && toTeamDiff <= MaxDiff()) {
-        DebugBalance("Exempting ^b" + name + "^n, difference between team " + player.Team + " and " + toTeam + " is only " + toTeamDiff);
+    if (needsBalancing && (toTeam == 0 || toTeam == player.Team)) {
+        if (DebugLevel >= 8) DebugBalance("Exempting ^b" + name + "^n, target team selected is same or zero");
         fExemptRound = fExemptRound + 1;
         IncrementTotal();
         return;
     }
 
-    if (balanceSpeed != Speed.Stop && needsBalancing) {
-        if (!fBalanceIsActive) {
-            DebugBalance("^2^bActivating autobalance!");
-            fLastBalancedTimestamp = now;
-        }
-        fBalanceIsActive = true;
-    } else if (fBalanceIsActive) {
-        fBalanceIsActive = false;
-        double dur = now.Subtract(fLastBalancedTimestamp).TotalSeconds;
-        if (fLastBalancedTimestamp == DateTime.MinValue) dur = 0;
-        if (dur > 0) {
-            DebugBalance("^2^bDeactiving autobalance! Was active for " + dur.ToString("F0") + " seconds!");
-        }
+    if (needsBalancing && toTeamDiff <= MaxDiff()) {
+        DebugBalance("Exempting ^b" + name + "^n, difference between team " + player.Team + " and " + toTeam + " is only " + toTeamDiff);
+        fExemptRound = fExemptRound + 1;
+        IncrementTotal();
+        return;
     }
 
     if (fBalanceIsActive && toTeam != 0) {
@@ -2230,6 +2239,20 @@ private void BalanceAndUnstack(String name) {
         return;
     }
 
+    if (perMode.CheckTeamStackingAfterFirstMinutes == 0) {
+        if (DebugLevel >= 5) DebugBalance("Unstacking has been disabled, Check Team Stacking After First Minutes set to zero)");
+        return;
+    }
+
+    double tirMins = GetTimeInRoundMinutes();
+
+    if (tirMins < perMode.CheckTeamStackingAfterFirstMinutes) {
+        DebugBalance("Too early to check for unstacking, skipping ^b" + name + "^n");
+        fExemptRound = fExemptRound + 1;
+        IncrementTotal();
+        return;
+    }
+
     if ((fUnstackedRound/2) >= perMode.MaxUnstackingSwapsPerRound) {
         if (DebugLevel >= 7) DebugBalance("Maximum swaps have already occurred this round (" + (fUnstackedRound/2) + ")");
         return;
@@ -2253,7 +2276,7 @@ private void BalanceAndUnstack(String name) {
 
     // Are the minimum number of players present to decide strong vs weak?
     if (!mustMove && balanceSpeed != Speed.Fast && fromList.Count < minPlayers) {
-        DebugBalance("Skipping ^b" + name + "^n, not enough players in team to determine strong vs weak");
+        DebugBalance("Not enough players in team to determine strong vs weak, skipping ^b" + name + "^n, ");
         fExemptRound = fExemptRound + 1;
         IncrementTotal();
         return;
@@ -2261,7 +2284,7 @@ private void BalanceAndUnstack(String name) {
 
     // Has this player already been moved for balance or unstacking?
     if (!mustMove && player.MovesRound >= 1) {
-        DebugBalance("Skipping ^b" + name + "^n, already moved this round");
+        DebugBalance("Already moved this round, skipping ^b" + name + "^n, ");
         fExemptRound = fExemptRound + 1;
         IncrementTotal();
         return;
@@ -2531,11 +2554,6 @@ private void ValidateModel(List<CPlayerInfo> players) {
     fPluginState = PluginState.Active;
     DebugWrite("ValidateModel: ^b^3State = " + fPluginState, 6);  
     DebugWrite("ValidateModel: ^b^3Game state = " + fGameState, 6);
-}
-
-private void RevalidateModel() {
-    // set flag
-    // schedule listPlayers
 }
 
 
@@ -2829,6 +2847,7 @@ private void ProconChatPlayer(String who, String what) {
 private void GarbageCollectKnownPlayers()
 {
     int n = 0;
+    bool revalidate = false;
     lock (fKnownPlayers) {
         List<String> garbage = new List<String>();
 
@@ -2839,7 +2858,7 @@ private void GarbageCollectKnownPlayers()
                 if (IsKnownPlayer(name)) {
                     ConsoleDebug("^b" + name + "^n has timed out and is still on active players list, idling?");
                     // Revalidate the data model
-                    RevalidateModel();
+                    revalidate = true;
                 } else {
                     garbage.Add(name);
                 }
@@ -2850,6 +2869,13 @@ private void GarbageCollectKnownPlayers()
         if (garbage.Count > 0) foreach (String name in garbage) {
             fKnownPlayers.Remove(name);
             n = n + 1;
+        }
+    }
+
+    if (revalidate) {
+        lock (fAllPlayers) {
+            fAllPlayers.Clear();
+            ScheduleListPlayers(1);
         }
     }
 
@@ -3318,8 +3344,13 @@ private bool IsSQDM() {
 }
 
 private int MaxDiff() {
-    // TBD - based on per mode population settings
-    return 1;
+    if (fServerInfo == null || IsSQDM()) return 2;
+    PerModeSettings perMode = null;
+    String simpleMode = String.Empty;
+    if (fModeToSimple.TryGetValue(fServerInfo.GameMode, out simpleMode) && fPerMode.TryGetValue(simpleMode, out perMode) && perMode != null) {
+        return ((GetPopulation(perMode, false) == Population.High) ? 2 : 1);
+    }
+    return 2;
 }
 
 private void UpdateTeams() {
@@ -3532,8 +3563,8 @@ private int ToTeam(String name, int fromTeam, out int diff, out bool mustMove) {
     
     // Special handling for SQDM, when small teams are equal, pick the lowest numbered ID
     if (IsSQDM()) {
-        if (targetTeam == 4 && fTeam3.Count == fTeam4.Count) targetTeam = 3;
-        if (targetTeam == 3 && fTeam2.Count == fTeam3.Count) targetTeam = 2;
+        if (targetTeam == 4 && fTeam3.Count == fTeam4.Count && fromTeam != 3) targetTeam = 3;
+        if (targetTeam == 3 && fTeam2.Count == fTeam3.Count && fromTeam != 2) targetTeam = 2;
     }
 
     // recompute diff to be difference between fromTeam and target team
@@ -3938,15 +3969,25 @@ private String GetPlayerStatsString(String name) {
 }
 
 
+private double GetTimeInRoundMinutes() {
+    DateTime rst = (fRoundStartTimestamp == DateTime.MinValue) ? DateTime.Now : fRoundStartTimestamp;
+    return (DateTime.Now.Subtract(fRoundStartTimestamp).TotalMinutes);
+}
+
+private String GetTimeInRoundString() {
+    DateTime rst = (fRoundStartTimestamp == DateTime.MinValue) ? DateTime.Now : fRoundStartTimestamp;
+    Match rm = Regex.Match(DateTime.Now.Subtract(fRoundStartTimestamp).ToString(), @"([0-9]+:[0-9]+:[0-9]+)");
+    return ( (rm.Success) ? rm.Groups[1].Value : "?" );
+}
+
+
 private void LogStatus() {
     Speed balanceSpeed = Speed.Adaptive;
 
     String tm = fTickets[1] + "/" + fTickets[2];
     if (IsSQDM()) tm = tm + "/" + fTickets[3] + "/" + fTickets[4];
 
-    DateTime rst = (fRoundStartTimestamp == DateTime.MinValue) ? DateTime.Now : fRoundStartTimestamp;
-    Match rm = Regex.Match(DateTime.Now.Subtract(fRoundStartTimestamp).ToString(), @"([0-9]+:[0-9]+:[0-9]+)");
-    String rt = (rm.Success) ? rm.Groups[1].Value : "?";
+    String rt = GetTimeInRoundString();
 
     DebugWrite("^bStatus^n: Plugin state = " + fPluginState + ", game state = " + fGameState + ", Enable Logging Only Mode = " + EnableLoggingOnlyMode, 4);
     DebugWrite("^bStatus^n: Map = " + FriendlyMap + ", mode = " + FriendlyMode + ", time in round = " + rt + ", tickets = " + tm, 4);
@@ -3983,11 +4024,10 @@ private void LogStatus() {
     
     counts.Sort();
     int diff = Math.Abs(counts[0] - counts[counts.Count-1]);
-    String next = (diff > MaxDiff() && fGameState == GameState.Playing && balanceSpeed != Speed.Stop) ? "^n^0 ... autobalance will activate on next death!" : "^n";
+    String next = (diff > MaxDiff() && fGameState == GameState.Playing && balanceSpeed != Speed.Stop && !fBalanceIsActive) ? "^n^0 ... autobalance will activate on next death!" : "^n";
     
     DebugWrite("^bStatus^n: Team difference = " + ((diff > MaxDiff()) ? "^8^b" : "^b") + diff + next, 3);
 }
-
 
 } // end PROTObalancer
 
@@ -4139,17 +4179,17 @@ static class PROTObalancerUtils {
 
 <p>Since logging to plugin.log is an important part of this phase of testing, it would be best if you could reduce or eliminate logging of other plugins so that most or all of the log is from PROTObalancer. If you are planning to leave the plugin unattended to collect logs, set <b>Debug Level</b> to 5. If you are going to watch the log interactively for a while, you can experiment with higher or lower <b>Debug Level</b> settings. It would also be useful to set the console.log to enable Event logging, but be advised that the console.log might get quite large. Do <b>not</b> enable Debug on your console.log.</p>
 
-<p>The only settings that do anything are:
+<p>Only balancing and unstacking (excluding SQDM) is working. Team unswitching/balance guarding is not working.</p>
+
+<p>The following settings are not hooked up, they don't do anything:
 <ul>
-<li>Debug Level</li>
-<li>Enable Whitelisting Of Reserved Slot List</li>
-<li>Whitelist</li>
-<li>On Whitelist</li>
-<li>Quiet Mode</li>
-<li>Chat: Moved For Balance (only for logging purposes, no chat is actually sent)</li>
-<li>Yell: Moved For Balance (only for logging purposes, no yell is actually sent)</li>
-<li>Log Chat</li>
-<li>Enable Logging Only Mode</li>
+<li>Enable Battlelog Requests</li>
+<li>Maximum Request Rate</li>
+<li>Unlimited Team Switching During First Minutes Of Round</li>
+<li>Disperse Evenly List</li>
+<li>Same Clan Tags In Squad</li>
+<li>Joined Early/Mid/Late Phase</li>
+<li>Per-mode: Disperse Evenly For Rank</li>
 </ul>
 </p>
 
