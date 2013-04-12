@@ -812,7 +812,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "0.0.0.12";
+    return "0.0.0.13";
 }
 
 public String GetPluginAuthor() {
