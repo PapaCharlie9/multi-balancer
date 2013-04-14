@@ -812,7 +812,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "0.0.0.12";
+    return "0.0.0.13";
 }
 
 public String GetPluginAuthor() {
@@ -4218,41 +4218,44 @@ static class PROTObalancerUtils {
 <li>Unswitching players who team switch</li>
 </ul></p>
 
-<p>This plugin only moves players when they die. No players are killed by admin to be moved, with the single exception of players who attempt to switch teams when team switching is not allowed -- those players are admin killed before being moved back to their original team. This plugin also mintors new player joins and if the game server would assign a new player to the wrong team (a team with 30 players when another team only has 27 players), the plugin will <i>reassign</i> the player to the team that needs players for balance. This all happens before a player spawns, so they will not be aware that they were reassigned.</p>
+<p>This plugin only moves players when they die. No players are killed by admin to be moved, with the single exception of players who attempt to switch teams when team switching is not allowed -- those players are admin killed before being moved back to their original team. This plugin also monitors new player joins and if the game server would assign a new player to the wrong team (a team with 30 players when another team only has 27 players), the plugin will <i>reassign</i> the player to the team that needs players for balance. This all happens before a player spawns, so they will not be aware that they were reassigned.</p>
 
 <h3>Quick Start</h3>
 <p>Don't want to spend a lot of time learning all of the settings for this plugin? Just follow these quick start steps:
-<ol>
-<li>Select a <b>Preset</b> at the top of the plugin settings:
-    <ul>
-    <li><b>Standard</b>: Normal level of autobalance and team unstacking</li>
-    <li><b>Aggressive</b>: Rebalance and unstack teams quickly, moving lots of players in a short amount of time</li>
-    <li><b>Passive</b>: Rebalance and unstack teams slowly, moving few players over a long period of time</li>
-    <li><b>Intensify</b>: Focus on keeping teams evenly matched for a level playing field and an intense game</li>
-    <li><b>Retain</b>: Focus on reducing rage quitting by keeping teams balanced, but refrain from too many player moves</li>
-    <li><b>BalanceOnly</b>: Disable team unstacking, only move for autobalance</li>
-    <li><b>UnstackOnly</b>: Disable autobalancing, only move to unstack teams</li>
-    <li><b>None</b>: Custom plugin settings (this is automatically selected if you change settings controlled by <b>Presets</b>)</li>
-    </ul>
-</li>
-<li>Review plugin section <b>5. Messages</b> and change any messages you don't like.</li>
-<li>That's it! You are good to go.</li>
-</ol></p>
+
+<p>1) Select a <b>Preset</b> at the top of the plugin settings:
+<table>
+<tr><td><b>Standard</b></td><td>Autobalance and unstack teams, good for most server configurations</td></tr>
+<tr><td><b>Aggressive</b></td><td>Autobalance and unstack teams quickly, moving lots of players in a short amount of time</td></tr>
+<tr><td><b>Passive</b></td><td>Autobalance and unstack teams slowly, moving few players over a long period of time</td></tr>
+<tr><td><b>Intensify</b></td><td>Focus on keeping teams evenly matched for a level playing field and an intense game</td></tr>
+<tr><td><b>Retain</b></td><td>Focus on reducing rage quitting by keeping teams balanced, but refrain from too many player moves</td></tr>
+<tr><td><b>BalanceOnly</b></td><td>Disable team unstacking, only move for autobalance</td></tr>
+<tr><td><b>UnstackOnly</b></td><td>Disable autobalancing, only move to unstack teams</td></tr>
+<tr><td><b>None</b></td><td>Custom plugin settings (this is automatically selected if you change settings controlled by <b>Presets</b>)</td></tr>
+</table></p>
+
+<p>2) Review plugin section <b>5. Messages</b> and change any messages you don't like.</p>
+
+<p>3) That's it! You are good to go.</p>
 
 <h3>Details</h3>
-<p>This plugin is unusual in that it supports a rich set of settings for defining the administration policy for team management. Some of the most important policies are described below.</p>
+<p>This plugin provides a rich set of features for a wide variety of team management styles. Some (but not all) of the styles this plugin is designed for are listed below, and you can mix and max these styles depending on the game mode, number of players on the server and whether it is early or late in the round:</p>
 
 <h4>Fair play</h4>
-<p>This policy aims for each round to be as evenly balanced in skills as possible. Every round should end as a &quot;nail-biter&quot;. If you want to see Conquest rounds end with ticket differences less than 20 or Team Deathmatch or Squad Deathmatch rounds end with kill differences less than 5 or Rush matches that get down to 1 ticket before the last MCOM is blown, the settings provided by this plugin make that possible.</p>
+<p>This style aims for each round to be as evenly balanced in skills as possible. Every round should end as a &quot;nail-biter&quot;. If you want to see Conquest rounds end with ticket differences less than 20 or Team Deathmatch or Squad Deathmatch rounds end with kill differences less than 5 or Rush matches that get down to 1 ticket before the last MCOM is blown, the settings provided by this plugin give you the best chance to have that experience on your server.</p>
+
+<h4>Cutthroat</h4>
+<p>This is pretty much the exact opposite of Fair Play. Every player for himself and damn the consequences. If one team gets stacked with good players, that's just too bad for the other team. The newest players to join are the ones moved to keep teams balanced. This plugin supports cutthroat style by turning most of the features off, except new player reassignment and new player autobalancing.</p>
 
 <h4>Retain players</h4>
-<p>This policy aims to retain players on your server. Players are left alone to do what they want, but aspects of team balance and team switching that cause players to leave, like too much autobalancing, team stacking, too many Colonel 100's on one team, too many players from one clan on one team, etc., are dealt with. Only things that are related to team balance are managed, however. This plugin doesn't do anything about, for example, base raping.</p>
+<p>This style aims to retain players on your server. Players are left alone to do what they want, but aspects of team balance and team switching that cause players to leave, like too much autobalancing, team stacking, too many Colonel 100's on one team, too many players from one clan on one team, etc., are dealt with. Only things that are related to team balance are managed, however. This plugin doesn't do anything about, for example, base raping.</p>
 
 <h4>Keep friends together</h4>
-<p>This policy recognizes that friends like to play together. To the extent that friends wear the same clan tag, the balancer and unstacker can be configured to keep players with the same tags together.</p>
+<p>This style recognizes that friends like to play together. To the extent that friends wear the same clan tag, the balancer and unstacker can be configured to keep players with the same tags together.</p>
 
 <h4>Split problem clans apart</h4>
-<p>This policy recognizes that some &quot;pro&quot; clans can spoil everyone's fun if they play together, so the balancer and unstacker can be configured to split players with the same clan tag apart and spread them out evenly between teams.</p>
+<p>This style recognizes that some &quot;pro&quot; clans can spoil everyone's fun if they play together, so the balancer and unstacker can be configured to split players with the same clan tag apart and spread them out evenly between teams.</p>
 
 <h2>Concepts</h2>
 <p>This plugin recognizes that a game round has a natural pattern and flow that depends on several factors. Play during the very beginning of a round is different from the very end. Play when the server is nearly empty is different from when the server is nearly full. The natural flow of a round of Conquest is very different from the flow of a game of Rush. Strong (good) players are not interchangeable with weak (bad) players. So with all these differences, how can one set of settings cover all of those different situations? They can't. So this plugin allows you to configure different settings for each combination of factors. The primary factors and concepts are described in the sections that follow.</p>
