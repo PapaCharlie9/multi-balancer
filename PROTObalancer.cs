@@ -424,10 +424,13 @@ private Queue<ListPlayersRequest> fListPlayersQ = null;
 private Dictionary<String,String> fFriendlyMaps = null;
 private Dictionary<String,String> fFriendlyModes = null;
 private double fMaxTickets = -1;
+private double fRushMaxTickets = -1; // not normalized
 private List<TeamScore> fFinalStatus = null;
 private bool fIsFullRound = false;
 private UnstackState fUnstackState = UnstackState.Off;
 private DateTime fFullUnstackSwapTimestamp;
+private int fRushStage = 0;
+private double fRushAttackerTickets = 0;
 
 // Operational statistics
 private int fReassignedRound = 0;
@@ -586,12 +589,15 @@ public PROTObalancer() {
     fFriendlyMaps = new Dictionary<String,String>();
     fFriendlyModes = new Dictionary<String,String>();
     fMaxTickets = -1;
+    fRushMaxTickets = -1;
     fLastBalancedTimestamp = DateTime.MinValue;
     fEnabledTimestamp = DateTime.MinValue;
     fFinalStatus = null;
     fIsFullRound = false;
     fUnstackState = UnstackState.Off;
     fLastMsg = null;
+    fRushStage = 0;
+    fRushAttackerTickets = 0;
     
     /* Settings */
 
@@ -824,7 +830,7 @@ public String GetPluginWebsite() {
 }
 
 public String GetPluginDescription() {
-    ConsoleWrite("length = " + PROTObalancerUtils.HTML_DOC.Length);
+    //ConsoleWrite("length = " + PROTObalancerUtils.HTML_DOC.Length);
     return PROTObalancerUtils.HTML_DOC;
 }
 
@@ -1528,7 +1534,7 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
         } else if (fPluginState == PluginState.Active && fGameState == GameState.Playing) {
 
             // If this was an MB move, finish it
-            FinishMoveImmediate(soldierName, teamId);
+            FinishMove(soldierName, teamId);
 
             /*
              * We need to determine if this team change was instigated by a player or by an admin (plugin).
@@ -1541,7 +1547,10 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
                 // This is an admin move in correct order, do not treat it as a team switch
                 fPendingTeamChange.Remove(soldierName);
                 DebugWrite("Moved by admin: ^b" + soldierName + "^n to team " + teamId, 6);
-                ProvisionalIncrementMoves(soldierName);
+                ConditionalIncrementMoves(soldierName);
+                // Some other admin.movePlayer, so update to account for it
+                UpdatePlayerTeam(soldierName, teamId);
+                UpdateTeams();
                 return;
             }
 
@@ -1599,7 +1608,10 @@ public override void OnPlayerMovedByAdmin(string soldierName, int destinationTea
                 // (unless MB initiated it)
                 fPendingTeamChange.Remove(soldierName);
                 DebugWrite("(REVERSED) Moved by admin: ^b" + soldierName + " to team " + destinationTeamId, 6);
-                ProvisionalIncrementMoves(soldierName);
+                ConditionalIncrementMoves(soldierName);
+                // Some other admin.movePlayer, so update to account for it
+                UpdatePlayerTeam(soldierName, destinationTeamId);
+                UpdateTeams();
             } else if (!fUnassigned.Contains(soldierName)) {
                 // this is an admin move in correct order, add to pending table and let OnPlayerTeamChange handle it
                 fPendingTeamChange[soldierName] = destinationTeamId;
@@ -1748,14 +1760,12 @@ public override void OnServerInfo(CServerInfo serverInfo) {
             }
         }
 
-        int i = 1;
         if (fFinalStatus != null) {
             try {
                 DebugWrite("^bFINAL STATUS FOR PREVIOUS ROUND:^n", 3);
                 foreach (TeamScore ts in fFinalStatus) {
-                    fTickets[i] = (ts.Score == 1) ? 0 : ts.Score; // fix rounding
-                    i = i + 1;
-                    if (i >= fTickets.Length) break;
+                    if (ts.TeamID >= fTickets.Length) break;
+                    fTickets[ts.TeamID] = (ts.Score == 1) ? 0 : ts.Score; // fix rounding
                 }
                 LogStatus();
             } catch (Exception) {}
@@ -1772,18 +1782,45 @@ public override void OnServerInfo(CServerInfo serverInfo) {
         fServerInfo = serverInfo;
         fServerUptime = serverInfo.ServerUptime;
 
+        bool isRush = IsRush();
+        double minTickets = Double.MaxValue;
         double maxTickets = 0;
-        i = 1;
-        if (fServerInfo.TeamScores != null) foreach (TeamScore ts in fServerInfo.TeamScores) {
-            fTickets[i] = ts.Score;
+        double attacker = 0;
+        double defender = 0;
+        if (fServerInfo.TeamScores == null)  return;
+        foreach (TeamScore ts in fServerInfo.TeamScores) {
+            if (ts.TeamID >= fTickets.Length) break;
+            fTickets[ts.TeamID] = ts.Score;
             if (ts.Score > maxTickets) maxTickets = ts.Score;
-            i = i + 1;
-            if (i >= fTickets.Length) break;
+            if (ts.Score < minTickets) minTickets = ts.Score;
+        }
+
+        if (isRush) {
+            attacker = fServerInfo.TeamScores[0].Score;
+            defender = fServerInfo.TeamScores[1].Score;
         }
 
         if (fMaxTickets == -1) {
-            fMaxTickets = maxTickets;
-            DebugWrite("ServerInfo update: fMaxTickets = " + fMaxTickets.ToString("F0"), 3);
+            if (!isRush) {
+                fMaxTickets = maxTickets;
+                DebugWrite("ServerInfo update: fMaxTickets = " + fMaxTickets.ToString("F0"), 3);
+            } else if (fServerInfo.TeamScores.Count == 2) {
+                fRushMaxTickets = defender;
+                fMaxTickets = attacker;
+                fRushStage = 1;
+                fRushAttackerTickets = attacker;
+                DebugWrite("ServerInfo update: fMaxTickets = " + fMaxTickets.ToString("F0") + ", fRushMaxTickets = " + fRushMaxTickets + ", fRushStage = " + fRushStage, 4);
+            }
+        }
+
+        // Rush heuristic: if attacker tickets are higher than last check, new stage started
+        if (isRush && attacker > fRushAttackerTickets) {
+            fRushMaxTickets = defender;
+            fMaxTickets = attacker;
+            fRushStage = fRushStage + 1;
+            fRushAttackerTickets = attacker;
+            DebugWrite(".................................... ^b^1New rush stage detected^0^n ....................................", 3);
+            DebugBalance("Rush Stage " + fRushStage + " of 4");
         }
     } catch (Exception e) {
         ConsoleException(e.ToString());
@@ -1831,7 +1868,7 @@ public override void OnRoundOver(int winningTeamId) {
     DebugWrite("^9^bGot OnRoundOver^n: winner " + winningTeamId, 7);
 
     try {
-        DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1Round over detected^0^n ::::::::::::::::::::::::::::::::::::", 2);
+        DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1Round over detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
     
         if (fGameState == GameState.Playing || fGameState == GameState.Unknown) {
             fGameState = GameState.RoundEnding;
@@ -1848,7 +1885,7 @@ public override void OnLevelLoaded(String mapFileName, String Gamemode, int roun
     DebugWrite("^9^bGot OnLevelLoaded^n: " + mapFileName + " " + Gamemode + " " + roundsPlayed + "/" + roundsTotal, 7);
 
     try {
-        DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1Level loaded detected^0^n ::::::::::::::::::::::::::::::::::::", 2);
+        DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1Level loaded detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
 
         if (fGameState == GameState.RoundEnding || fGameState == GameState.Unknown) {
             fGameState = GameState.RoundStarting;
@@ -1874,7 +1911,7 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
             if (wasUnknown || fGameState == GameState.Playing) DebugWrite("OnPlayerSpawned: ^b^3Game state = " + fGameState, 6);  
         } else if (fGameState == GameState.RoundStarting) {
             // First spawn after Level Loaded is the official start of a round
-            DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1First spawn detected^0^n ::::::::::::::::::::::::::::::::::::", 2);
+            DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1First spawn detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
 
             fGameState = (TotalPlayerCount < 4) ? GameState.Warmup : GameState.Playing;
             DebugWrite("OnPlayerSpawned: ^b^3Game state = " + fGameState, 6);
@@ -1935,8 +1972,9 @@ private void BalanceAndUnstack(String name) {
     int winningTeam = 0;
     int losingTeam = 0;
     int biggestTeam = 0;
-    int nextBiggestTeam = 0;
     int smallestTeam = 0;
+    int[] ascendingSize = null;
+    int[] descendingTickets = null;
     String strongMsg = String.Empty;
     int diff = 0;
     DateTime now = DateTime.Now;
@@ -1952,7 +1990,11 @@ private void BalanceAndUnstack(String name) {
 
     int totalPlayerCount = TotalPlayerCount;
 
-    if (totalPlayerCount > 0) AnalyzeTeams(out diff, out biggestTeam, out nextBiggestTeam, out smallestTeam, out winningTeam, out losingTeam);
+    if (totalPlayerCount > 0) {
+        AnalyzeTeams(out diff, out ascendingSize, out descendingTickets, out biggestTeam, out smallestTeam, out winningTeam, out losingTeam);
+    } else {
+        return;
+    }
 
     if (diff > MaxDiff()) {
         if (totalPlayerCount < 6) {
@@ -2183,7 +2225,7 @@ private void BalanceAndUnstack(String name) {
         }
 
         // SQDM, not on the biggest team nor the next biggest team
-        if (isSQDM && !mustMove && balanceSpeed != Speed.Fast && player.Team != biggestTeam && player.Team != nextBiggestTeam) {
+        if (isSQDM && !mustMove && balanceSpeed != Speed.Fast && player.Team != biggestTeam && player.Team != ascendingSize[2]) {
             DebugBalance("Exempting ^b" + name + "^n, not on the biggest team nor next biggest team");
             fExemptRound = fExemptRound + 1;
             IncrementTotal();
@@ -2275,7 +2317,16 @@ private void BalanceAndUnstack(String name) {
     }
 
     double ratio = 1;
-    if (fTickets[losingTeam] >= 1) ratio = Convert.ToDouble(fTickets[winningTeam]) / Convert.ToDouble(fTickets[losingTeam]);
+    if (fTickets[losingTeam] >= 1) {
+        if (IsRush()) {
+            double attackers = fTickets[1];
+            double defenders = fMaxTickets - (fRushMaxTickets - fTickets[2]);
+            defenders = Math.Max(defenders, attackers/2);
+            ratio = (attackers > defenders) ? (attackers/defenders) : (defenders/attackers);
+        } else {
+            ratio = Convert.ToDouble(fTickets[winningTeam]) / Convert.ToDouble(fTickets[losingTeam]);
+        }
+    }
 
     String um = "Ticket ratio " + (ratio*100.0).ToString("F0") + " vs. unstack ratio of " + (unstackTicketRatio*100.0).ToString("F0");
 
@@ -2573,9 +2624,126 @@ private void ValidateModel(List<CPlayerInfo> players) {
 }
 
 
-private bool CheckTeamSwitch(String name, int team) {
-    // Team
-    return true; // means switch is okay
+private bool CheckTeamSwitch(String name, int toTeam) {
+
+    if (fPluginState != PluginState.Active || fGameState != GameState.Playing) return false;
+
+    // Get model
+    PlayerModel player = null;
+    lock (fKnownPlayers) {
+        if (!fKnownPlayers.TryGetValue(name, out player) || player == null) {
+            DebugUnswitch("IGNORED: Unknown player: ^b" + name);
+            return false;
+        }
+    }
+
+    // Same team?
+    if (toTeam == player.Team) {
+        ConsoleDebug("CheckTeamSwitch: name = " + name + ", changing to same team " + toTeam + "?");
+        return false;
+    }
+    
+    // Whitelisted?
+    if (OnWhitelist) {
+        List<String> vip = new List<String>(Whitelist);
+        if (EnableWhitelistingOfReservedSlotsList) vip.AddRange(fReservedSlots);
+        /*
+        while (vip.Contains(String.Empty)) {
+            vip.Remove(String.Empty);
+        }
+        */
+        if (vip.Contains(name) || vip.Contains(ExtractTag(player)) || vip.Contains(player.EAGUID)) {
+            DebugUnswitch("ALLOWED: On whitelist: ^b" + name);
+            return true;
+        }
+    }
+
+    // Unlimited time?
+    if (UnlimitedTeamSwitchingDuringFirstMinutesOfRound > 0 && GetTimeInRoundMinutes() < UnlimitedTeamSwitchingDuringFirstMinutesOfRound) {
+        DebugUnswitch("ALLOWED: Time in round " + GetTimeInRoundMinutes().ToString("F0") + " < " + UnlimitedTeamSwitchingDuringFirstMinutesOfRound.ToString("F0"));
+        return true;
+    }
+
+    // Helps?
+    int diff = 0;
+    int biggestTeam = 0;
+    int smallestTeam = 0;
+    int winningTeam = 0;
+    int losingTeam = 0;
+    int[] ascendingSize = null;
+    int[] descendingTickets = null;
+    int fromTeam = player.Team;
+    MoveInfo move = null;
+    bool toLosing = false;
+    bool toSmallest = false;
+
+    AnalyzeTeams(out diff, out ascendingSize, out descendingTickets, out biggestTeam, out smallestTeam, out winningTeam, out losingTeam);
+
+    int iFrom = 0;
+    int iTo = 0;
+
+    if (IsSQDM()) {
+        // Score before size
+        for (int i = 0; i < descendingTickets.Length; ++i) {
+            if (fromTeam == descendingTickets[i]) iFrom = i;
+            if (toTeam == descendingTickets[i]) iTo = i;
+        }
+        toLosing = (iTo > iFrom);
+    } else {
+        toLosing = (toTeam == losingTeam);
+    }
+
+    // Trying to switch to losing team?
+    if (toLosing) {
+        move = new MoveInfo(player.Name, player.Tag, fromTeam, GetTeamName(fromTeam), toTeam, GetTeamName(toTeam));
+        move.Format(ChatDetectedGoodTeamSwitch, false, true);
+        move.Format(YellDetectedGoodTeamSwitch, true, true);
+        Chat(name, move.ChatBefore);
+        Yell(name, move.YellBefore);
+        DebugUnswitch("ALLOWED: Team switch to losing team ^b: " + name);
+        return true;
+    }
+
+    if (IsSQDM()) {
+        for (int i = 0; i < ascendingSize.Length; ++i) {
+            if (fromTeam == ascendingSize[i]) iFrom = i;
+            if (toTeam == ascendingSize[i]) iTo = i;
+        }
+        toSmallest = (iTo < iFrom);
+    } else {
+        toSmallest = (toTeam == smallestTeam);
+    }
+
+    // Trying to switch to smallest team?
+    if (toSmallest) {
+        move = new MoveInfo(player.Name, player.Tag, fromTeam, GetTeamName(fromTeam), toTeam, GetTeamName(toTeam));
+        move.Format(ChatDetectedGoodTeamSwitch, false, true);
+        move.Format(YellDetectedGoodTeamSwitch, true, true);
+        Chat(name, move.ChatBefore);
+        Yell(name, move.YellBefore);
+        DebugUnswitch("ALLOWED: Team switch to smallest team ^b: " + name);
+        return true;
+    }
+
+    // Otherwise, do not allow the team switch
+
+    // TBD: select forbidden message from: moved by autobalance, moved to unstack, dispersal, ...
+
+    // Tried to switch "toTeam" from "player.Team", so moving from "toTeam" back to original team (player.Team)
+    move = new MoveInfo(name, player.Tag, toTeam, GetTeamName(toTeam), player.Team, GetTeamName(player.Team));
+    move.Reason = ReasonFor.Unswitch;
+    move.Format(ChatDetectedBadTeamSwitch, false, true);
+    move.Format(YellDetectedBadTeamSwitch, true, true);
+    move.Format(ChatAfterUnswitching, false, false);
+    move.Format(YellAfterUnswitching, true, false);
+
+    if (DebugLevel >= 7) DebugUnswitch(move.ToString());
+
+    DebugUnswitch("FORBIDDEN: Detected bad team switch, scheduling admin kill and move for ^b: " + name);
+
+    KillAndMoveAsync(move);
+
+    return false;
 }
 
 private void SpawnUpdate(String name) {
@@ -2677,7 +2845,7 @@ private void StartMoveImmediate(MoveInfo move, bool sendMessages) {
     DebugWrite(doing + move.Name + "^n from " + move.SourceName + " to " + move.DestinationName + r, 2);
 }
 
-private void FinishMoveImmediate(String name, int team) {
+private void FinishMove(String name, int team) {
     // If this is an MB move, handle it
     MoveInfo move = null;
     lock (fMoving) {
@@ -2701,9 +2869,11 @@ private void FinishMoveImmediate(String name, int team) {
         Chat(move.Name, move.ChatAfter);
         IncrementTotal();
     } else {
+        /* Shouldn't we let caller decide if this is an admin move?
         // Some other admin.movePlayer, so update to account for it
         UpdatePlayerTeam(name, team);
         UpdateTeams();
+        */
     }
 }
 
@@ -2731,7 +2901,7 @@ public void MoveLoop() {
             Chat(move.Name, move.ChatBefore);
 
             // Pause
-            Thread.Sleep(5*1000);
+            Thread.Sleep(Convert.ToInt32(YellDurationSeconds*1000));
             if (!fIsEnabled) return;
 
             // Make sure player is dead
@@ -2958,7 +3128,7 @@ private Phase GetPhase(PerModeSettings perMode, bool verbose) {
 }
 
 private Population GetPopulation(PerModeSettings perMode, bool verbose) {
-    if (fServerInfo == null | fServerInfo.TeamScores == null || fServerInfo.TeamScores.Count == 0) return Population.Medium;
+    if (fServerInfo == null) return Population.Medium;
 
     double highPop = perMode.DefinitionOfHighPopulationForPlayers;
     double lowPop = perMode.DefinitionOfLowPopulationForPlayers;
@@ -3348,6 +3518,8 @@ private void ResetRound() {
     fTotalRound = 0;
     fReassignedRound = 0;
     fUnstackState = UnstackState.Off;
+    fRushStage = 0;
+    fRushAttackerTickets = 0;
 
     fLastBalancedTimestamp = DateTime.MinValue;
 }
@@ -3355,6 +3527,11 @@ private void ResetRound() {
 private bool IsSQDM() {
     if (fServerInfo == null) return false;
     return (fServerInfo.GameMode == "SquadDeathMatch0");
+}
+
+private bool IsRush() {
+    if (fServerInfo == null) return false;
+    return (fServerInfo.GameMode == "RushLarge0" || fServerInfo.GameMode == "SquadRush0");
 }
 
 private int MaxDiff() {
@@ -3452,13 +3629,16 @@ private int GetTeamDifference(ref int fromTeam, ref int toTeam) {
 }
 
 
-private void AnalyzeTeams(out int maxDiff, out int biggestTeam, out int nextBiggestTeam, out int smallestTeam, out int winningTeam, out int losingTeam) {
+private void AnalyzeTeams(out int maxDiff, out int[] ascendingSize, out int[] descendingTickets, out int biggestTeam, out int smallestTeam, out int winningTeam, out int losingTeam) {
     biggestTeam = 0;
-    nextBiggestTeam = 0;
     smallestTeam = 0;
     winningTeam = 0;
     losingTeam = 0;
     maxDiff = 0;
+    bool isSQDM = IsSQDM();
+
+    ascendingSize = new int[4]{0,0,0,0};
+    descendingTickets = new int[4]{0,0,0,0};
 
     if (fServerInfo == null) return;
 
@@ -3466,7 +3646,7 @@ private void AnalyzeTeams(out int maxDiff, out int biggestTeam, out int nextBigg
 
     teams.Add(new TeamRoster(1, fTeam1));
     teams.Add(new TeamRoster(2, fTeam2));
-    if (IsSQDM()) {
+    if (isSQDM) {
         teams.Add(new TeamRoster(3, fTeam3));
         teams.Add(new TeamRoster(4, fTeam4));
     }
@@ -3479,17 +3659,33 @@ private void AnalyzeTeams(out int maxDiff, out int biggestTeam, out int nextBigg
         return 0;
     });
 
+    for (int i = 0; i < ascendingSize.Length; ++i) {
+        if (isSQDM || i < 2) {
+            ascendingSize[i] = teams[i].Team;
+        } else {
+            ascendingSize[i] = 0;
+        }
+    }
+
     TeamRoster small = teams[0];
     TeamRoster big = teams[teams.Count-1];
-    TeamRoster nextBig = IsSQDM() ? teams[teams.Count-2] : big;
     smallestTeam = small.Team;
     biggestTeam = big.Team;
-    nextBiggestTeam = (nextBig.Roster.Count > small.Roster.Count) ? nextBig.Team : big.Team;
     maxDiff = big.Roster.Count - small.Roster.Count;
 
     List<TeamScore> byScore = new List<TeamScore>();
     if (fServerInfo.TeamScores == null || fServerInfo.TeamScores.Count == 0) return;
-    byScore.AddRange(fServerInfo.TeamScores);
+    if (IsRush() && fServerInfo.TeamScores.Count == 2) {
+        // Normalize scores
+        TeamScore attackers = fServerInfo.TeamScores[0];
+        TeamScore defenders = fServerInfo.TeamScores[1];
+        double normalized = fMaxTickets - (fRushMaxTickets - defenders.Score);
+        normalized = Math.Max(normalized, Convert.ToDouble(attackers.Score)/2);
+        byScore.Add(attackers); // attackers
+        byScore.Add(new TeamScore(defenders.TeamID, Convert.ToInt32(normalized), defenders.WinningScore));
+    } else {
+        byScore.AddRange(fServerInfo.TeamScores);
+    }
 
     byScore.Sort(delegate(TeamScore lhs, TeamScore rhs) {
         // Sort descending order by score
@@ -3499,17 +3695,26 @@ private void AnalyzeTeams(out int maxDiff, out int biggestTeam, out int nextBigg
         return 0;
     });
 
+    for (int i = 0; i < descendingTickets.Length; ++i) {
+        if (isSQDM || i < 2) {
+            descendingTickets[i] = byScore[i].TeamID;
+        } else {
+            descendingTickets[i] = 0;
+        }
+    }
+
     winningTeam = byScore[0].TeamID;
     losingTeam = byScore[byScore.Count-1].TeamID;
 }
 
 private int DifferenceFromSmallest(int fromTeam) {
     int biggestTeam = 0;
-    int nextBiggestTeam = 0;
     int smallestTeam = 0;
     int winningTeam = 0;
     int losingTeam = 0;
     int diff = 0;
+    int[] ascendingSize = null;
+    int[] descendingTickets = null;
 
     List<TeamRoster> teams = new List<TeamRoster>();
 
@@ -3526,7 +3731,7 @@ private int DifferenceFromSmallest(int fromTeam) {
         if (fromTeam < 1 || fromTeam > 4) return 0;
     }
 
-    AnalyzeTeams(out diff, out biggestTeam, out nextBiggestTeam, out smallestTeam, out winningTeam, out losingTeam);
+    AnalyzeTeams(out diff, out ascendingSize, out descendingTickets, out biggestTeam, out smallestTeam, out winningTeam, out losingTeam);
 
     if (fromTeam == smallestTeam || smallestTeam < 1 || smallestTeam > teams.Count) return 0;
 
@@ -3562,12 +3767,13 @@ private int ToTeam(String name, int fromTeam, out int diff, out bool mustMove) {
     if (from != null && from.Count == 0) return 0;
 
     int biggestTeam = 0;
-    int nextBiggestTeam = 0;
     int smallestTeam = 0;
     int winningTeam = 0;
     int losingTeam = 0;
+    int[] ascendingSize = null;
+    int[] descendingTickets = null;
 
-    AnalyzeTeams(out diff, out biggestTeam, out nextBiggestTeam, out smallestTeam, out winningTeam, out losingTeam);
+    AnalyzeTeams(out diff, out ascendingSize, out descendingTickets, out biggestTeam, out smallestTeam, out winningTeam, out losingTeam);
 
     // diff is maximum difference between any two teams
 
@@ -3711,7 +3917,7 @@ private void IncrementMoves(String name) {
     }
 }
 
-private void ProvisionalIncrementMoves(String name) {
+private void ConditionalIncrementMoves(String name) {
     /*
     If some other plugin did an admin move on this player, increment
     the move counter so that this player will be exempted from balancing and unstacking
@@ -3904,6 +4110,10 @@ private PlayerModel GetPlayer(String name) {
 
 private double RemainingTicketPercent(double tickets, double goal) {
     if (goal == 0) {
+        if (IsRush() && tickets > fMaxTickets && tickets < fRushMaxTickets) {
+            double normalized = Math.Max(0, fMaxTickets - (fRushMaxTickets - tickets));
+            return ((normalized / fMaxTickets) * 100.0);
+        }
         return ((tickets / fMaxTickets) * 100.0);
     }
     return (((goal - tickets) / goal) * 100.0);
@@ -3936,6 +4146,10 @@ private void DebugBalance(String msg) {
     }
     DebugWrite("^5(AUTO)^9 " + msg, level);
     fLastMsg = msg;
+}
+
+private void DebugUnswitch(String msg) {
+    DebugWrite("^5(UNSWITCH)^9 " + msg, 4);
 }
 
 private double NextSwapInSeconds() {
@@ -4004,7 +4218,11 @@ private void LogStatus() {
     String rt = GetTimeInRoundString();
 
     DebugWrite("^bStatus^n: Plugin state = " + fPluginState + ", game state = " + fGameState + ", Enable Logging Only Mode = " + EnableLoggingOnlyMode, 4);
-    DebugWrite("^bStatus^n: Map = " + FriendlyMap + ", mode = " + FriendlyMode + ", time in round = " + rt + ", tickets = " + tm, 4);
+    if (IsRush()) {
+        DebugWrite("^bStatus^n: Map = " + FriendlyMap + ", mode = " + FriendlyMode + ", stage = " + fRushStage + ", time in round = " + rt + ", tickets = " + tm + "(" + Math.Max(fTickets[1]/2, fMaxTickets - (fRushMaxTickets - fTickets[2])) + ")", 4);
+    } else {
+        DebugWrite("^bStatus^n: Map = " + FriendlyMap + ", mode = " + FriendlyMode + ", time in round = " + rt + ", tickets = " + tm, 4);
+    }
     if (fPluginState == PluginState.Active) {
         double secs = DateTime.Now.Subtract(fLastBalancedTimestamp).TotalSeconds;
         if (!fBalanceIsActive || fLastBalancedTimestamp == DateTime.MinValue) secs = 0;
@@ -4018,7 +4236,7 @@ private void LogStatus() {
             DebugWrite("^bStatus^n: Autobalance is " + activeTime + ", phase = " + GetPhase(perMode, false) + ", population = " + GetPopulation(perMode, false) + ", speed = " + balanceSpeed + ", unstack when ticket ratio >= " + (unstackRatio * 100).ToString("F0") + "%", 3);
         }
     }
-    if (!IsModelInSync()) DebugWrite("^bStatus^n: fMoving = " + fMoving.Count + ", fReassigned = " + fReassigned.Count, 3);
+    if (!IsModelInSync()) DebugWrite("^bStatus^n: fMoving = " + fMoving.Count + ", fReassigned = " + fReassigned.Count, 5);
 
     DebugWrite("^bStatus^n: " + fReassignedRound + " reassigned, " + fBalancedRound + " balanced, " + fUnstackedRound + " unstacked, " + fUnswitchedRound + " unswitched, " + fExcludedRound + " excluded, " + fExemptRound + " exempted, " + fFailedRound + " failed; of " + fTotalRound + " TOTAL", 5);
     
