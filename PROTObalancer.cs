@@ -466,9 +466,9 @@ public bool OnWhitelist;
 public bool TopScorers;
 public bool SameClanTagsInSquad; // TBD
 public double MinutesAfterJoining;
-public bool JoinedEarlyPhase; // TBD
-public bool JoinedMidPhase; // TBD
-public bool JoinedLatePhase; // TBD
+public bool JoinedEarlyPhase; // disabled
+public bool JoinedMidPhase; // disabled
+public bool JoinedLatePhase; // disabled
 
 public double[] EarlyPhaseTicketPercentageToUnstack;
 public double[] MidPhaseTicketPercentageToUnstack;
@@ -484,10 +484,10 @@ public String ChatMovedForBalance;
 public String YellMovedForBalance;
 public String ChatMovedToUnstack;
 public String YellMovedToUnstack;
-public String ChatDetectedSwitchToWinningTeam;
-public String YellDetectedSwitchToWinningTeam;
-public String ChatDetectedSwitchToLosingTeam;
-public String YellDetectedSwitchToLosingTeam;
+public String ChatDetectedBadTeamSwitch;
+public String YellDetectedBadTeamSwitch;
+public String ChatDetectedGoodTeamSwitch;
+public String YellDetectedGoodTeamSwitch;
 public String ChatAfterUnswitching;
 public String YellAfterUnswitching;
 public String ChatDetectedSwitchByDispersalPlayer;
@@ -643,10 +643,10 @@ public PROTObalancer() {
     YellMovedForBalance = "Moved %name% for balance ...";
     ChatMovedToUnstack = "*** MOVED %name% to unstack teams ...";
     YellMovedToUnstack = "Moved %name% to unstack teams ...";
-    ChatDetectedSwitchToWinningTeam = "%name%, the %fromTeam% needs your help, sending you back ...";
-    YellDetectedSwitchToWinningTeam = "The %fromTeam% needs your help, sending you back!";
-    ChatDetectedSwitchToLosingTeam = "%name%, thanks for helping out the %toTeam%!";
-    YellDetectedSwitchToLosingTeam = "Thanks for helping out the %toTeam%!";
+    ChatDetectedBadTeamSwitch = "%name%, the %fromTeam% needs your help, sending you back ...";
+    YellDetectedBadTeamSwitch = "The %fromTeam% needs your help, sending you back!";
+    ChatDetectedGoodTeamSwitch = "%name%, thanks for helping out the %toTeam%!";
+    YellDetectedGoodTeamSwitch = "Thanks for helping out the %toTeam%!";
     ChatAfterUnswitching = "%name%, please stay on the %toTeam% for the rest of this round";
     YellAfterUnswitching = "Please stay on the %toTeam% for the rest of this round";
     ChatDetectedSwitchByDispersalPlayer = "%name% is on the list of players to split between teams";
@@ -812,7 +812,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "0.0.0.13";
+    return "0.0.0.12";
 }
 
 public String GetPluginAuthor() {
@@ -824,6 +824,7 @@ public String GetPluginWebsite() {
 }
 
 public String GetPluginDescription() {
+    ConsoleWrite("length = " + PROTObalancerUtils.HTML_DOC.Length);
     return PROTObalancerUtils.HTML_DOC;
 }
 
@@ -902,11 +903,13 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
         lstReturn.Add(new CPluginVariable("2 - Exclusions|Minutes After Joining", MinutesAfterJoining.GetType(), MinutesAfterJoining));
 
+        /*
         lstReturn.Add(new CPluginVariable("2 - Exclusions|Joined Early Phase", JoinedEarlyPhase.GetType(), JoinedEarlyPhase));
 
         lstReturn.Add(new CPluginVariable("2 - Exclusions|Joined Mid Phase", JoinedMidPhase.GetType(), JoinedMidPhase));
 
         lstReturn.Add(new CPluginVariable("2 - Exclusions|Joined Late Phase", JoinedLatePhase.GetType(), JoinedLatePhase));
+        */
 
         /* ===== SECTION 3 - Round Phase & Population Setttings ===== */
         
@@ -941,13 +944,13 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         
         lstReturn.Add(new CPluginVariable("5 - Messages|Yell: Moved To Unstack", YellMovedToUnstack.GetType(), YellMovedToUnstack));
         
-        lstReturn.Add(new CPluginVariable("5 - Messages|Chat: Detected Switch To Winning Team", ChatDetectedSwitchToWinningTeam.GetType(), ChatDetectedSwitchToWinningTeam));
+        lstReturn.Add(new CPluginVariable("5 - Messages|Chat: Detected Bad Team Switch", ChatDetectedBadTeamSwitch.GetType(), ChatDetectedBadTeamSwitch));
         
-        lstReturn.Add(new CPluginVariable("5 - Messages|Yell: Detected Switch To Winning Team", YellDetectedSwitchToWinningTeam.GetType(), YellDetectedSwitchToWinningTeam));
+        lstReturn.Add(new CPluginVariable("5 - Messages|Yell: Detected Bad Team Switch", YellDetectedBadTeamSwitch.GetType(), YellDetectedBadTeamSwitch));
         
-        lstReturn.Add(new CPluginVariable("5 - Messages|Chat: Detected Switch To Losing Team", ChatDetectedSwitchToLosingTeam.GetType(), ChatDetectedSwitchToLosingTeam));
+        lstReturn.Add(new CPluginVariable("5 - Messages|Chat: Detected Good Team Switch", ChatDetectedGoodTeamSwitch.GetType(), ChatDetectedGoodTeamSwitch));
         
-        lstReturn.Add(new CPluginVariable("5 - Messages|Yell: Detected Switch To Losing Team", YellDetectedSwitchToLosingTeam.GetType(), YellDetectedSwitchToLosingTeam));
+        lstReturn.Add(new CPluginVariable("5 - Messages|Yell: Detected Good Team Switch", YellDetectedGoodTeamSwitch.GetType(), YellDetectedGoodTeamSwitch));
         
         lstReturn.Add(new CPluginVariable("5 - Messages|Chat: After Unswitching", ChatAfterUnswitching.GetType(), ChatAfterUnswitching));
         
@@ -1248,10 +1251,10 @@ private void ResetSettings() {
     YellMovedForBalance = rhs.YellMovedForBalance;
     ChatMovedToUnstack = rhs.ChatMovedToUnstack;
     YellMovedToUnstack = rhs.YellMovedToUnstack;
-    ChatDetectedSwitchToWinningTeam = rhs.ChatDetectedSwitchToWinningTeam;
-    YellDetectedSwitchToWinningTeam = rhs.YellDetectedSwitchToWinningTeam;
-    ChatDetectedSwitchToLosingTeam = rhs.ChatDetectedSwitchToLosingTeam;
-    YellDetectedSwitchToLosingTeam = rhs.YellDetectedSwitchToLosingTeam;
+    ChatDetectedBadTeamSwitch = rhs.ChatDetectedBadTeamSwitch;
+    YellDetectedBadTeamSwitch = rhs.YellDetectedBadTeamSwitch;
+    ChatDetectedGoodTeamSwitch = rhs.ChatDetectedGoodTeamSwitch;
+    YellDetectedGoodTeamSwitch = rhs.YellDetectedGoodTeamSwitch;
     ChatAfterUnswitching = rhs.ChatAfterUnswitching;
     YellAfterUnswitching = rhs.YellAfterUnswitching;
     ChatDetectedSwitchByDispersalPlayer = rhs.ChatDetectedSwitchByDispersalPlayer;
@@ -2840,13 +2843,11 @@ private void Chat(String who, String what) {
 
 private void Yell(String who, String what) {
     String doing = null;
-    if (!QuietMode) {
-        if (!EnableLoggingOnlyMode) {
-            ServerCommand("admin.yell", what, "player", who); // yell to player
-        }
-        doing = (EnableLoggingOnlyMode) ? "^9(SIMULATING) ^b^1YELL^0^n to ^b" : "^b^1YELL^0^n to ^b";
-        DebugWrite(doing + who + "^n: " + what, 2);
+    if (!EnableLoggingOnlyMode) {
+        ServerCommand("admin.yell", what, "player", who); // yell to player
     }
+    doing = (EnableLoggingOnlyMode) ? "^9(SIMULATING) ^b^1YELL^0^n to ^b" : "^b^1YELL^0^n to ^b";
+    DebugWrite(doing + who + "^n: " + what, 2);
 }
 
 private void ProconChat(String what) {
@@ -4192,6 +4193,7 @@ static class PROTObalancerUtils {
 
 <p>Since logging to plugin.log is an important part of this phase of testing, it would be best if you could reduce or eliminate logging of other plugins so that most or all of the log is from PROTObalancer. If you are planning to leave the plugin unattended to collect logs, set <b>Debug Level</b> to 5. If you are going to watch the log interactively for a while, you can experiment with higher or lower <b>Debug Level</b> settings. It would also be useful to set the console.log to enable Event logging, but be advised that the console.log might get quite large. Do <b>not</b> enable Debug on your console.log.</p>
 
+<h3>KNOWN ISSUES</h3>
 <p>Only balancing and unstacking (excluding SQDM) is working. Team unswitching/balance guarding is not working.</p>
 
 <p>The following settings are not hooked up, they don't do anything:
@@ -4201,26 +4203,259 @@ static class PROTObalancerUtils {
 <li>Unlimited Team Switching During First Minutes Of Round</li>
 <li>Disperse Evenly List</li>
 <li>Same Clan Tags In Squad</li>
-<li>Joined Early/Mid/Late Phase</li>
 <li>Per-mode: Disperse Evenly For Rank</li>
+<li>Substitution %tag% for chat or yell message</li>
 </ul>
 </p>
 
-<h2>Description</h2>
-<p>TBD</p>
+<p><b>Sections 4, 6 and 7 are intentionally not defined.</b></p>
 
-<h2>Commands</h2>
-<p>TBD</p>
+<h2>Description</h2>
+<p>This plugin performs several automated operations:
+<ul>
+<li>Team balancing for all modes</li>
+<li>Unstacking a stacked team</li>
+<li>Unswitching players who team switch</li>
+</ul></p>
+
+<p>This plugin only moves players when they die. No players are killed by admin to be moved, with the single exception of players who attempt to switch teams when team switching is not allowed -- those players are admin killed before being moved back to their original team. This plugin also mintors new player joins and if the game server would assign a new player to the wrong team (a team with 30 players when another team only has 27 players), the plugin will <i>reassign</i> the player to the team that needs players for balance. This all happens before a player spawns, so they will not be aware that they were reassigned.</p>
+
+<h3>Quick Start</h3>
+<p>Don't want to spend a lot of time learning all of the settings for this plugin? Just follow these quick start steps:
+<ol>
+<li>Select a <b>Preset</b> at the top of the plugin settings:
+    <ul>
+    <li><b>Standard</b>: Normal level of autobalance and team unstacking</li>
+    <li><b>Aggressive</b>: Rebalance and unstack teams quickly, moving lots of players in a short amount of time</li>
+    <li><b>Passive</b>: Rebalance and unstack teams slowly, moving few players over a long period of time</li>
+    <li><b>Intensify</b>: Focus on keeping teams evenly matched for a level playing field and an intense game</li>
+    <li><b>Retain</b>: Focus on reducing rage quitting by keeping teams balanced, but refrain from too many player moves</li>
+    <li><b>BalanceOnly</b>: Disable team unstacking, only move for autobalance</li>
+    <li><b>UnstackOnly</b>: Disable autobalancing, only move to unstack teams</li>
+    <li><b>None</b>: Custom plugin settings (this is automatically selected if you change settings controlled by <b>Presets</b>)</li>
+    </ul>
+</li>
+<li>Review plugin section <b>5. Messages</b> and change any messages you don't like.</li>
+<li>That's it! You are good to go.</li>
+</ol></p>
+
+<h3>Details</h3>
+<p>This plugin is unusual in that it supports a rich set of settings for defining the administration policy for team management. Some of the most important policies are described below.</p>
+
+<h4>Fair play</h4>
+<p>This policy aims for each round to be as evenly balanced in skills as possible. Every round should end as a &quot;nail-biter&quot;. If you want to see Conquest rounds end with ticket differences less than 20 or Team Deathmatch or Squad Deathmatch rounds end with kill differences less than 5 or Rush matches that get down to 1 ticket before the last MCOM is blown, the settings provided by this plugin make that possible.</p>
+
+<h4>Retain players</h4>
+<p>This policy aims to retain players on your server. Players are left alone to do what they want, but aspects of team balance and team switching that cause players to leave, like too much autobalancing, team stacking, too many Colonel 100's on one team, too many players from one clan on one team, etc., are dealt with. Only things that are related to team balance are managed, however. This plugin doesn't do anything about, for example, base raping.</p>
+
+<h4>Keep friends together</h4>
+<p>This policy recognizes that friends like to play together. To the extent that friends wear the same clan tag, the balancer and unstacker can be configured to keep players with the same tags together.</p>
+
+<h4>Split problem clans apart</h4>
+<p>This policy recognizes that some &quot;pro&quot; clans can spoil everyone's fun if they play together, so the balancer and unstacker can be configured to split players with the same clan tag apart and spread them out evenly between teams.</p>
+
+<h2>Concepts</h2>
+<p>This plugin recognizes that a game round has a natural pattern and flow that depends on several factors. Play during the very beginning of a round is different from the very end. Play when the server is nearly empty is different from when the server is nearly full. The natural flow of a round of Conquest is very different from the flow of a game of Rush. Strong (good) players are not interchangeable with weak (bad) players. So with all these differences, how can one set of settings cover all of those different situations? They can't. So this plugin allows you to configure different settings for each combination of factors. The primary factors and concepts are described in the sections that follow.</p>
+
+<h3>Round Phase</h3>
+<p>To configure the factor of time, each round is divided into three time phases: <b>Early</b>, <b>Mid</b> (for Mid-phase), and <b>Late</b>. You define the phase based on ticket counts (or in the case of CTF, time in minutes) from the start of the round and the end of the round. You may define different settings for different modes, e.g., for <i>Conquest Large</i> you might define the early phase to be the first 200 tickets after the round starts, but for <i>Team Deathmatch</i> you might set early phase to be after the first 25 kills.</p>
+
+<h3>Population</h3>
+<p>To configure the factor of number of players, each round is divivded into three population levels: <b>Low</b>, <b>Medium</b>, and <b>High</b>. You define the population level based on total number of players in the server.</p>
+
+<h3>Game Mode</h3>
+<p>To configure the factor of game mode, each game mode is grouped into similar per-mode settings. For example, Conquest Large and Conquest Assault Large are grouped together as <b>Conquest Large</b>.</p>
+
+<h3>Exclusions</h3>
+<p>There are certain types of players that should never be moved for autobalance. You define those players with exclusions. For example, you can arrange for everyone on your reserved slots lists to be whitelisted so that they are ignored by this plugin.</p>
+
+<h3>Balance Speed</h3>
+<p>The aggressiveness with which the balancer selects players to move is controled by the speed names:
+<ul>
+<li>Stop: no balancing, no players are selected to move</li>
+<li>Slow: few players are selected to move, all exclusions are applied, whether they are enabled by you or not</li>
+<li>Fast: many players are selected to move, no exclusions are applied, whether they are enabled by you or not</li>
+<li>Adaptive: starts out slow; if teams remain unbalanced, gradually selects more players to move; if teams are still unbalanced after <b>Seconds Until Adaptive Speed Becomes Fast</b>, many players are selected, etc.</li>
+</ul></p>
+
+<h3>Definition of Strong</h3>
+<p>To configure the selection of strong players and weak players, you choose a definition for strong determined from:
+<ul>
+<li>Round Score</li>
+<li>Round KDR</li>
+<li>Round Kills</li>
+<li>Player Rank</li>
+</ul></p>
+
+<h3>Ticket Percentage (Ratio)</h3>
+<p>The ticket percentage ratio is calculated by taking the tickets of the winning team and dividing them by the tickets of the losing team, expressed as a percentage. For example, if the winning team has 550 tickets and the losing team has 500 tickets, the ticket percentage ratio is 110. This ratio is used to determine when teams are stacked. If the ticket percentage ratio exceeds the level that you set, unstacking swaps will begin.</p>
+
+<h3>Unstacking</h3>
+<p>To unstack teams, a strong player is selected from the winning team and is moved to the losing team. Then, a weak player is selected from the losing team and moved to the winning team. This is repeated until the round ends, or teams become unbalanced, or <b>Max&nbsp;Unstacking&nbsp;Swaps&nbsp;Per&nbsp;Round</b> is reached, whichever comes first.</p>
 
 <h2>Settings</h2>
-<p>TBD</p>
+<p>Each setting is defined below. Settings are grouped into sections.</p>
+
+<h3>0 - Presets</h3>
+<p>See the <b>Quick Start</b> section above.</p>
+
+<h3>1 - Settings</h3>
+<p>These are general settings.</p>
+
+<p><b>Debug Level</b>: Number from 0 to 9, default 2. Sets the amount of debug messages sent to plugin.log. Status messages for the state of the plugin may be seen at level 4 or higher. Complete details for operation of the plugin may be seen at level 7 or higher. When a problem with the plugin needs to be diagnosed, level 7 will often be required. Setting the level to 0 turns off all logging messages.</p>
+
+<p><b>Maximum Server Size</b>: Number from 8 to 64, default 64. Maximum number of slots on your game server, regardless of game mode.</p>
+
+<p><b>Enable Battlelog Requests</b>: True or False, default True. Enables making requests to Battlelog (uses BattlelogCache if available). Used to obtain clan tag for players.</p>
+
+<p><b>Maximum Request Rate</b>: Number from 1 to 15, default 2. If <b>Enable Battlelog Requests</b> is set to True, defines the maximum number of Battlelog requests that are sent every 20 seconds.</p>
+
+<p><b>Unlimited Team Switching During First Minutes Of Round</b>: Number greater than or equal to 0, default 5. Starting from the beginning of the round, this is the number of minutes that players are allowed to switch teams without restriction. After this time is expired, the plugin will prevent team switching that unbalances or stacks teams. The idea is to enable friends who were split up during the previous round due to autobalancing or unstacking to regroup so that they can play together this round. However, players who switch teams during this period are not excluded from being moved for autobalance or unstacking later in the round, unless some other exclusion applies them.</p>
+
+<p><b>Seconds Until Adaptive Speed Becomes Fast</b>: Number of seconds greater than or equal to 120, default 180. If the autobalance speed is Adaptive and the autobalancer has been active for more than the specified number of seconds, the speed will be forced to Fast. This insures that teams don't remain unbalanced too long if Adaptive speed is not sufficient to move players.</p>
+
+<p><b>Enable Whitelisting Of Reserved Slots List</b>: True or False, default True. Treats the reserved slots list as if it were added to the specified <b>Whitelist</b>.</p>
+
+<p><b>Whitelist</b>: List of player names (without clan tags), clan tags (by themselves), or EA GUIDs, one per line, in any combination. If <b>On&nbsp;Whitelist</b> is enabled or the balance speed is <i>Slow</i>, any players on the whitelist are completely excluded from being moved by the plugin. Example list with the name of one player, tag of a clan, and GUID of another player:
+<pre>
+  PapaCharlie9
+  LGN
+  EA_20D5B089E734F589B1517C8069A37E28
+</pre></p>
+
+<p><b>Disperse Evenly List</b>: List of player names (without clan tags), clan tags (by themselves), or EA GUIDs, one per line, in any combination. Groups of players found on this list will be split up and moved so that they are evenly dispersed across teams.</p>
+
+<h3>2 - Exclusions</h3>
+<p>These settings define which players should be excluded from being moved for balance or unstacking. Changing a preset may overwrite the value of one or more of these settings. Changing one of these settings may change the value of the Preset, usually to None, to indicate a custom setting.</p>
+
+<p><b>On Whitelist</b>: True or False, default True. If True, the Whitelist is used to exclude players. If False, the Whitelist is ignored.</p>
+
+<p><b>Top Scorers</b>: True or False, default True. If True, the top 1, 2, or 3 players (depending on server population and mode) on each team are excluded from moves for balancing or unstacking. This is to reduce the whining and QQing when a team loses their top players to autobalancing.</p>
+
+<p><b>Same Clan Tags In Squad</b>: True or False, default True. If True, a player will be excluded from being moved for balancing or unstacking if they are a member of a squad (or team, in the case of SQDM) that has at least one other player in it with the same clan tag.</p>
+
+<p><b>Minutes After Joining</b>: Number greater than or equal to 0, default 5. After joining the server, a player is excluded from being moved for balance or unstacking for this number of minutes. Set to 0 to disable. Keep in mind that most joining players were already assigned to the team with the least players. They have already 'paid their dues'.</p>
+
+<h3>3 - Round Phase and Population Settings</h3>
+<p>These settings control balancing and unstacking, depending on the round phase and server population.
+For each phase, there are three unstacking settings for server population: Low, Medium and High, by number of players. Each number is the ticket percentage ratio that triggers unstacking for each combination of phase and population. Setting the value to 0 disables team unstacking for that combination. If the number is not 0, if the ratio of the winning team's tickets to the losing teams tickets is equal to or greater than the ticket percentage ratio specified, unstacking will be activated.</p>
+
+<p><i>Example</i>: for the <b>Ticket Percentage To Unstack</b> setting, there are three phases, Early, Mid and Late. For each phase, the value is a list of 3 number, either 0 or greater than or equal to 100, one for each of the population levels of Low, Medium, and High, respectively:
+<pre>
+    Early Phase: Ticket Percentage To Unstack        0, 120, 120
+    Mid Phase: Ticket Percentage To Unstack          0, 120, 120
+    Late Phase: Ticket Percentage To Unstack         0, 0, 0
+</pre></p>
+
+<p>This means that in the Early or Mid phases when the population is Low, there will be no unstacking (0 always means disable). Also, in the Late Phase for any population level, there will be no unstacking. For any other combination, such as Mid Phase with High population, teams will be unstacked when the ratio of winning tickets to losing tickets is 120% or more.</p>
+
+<p>For each phase, there are also three balance speed names for server population: Low, Medium and High, by number of players. These speeds control how aggressively players are selected for moving by the autobalancer. Enter them as speed names separated by commas.</p>
+
+<p><i>Example</i>: for the <b>Balance Speed</b> setting, there are three phases, Early, Mid and Late. For each phase, the value is a list of 3 speed names, one for each of the population levels of Low, Medium, and High, respectively: 
+<pre>
+    Early Phase: Balance Speed        Slow, Adaptive, Adaptive
+    Mid Phase: Balance Speed          Slow, Adaptive, Adaptive
+    Late Phase: Balance speed         Stop, Stop, Stop
+</pre></p>
+
+<p>This means that in the Early or Mid phases when the population is Low, the balance speed will be Slow. In the Late Phase for any population level, balancing will be disabled. For any other combination, such as Mid Phase with High population, balancing will use an Adaptive speed.</p>
+
+<p>If you forget the names of the balance speeds, click on the <b>Spelling Of Speed Names Reminder</b> setting. This will display all of the balance speed names for you.</p>
+
+<h3>4 - TBD</h3>
+<p>There is no section 4. This section is reserved for future use.
+
+<h3>5 - Messages</h3>
+<p>These settings define all of the chat and yell messages that are sent to players when various actions are taken by the plugin. All of the messages are in pairs, one for chat, one for yell. If both the chat and the yell messages are defined and <b>Quiet&nbsp;Mode</b> is not set to True, both will be sent at the same time. The message setting descriptions apply to both chat and yell. To disable a chat message for a specific actcion, delete the message and leave it empty. To disable theyell message for a specific action, delete the message and leave it empty.</p>
+
+<p>Several substitution macros are defined. You may use them in either chat or yell messages:
+<table border='0'>
+<tr><td>%name%</td><td>player name</td></tr>
+<tr><td>%tag%</td><td>player clan tag</td></tr>
+<tr><td>%fromTeam%</td><td>original team a player came from, as 'US' or 'RU', or 'Alpha', 'Bravo', 'Charlie', or 'Delta' for SQDM</td></tr>
+<tr><td>%toTeam%</td><td>new team a player is/was moved to, ditto</td></tr>
+</table></p>
+
+<p><b>Quiet Mode</b>: True or False, default False. If False, chat messages are sent to all players and yells are sent to the player being moved. If True, chat and yell messages are only sent to the player being moved.</p>
+
+<p><b>Yell Duration Seconds</b>: A number greater than 0 and less than or equal to 20, or 0. If set to 0, all yells are disabled, even if they have non-empty messages. All yells have the same duration.</p>
+
+<p><b>Moved For Balance</b>: Message sent after a player is moved for balance.</p>
+
+<p><b>Moved To Unstack</b>: Message sent after a player is moved to unstack teams.</p>
+
+<p><b>Detected Bad Team Switch</b>: Message sent after a player switches from the losing team to the winning team, or from the smallest team to the biggest team, or after being moved by the plugin for balance or unstacking. The message is sent before player is sent back to his original team.</p>
+
+<p><b>Detected Good Team Switch</b>: Message sent after a player switches from the winning team to the losing team, or from the biggest team to the smallest team. There is no follow-up message, this is the only one sent.</p>
+
+<p><b>After Unswitching</b>: Message sent after a player is killed by admin and moved back to the team he was assigned to. This message is sent after the <b>Detected Bad Team Switch</b> message.</p>
+
+<p><b>Detected Switch By Dispersal Player</b>: Message sent after a player on the <b>Disperse Evenly List</b> switches teams from the one he was sent to by the plugin. The message is sent before the player is sent back to his original team.</p>
+
+<p><b>After Unswitching Dispersal Player</b>: Message sent after a player on the <b>Disperse Evenly List</b> is killed by admin and moved back to the team he was assigned to. This message is sent after the <b>Detected Switch By Dispersal Player</b> message.</p>
+
+<h3>6 - TBD</h3>
+<p>There is no section 6. This section is reserved for future use.</p>
+
+<h3>7 - TBD</h3>
+<p>There is no section 7. This section is reserved for future use.</p>
+
+<h3>8 - Settings for ... (each game mode)</h3>
+<p>These are the per-mode settings, used to define population and phase levels for a round and other settings specific to a game mode. Some modes have settings that no other modes have, other modes have fewer settings than most other modes. Each section is structured similarly. One common section is described in detail below and applies to several modes. Modes that have unique settings are then listed separately. The game modes are grouped as follows:
+<table border='0'>
+<tr><td>Conq Small, Dom, Scav</td><td>Conquest Small, Conquest Assault Small #1 and #2, Conquest Domination, and Scavenger</td></tr>
+<tr><td>Conquest Large</td><td>Conquest Large and Conquest Assault Large</td></tr>
+<tr><td>CTF</td><td>Capture The Flag, uses minutes to define phase instead of tickets</td></tr>
+<tr><td>Gun Master</td><td>Only has a few settings</td></tr>
+<tr><td>Rush</td><td>Has unique settings shared with Squad Rush and no other modes</td></tr>
+<tr><td>Squad Deathmatch</td><td>Standard settings, similar to Conquest</td></tr>
+<tr><td>Squad Rush</td><td>Has unique settings shared with Rush and no other modes</td></tr>
+<tr><td>Superiority</td><td>Air and Tank Superiority</td></tr>
+<tr><td>Team Deathmatch</td><td>Standard settings, similar to Conquest</td></tr>
+<tr><td>Unknown or New Mode</td><td>Generic settings for any new mode that gets introduced before this plugin gets updated</td></tr>
+</table></p>
+
+<p>These are the settings that are common to most modes:</p>
+
+<p><b>Max Players</b>: Number greater than or equal to 8 and less than or equal to <b>Maximum Server Size</b>. Some modes might be set up in UMM or Adaptive Server Size or other plugins with a lower maximum than the server maximum. If you set a lower value in your server settings or in a plugin, set the same setting here. This is important for calculating population size correctly.</p>
+
+<p><b>Check Team Stacking After First Minutes</b>: Number greater than or equal to 0. From the start of the round, this setting is the number of minutes to wait before activating unstacking. If set to 0, no unstacking will occur for this mode.</p>
+
+<p><b>Max Unstacking Swaps Per Round</b>: Number greater than or equal to 0. To prevent the plugin from swapping every player on every team for unstacking, a maximum per round is set here. If set to 0, no unstacking will occur for this mode.</p>
+
+<p><b>Determine Strong Players By</b>: The setting defines how strong players are determined. Any player that is not a strong player is a weak player. See the <b>Definition of Strong</b> section above for the list of settings. All players in a single team are sorted by the specified definition. Any player above the median position after sorting is considered strong. For example, suppose there are 31 players on a team and this setting is set to <i>RoundScore</i> and after sorting, the median is position #16. If this player is position #7, he is considered strong. If his position is #16 or #17, he is considered weak.</p>
+
+<p><b>Disperse Evenly For Rank >=</b>: Number greater than or equal to 0 and less than or equal to 145, default 145. Any players with this absolute rank (Colonel 100 is 145) or higher will be dispersed evenly across teams. This is useful to insure that Colonel 100 ranked players don't all stack on one team. Set to 0 to disable.</p>
+
+<p><b>Definition Of High Population For Players >=</b>: Number greater than or equal to 0 and less than or equal to <b>Max&nbsp;Players</b>. This is where you define the High population level. If the total number of players in the server is greater than or equal to this number, population is High.</p>
+
+<p><b>Definition Of Low Population For Players <=</b>: Number greater than or equal to 0 and less than or equal to <b>Max&nbsp;Players</b>. This is where you define the Low population level. If the total number of players in the server is less than or equal to this number, population is Low. If the total number is between the definition of High and Low, it is Medium.</p>
+
+<p><b>Definition Of Early Phase As Tickets From Start</b>: Number greater than or equal to 0. This is where you define the Early phase, as tickets from the start of the round. For example, if your round starts with 1500 tickets and you set this to 300, as long as the ticket level for all teams is greater than or equal to 1500-300=1200, the phase is Early. Set to 0 to disable Early phase.</p>
+
+<p><b>Definition Of Late Phase As Tickets From End</b>: Number greater than or equal to 0. This is where you define the Late phase, as tickets from the end of the round. For example, if you set this to 300 and at least one team in Conquest has less than 300 tickets less, the phase is Late. If the ticket level of both teams is between the Early and Late settings, the phase is Mid. Set to 0 to disable Late phase.</p>
+
+<p>These settings are unique to CTF.</p>
+
+<p><b>Definition Of Early Phase As Minutes From Start</b>: Number greater than or equal to 0. This is where you define the Early phase, as minutes from the start of the round. For example, if your round starts with 20 minutes on the clock and you set this to 5, the phase is Early until 20-5=15 minutes are left on the clock.</p>
+
+<p><b>Definition Of Late Phase As Minutes From End</b>: This is where you define the Late phase, as minutes from the end of the round. For example, if your round starts with 20 minutes on the clock and you set this to 8, the phase is Late for when there 8 minutes or less left on the clock.</p>
+
+<p>These settings are unique to Rush and Squad Rush.</p>
+
+<p><b>TBD</b>: TBD</p>
+
+<h3>9 - Debugging</h3>
+<p>These settings are used for debugging problems with the plugin.</p>
+
+<p><b>Show In Log</b>: Special commands may be typed in this text area to display information in plugin.log.</p>
+
+<p><b>Log Chat</b>: True or False, default True. All chat and yell messages sent by the plugin will be logged in chat.log.</p>
+
+<p><b>Enable Logging Only Mode</b>: True or False, default False. If set to True, the plugin will only log messages. No move, chat or yell commands will be sent to the game server. If set to False, the plugin will operate normally.</p>
 
 <h2>Development</h2>
 <p>TBD</p>
-<h3>Changelog</h3>
-<blockquote><h4>0.0.0.1 (10-JAN-2013)</h4>
-    - initial version<br/>
-</blockquote>
 ";
 
 } // end PROTObalancerUtils
