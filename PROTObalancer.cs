@@ -649,12 +649,12 @@ public PROTObalancer() {
     YellMovedForBalance = "Moved %name% for balance ...";
     ChatMovedToUnstack = "*** MOVED %name% to unstack teams ...";
     YellMovedToUnstack = "Moved %name% to unstack teams ...";
-    ChatDetectedBadTeamSwitch = "%name%, the %fromTeam% needs your help, sending you back ...";
-    YellDetectedBadTeamSwitch = "The %fromTeam% needs your help, sending you back!";
-    ChatDetectedGoodTeamSwitch = "%name%, thanks for helping out the %toTeam%!";
-    YellDetectedGoodTeamSwitch = "Thanks for helping out the %toTeam%!";
-    ChatAfterUnswitching = "%name%, please stay on the %toTeam% for the rest of this round";
-    YellAfterUnswitching = "Please stay on the %toTeam% for the rest of this round";
+    ChatDetectedBadTeamSwitch = "%name%, the %fromTeam% team needs your help, sending you back ...";
+    YellDetectedBadTeamSwitch = "The %fromTeam% team needs your help, sending you back!";
+    ChatDetectedGoodTeamSwitch = "%name%, thanks for helping out the %toTeam% team!";
+    YellDetectedGoodTeamSwitch = "Thanks for helping out the %toTeam% team!";
+    ChatAfterUnswitching = "%name%, please stay on the %toTeam% team for the rest of this round";
+    YellAfterUnswitching = "Please stay on the %toTeam% team for the rest of this round";
     ChatDetectedSwitchByDispersalPlayer = "%name% is on the list of players to split between teams";
     YellDetectedSwitchByDispersalPlayer = "You're on the list of players to split between teams";
     ChatAfterUnswitchingDispersalPlayer = "%name%, stay on the team you are assigned to";
@@ -1798,6 +1798,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
         if (isRush) {
             attacker = fServerInfo.TeamScores[0].Score;
             defender = fServerInfo.TeamScores[1].Score;
+            DebugWrite("^7serverInfo: Rush attacker = " + attacker + ", was = " + fRushAttackerTickets + ", defender = " + defender, 7); 
         }
 
         if (fMaxTickets == -1) {
