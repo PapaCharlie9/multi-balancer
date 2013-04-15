@@ -3018,7 +3018,7 @@ private void Chat(String who, String what) {
 private void Yell(String who, String what) {
     String doing = null;
     if (!EnableLoggingOnlyMode) {
-        ServerCommand("admin.yell", what, "player", who); // yell to player
+        ServerCommand("admin.yell", what, YellDurationSeconds.ToString("F0"), "player", who); // yell to player
     }
     doing = (EnableLoggingOnlyMode) ? "^9(SIMULATING) ^b^1YELL^0^n to ^b" : "^b^1YELL^0^n to ^b";
     DebugWrite(doing + who + "^n: " + what, 2);
