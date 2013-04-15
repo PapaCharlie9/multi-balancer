@@ -3007,7 +3007,7 @@ private void Chat(String who, String what) {
         DebugWrite(doing + who + "^n: " + what, 2);
     } else {
         if (!EnableLoggingOnlyMode) {
-            ServerCommand("admin.say", what); // chat all
+            ServerCommand("admin.say", what, "all"); // chat all
         }
         ProconChat(what);
         doing = (EnableLoggingOnlyMode) ? "^9(SIMULATING) ^b^1CHAT^0^n to all: " : "^b^1CHAT^0^n to all: ";
