@@ -2702,9 +2702,9 @@ private bool CheckTeamSwitch(String name, int toTeam) {
         move = new MoveInfo(player.Name, player.Tag, fromTeam, GetTeamName(fromTeam), toTeam, GetTeamName(toTeam));
         move.Format(ChatDetectedGoodTeamSwitch, false, true);
         move.Format(YellDetectedGoodTeamSwitch, true, true);
+        DebugUnswitch("ALLOWED: Team switch to losing team ^b: " + name);
         Chat(name, move.ChatBefore);
         Yell(name, move.YellBefore);
-        DebugUnswitch("ALLOWED: Team switch to losing team ^b: " + name);
         return true;
     }
 
@@ -2723,9 +2723,9 @@ private bool CheckTeamSwitch(String name, int toTeam) {
         move = new MoveInfo(player.Name, player.Tag, fromTeam, GetTeamName(fromTeam), toTeam, GetTeamName(toTeam));
         move.Format(ChatDetectedGoodTeamSwitch, false, true);
         move.Format(YellDetectedGoodTeamSwitch, true, true);
+        DebugUnswitch("ALLOWED: Team switch to smallest team ^b: " + name);
         Chat(name, move.ChatBefore);
         Yell(name, move.YellBefore);
-        DebugUnswitch("ALLOWED: Team switch to smallest team ^b: " + name);
         return true;
     }
 
@@ -2734,6 +2734,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     // TBD: select forbidden message from: moved by autobalance, moved to unstack, dispersal, ...
 
     // Tried to switch "toTeam" from "player.Team", so moving from "toTeam" back to original team (player.Team)
+    DebugUnswitch("FORBIDDEN: Detected bad team switch, scheduling admin kill and move for ^b: " + name);
     move = new MoveInfo(name, player.Tag, toTeam, GetTeamName(toTeam), player.Team, GetTeamName(player.Team));
     move.Reason = ReasonFor.Unswitch;
     move.Format(ChatDetectedBadTeamSwitch, false, true);
@@ -2742,8 +2743,6 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     move.Format(YellAfterUnswitching, true, false);
 
     if (DebugLevel >= 7) DebugUnswitch(move.ToString());
-
-    DebugUnswitch("FORBIDDEN: Detected bad team switch, scheduling admin kill and move for ^b: " + name);
 
     KillAndMoveAsync(move);
 
@@ -4153,7 +4152,7 @@ private void DebugBalance(String msg) {
 }
 
 private void DebugUnswitch(String msg) {
-    DebugWrite("^5(UNSWITCH)^9 " + msg, 4);
+    DebugWrite("^5(SWITCH)^9 " + msg, 4);
 }
 
 private double NextSwapInSeconds() {
