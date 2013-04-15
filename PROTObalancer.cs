@@ -336,7 +336,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
 
             if (expanded.Contains("%name%")) expanded = expanded.Replace("%name%", Name);
             if (expanded.Contains("%tag%")) expanded = expanded.Replace("%tag%", Tag);
-            if (expanded.Contains("%fromTeam%")) expanded = expanded.Replace("%fromTeam", SourceName);
+            if (expanded.Contains("%fromTeam%")) expanded = expanded.Replace("%fromTeam%", SourceName);
             if (expanded.Contains("%toTeam%")) expanded = expanded.Replace("%toTeam%", DestinationName);
 
             if (isYell) {
