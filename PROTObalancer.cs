@@ -133,7 +133,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     break;
                 case "Rush":
                     MaxPlayers = 32;
-                    CheckTeamStackingAfterFirstMinutes = 0;
+                    CheckTeamStackingAfterFirstMinutes = 5;
                     MaxUnstackingSwapsPerRound = 6;
                     DefinitionOfHighPopulationForPlayers = 24;
                     DefinitionOfLowPopulationForPlayers = 8;
@@ -1815,13 +1815,16 @@ public override void OnServerInfo(CServerInfo serverInfo) {
         }
 
         // Rush heuristic: if attacker tickets are higher than last check, new stage started
-        if (isRush && attacker > fRushAttackerTickets) {
-            fRushMaxTickets = defender;
-            fMaxTickets = attacker;
-            fRushStage = fRushStage + 1;
+        if (isRush) {
+            if (attacker > fRushAttackerTickets) {
+                fRushMaxTickets = defender;
+                fMaxTickets = attacker;
+                fRushStage = fRushStage + 1;
+                DebugWrite(".................................... ^b^1New rush stage detected^0^n ....................................", 3);
+                DebugBalance("Rush Stage " + fRushStage + " of 4");
+            }
+            // update last known attacker ticket value
             fRushAttackerTickets = attacker;
-            DebugWrite(".................................... ^b^1New rush stage detected^0^n ....................................", 3);
-            DebugBalance("Rush Stage " + fRushStage + " of 4");
         }
     } catch (Exception e) {
         ConsoleException(e.ToString());
@@ -4211,6 +4214,15 @@ private String GetTimeInRoundString() {
 
 
 private void LogStatus() {
+    // If server is empty, log status only every 20 minutes
+    if (TotalPlayerCount == 0) {
+        if (fRoundStartTimestamp != DateTime.MinValue && DateTime.Now.Subtract(fRoundStartTimestamp).TotalMinutes <= 20) {
+            return;
+        } else {
+            fRoundStartTimestamp = DateTime.Now;
+        }
+    }
+
     Speed balanceSpeed = Speed.Adaptive;
 
     String tm = fTickets[1] + "/" + fTickets[2];
