@@ -87,6 +87,8 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     public static String[] TEAM_NAMES = new String[] { "None", "US", "RU" };
 
+    public static String[] RUSH_NAMES = new String[] { "None", "Attacking", "Defending" };
+
     public static String[] SQUAD_NAMES = new String[] { "None",
       "Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel",
       "India", "Juliet", "Kilo", "Lima", "Mike", "November", "Oscar", "Papa",
@@ -102,12 +104,18 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         public PerModeSettings(String simplifiedModeName) {
             DetermineStrongPlayersBy = DefineStrong.RoundScore;
             DisperseEvenlyForRank = 145;
+            // Rush only
+            Stage1TicketPercentageToUnstackAdjustment = 0;
+            Stage2TicketPercentageToUnstackAdjustment = 0;
+            Stage3TicketPercentageToUnstackAdjustment = 0;
+            Stage4TicketPercentageToUnstackAdjustment = 0;
             
             switch (simplifiedModeName) {
                 case "Conq Small, Dom, Scav":
                     MaxPlayers = 32;
                     CheckTeamStackingAfterFirstMinutes = 10;
                     MaxUnstackingSwapsPerRound = 6;
+                    DelaySecondsBetweenSwaps = SWAP_TIMEOUT;
                     DefinitionOfHighPopulationForPlayers = 28;
                     DefinitionOfLowPopulationForPlayers = 8;
                     DefinitionOfEarlyPhaseFromStart = 50; // assuming 200 tickets typical
@@ -117,6 +125,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxPlayers = 64;
                     CheckTeamStackingAfterFirstMinutes = 10;
                     MaxUnstackingSwapsPerRound = 12;
+                    DelaySecondsBetweenSwaps = SWAP_TIMEOUT;
                     DefinitionOfHighPopulationForPlayers = 48;
                     DefinitionOfLowPopulationForPlayers = 16;
                     DefinitionOfEarlyPhaseFromStart = 100; // assuming 300 tickets typical
@@ -126,6 +135,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxPlayers = 64;
                     CheckTeamStackingAfterFirstMinutes = 5;
                     MaxUnstackingSwapsPerRound = 12;
+                    DelaySecondsBetweenSwaps = SWAP_TIMEOUT;
                     DefinitionOfHighPopulationForPlayers = 48;
                     DefinitionOfLowPopulationForPlayers = 16;
                     DefinitionOfEarlyPhaseFromStart = 5; // minutes
@@ -135,15 +145,22 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxPlayers = 32;
                     CheckTeamStackingAfterFirstMinutes = 5;
                     MaxUnstackingSwapsPerRound = 6;
+                    DelaySecondsBetweenSwaps = 120;
                     DefinitionOfHighPopulationForPlayers = 24;
                     DefinitionOfLowPopulationForPlayers = 8;
                     DefinitionOfEarlyPhaseFromStart = 25; // assuming 75 tickets typical
                     DefinitionOfLatePhaseFromEnd = 25; // assuming 75 tickets typical
+                    // Rush only
+                    Stage1TicketPercentageToUnstackAdjustment = 5;
+                    Stage2TicketPercentageToUnstackAdjustment = 30;
+                    Stage3TicketPercentageToUnstackAdjustment = 80;
+                    Stage4TicketPercentageToUnstackAdjustment = -120;
                     break;
                 case "Squad Deathmatch":
                     MaxPlayers = 16;
                     CheckTeamStackingAfterFirstMinutes = 0;
                     MaxUnstackingSwapsPerRound = 0;
+                    DelaySecondsBetweenSwaps = 0;
                     DefinitionOfHighPopulationForPlayers = 14;
                     DefinitionOfLowPopulationForPlayers = 8;
                     DefinitionOfEarlyPhaseFromStart = 10; // assuming 50 tickets typical
@@ -153,6 +170,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxPlayers = 24;
                     CheckTeamStackingAfterFirstMinutes = 15;
                     MaxUnstackingSwapsPerRound = 6;
+                    DelaySecondsBetweenSwaps = SWAP_TIMEOUT;
                     DefinitionOfHighPopulationForPlayers = 48;
                     DefinitionOfLowPopulationForPlayers = 16;
                     DefinitionOfEarlyPhaseFromStart = 50; // assuming 250 tickets typical
@@ -162,6 +180,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxPlayers = 64;
                     CheckTeamStackingAfterFirstMinutes = 5;
                     MaxUnstackingSwapsPerRound = 12;
+                    DelaySecondsBetweenSwaps = SWAP_TIMEOUT;
                     DefinitionOfHighPopulationForPlayers = 48;
                     DefinitionOfLowPopulationForPlayers = 16;
                     DefinitionOfEarlyPhaseFromStart = 20; // assuming 100 tickets typical
@@ -170,16 +189,23 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                 case "Squad Rush":
                     MaxPlayers = 8;
                     CheckTeamStackingAfterFirstMinutes = 2;
-                    MaxUnstackingSwapsPerRound = 3;
+                    MaxUnstackingSwapsPerRound = 1;
+                    DelaySecondsBetweenSwaps = 120;
                     DefinitionOfHighPopulationForPlayers = 6;
                     DefinitionOfLowPopulationForPlayers = 4;
                     DefinitionOfEarlyPhaseFromStart = 5; // assuming 20 tickets typical
                     DefinitionOfLatePhaseFromEnd = 5; // assuming 20 tickets typical
+                    // Rush only
+                    Stage1TicketPercentageToUnstackAdjustment = 5;
+                    Stage2TicketPercentageToUnstackAdjustment = 30;
+                    Stage3TicketPercentageToUnstackAdjustment = 80;
+                    Stage4TicketPercentageToUnstackAdjustment = -120;
                     break;
                 case "Gun Master":
                     MaxPlayers = 16;
                     CheckTeamStackingAfterFirstMinutes = 2;
                     MaxUnstackingSwapsPerRound = 6;
+                    DelaySecondsBetweenSwaps = SWAP_TIMEOUT;
                     DefinitionOfHighPopulationForPlayers = 12;
                     DefinitionOfLowPopulationForPlayers = 6;
                     DefinitionOfEarlyPhaseFromStart = 0;
@@ -190,6 +216,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxPlayers = 32;
                     CheckTeamStackingAfterFirstMinutes = 10;
                     MaxUnstackingSwapsPerRound = 6;
+                    DelaySecondsBetweenSwaps = SWAP_TIMEOUT;
                     DefinitionOfHighPopulationForPlayers = 28;
                     DefinitionOfLowPopulationForPlayers = 8;
                     DefinitionOfEarlyPhaseFromStart = 50;
@@ -201,12 +228,19 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         public int MaxPlayers = 64; // will be corrected later
         public double CheckTeamStackingAfterFirstMinutes = 10;
         public int MaxUnstackingSwapsPerRound = 6;
+        public double DelaySecondsBetweenSwaps = SWAP_TIMEOUT;
         public DefineStrong DetermineStrongPlayersBy = DefineStrong.RoundScore;
         public double DefinitionOfHighPopulationForPlayers = 48;
         public double DefinitionOfLowPopulationForPlayers = 16;
         public double DefinitionOfEarlyPhaseFromStart = 50;
         public double DefinitionOfLatePhaseFromEnd = 50;
         public int DisperseEvenlyForRank = 145;
+
+        // Rush only
+        public double Stage1TicketPercentageToUnstackAdjustment = 0;
+        public double Stage2TicketPercentageToUnstackAdjustment = 0;
+        public double Stage3TicketPercentageToUnstackAdjustment = 0;
+        public double Stage4TicketPercentageToUnstackAdjustment = 0;
         
         //public double MinTicketsPercentage = 10.0; // TBD
         public int GoAggressive = 0; // TBD
@@ -989,6 +1023,7 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
             
             bool isCTF = (sm == "CTF");
             bool isGM = (sm == "Gun Master");
+            bool isRush = (sm.Contains("Rush"));
 
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Max Players", oneSet.MaxPlayers.GetType(), oneSet.MaxPlayers));
 
@@ -996,6 +1031,8 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Check Team Stacking After First Minutes", oneSet.CheckTeamStackingAfterFirstMinutes.GetType(), oneSet.CheckTeamStackingAfterFirstMinutes));
 
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Max Unstacking Swaps Per Round", oneSet.MaxUnstackingSwapsPerRound.GetType(), oneSet.MaxUnstackingSwapsPerRound));
+
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Delay Seconds Between Swaps", oneSet.DelaySecondsBetweenSwaps.GetType(), oneSet.DelaySecondsBetweenSwaps));
 
                 var_name = "8 - Settings for " + sm + "|" + sm + ": " + "Determine Strong Players By";
                 var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(DefineStrong))) + ")";
@@ -1017,6 +1054,17 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Early Phase As Tickets From Start", oneSet.DefinitionOfEarlyPhaseFromStart.GetType(), oneSet.DefinitionOfEarlyPhaseFromStart));
 
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Late Phase As Tickets From End", oneSet.DefinitionOfLatePhaseFromEnd.GetType(), oneSet.DefinitionOfLatePhaseFromEnd));
+            }
+
+            if (isRush) {
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Stage 1 Ticket Percentage To Unstack Adjustment", oneSet.Stage1TicketPercentageToUnstackAdjustment.GetType(), oneSet.Stage1TicketPercentageToUnstackAdjustment));
+
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Stage 2 Ticket Percentage To Unstack Adjustment", oneSet.Stage2TicketPercentageToUnstackAdjustment.GetType(), oneSet.Stage2TicketPercentageToUnstackAdjustment));
+
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Stage 3 Ticket Percentage To Unstack Adjustment", oneSet.Stage3TicketPercentageToUnstackAdjustment.GetType(), oneSet.Stage3TicketPercentageToUnstackAdjustment));
+
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Stage 4 Ticket Percentage To Unstack Adjustment", oneSet.Stage4TicketPercentageToUnstackAdjustment.GetType(), oneSet.Stage4TicketPercentageToUnstackAdjustment));
+
             }
 
         }
@@ -1948,6 +1996,18 @@ public override void OnReservedSlotsList(List<String> lstSoldierNames) {
     fReservedSlots = lstSoldierNames;
 }
 
+public override void OnEndRound(int iWinningTeamID) {
+    if (!fIsEnabled) return;
+    
+    DebugWrite("^9^bGot OnEndRound^n: " + iWinningTeamID, 7);
+}
+
+public override void OnRunNextLevel() {
+    if (!fIsEnabled) return;
+    
+    DebugWrite("^9^bGot OnRunNextLevel^n", 7);
+}
+
 
 
 
@@ -2339,7 +2399,7 @@ private void BalanceAndUnstack(String name) {
         return;
     }
 
-    double nsis = NextSwapInSeconds();
+    double nsis = NextSwapInSeconds(perMode);
     if (nsis > 0 && fUnstackState == UnstackState.SwappedWeak) {
         if (DebugLevel >= 7) DebugBalance("Too soon to do another unstack swap, wait another " + nsis.ToString("F1") + " seconds!");
         return;
@@ -3184,6 +3244,22 @@ private double GetUnstackTicketRatio(PerModeSettings perMode) {
             break;
         default: break;
     }
+
+    // apply rush adjustment
+    if (IsRush() && fRushStage > 0 && fRushStage <= 4 && unstackTicketRatio > 100) {
+        double adj = 0;
+        switch (fRushStage) {
+            case 1: adj = perMode.Stage1TicketPercentageToUnstackAdjustment; break;
+            case 2: adj = perMode.Stage2TicketPercentageToUnstackAdjustment; break;
+            case 3: adj = perMode.Stage3TicketPercentageToUnstackAdjustment; break;
+            case 4: adj = perMode.Stage4TicketPercentageToUnstackAdjustment; break;
+            default: break;
+        }
+        if (adj != 0) unstackTicketRatio = unstackTicketRatio + adj;
+    }
+    
+    if (unstackTicketRatio <= 100) unstackTicketRatio = 0;
+
     return (unstackTicketRatio/100.0);
 }
 
@@ -3950,13 +4026,14 @@ private void IncrementTotal()
 }
 
 private String GetTeamName(int team) {
-    if (team < 0 || team >= SQUAD_NAMES.Length) team = 0;
-    if (team == 0) return "None";
+    if (team < 0) return "None";
 
-    if (IsSQDM()) {
+    if (IsSQDM() && team < SQUAD_NAMES.Length) {
         return SQUAD_NAMES[team];
+    } else if (IsRush() && team < RUSH_NAMES.Length) {
+        return RUSH_NAMES[team];
     }
-    if (team > 2) return "None";
+    if (team >= TEAM_NAMES.Length) return "None";
     return TEAM_NAMES[team];
 }
 
@@ -4155,11 +4232,11 @@ private void DebugUnswitch(String msg) {
     DebugWrite("^5(SWITCH)^9 " + msg, 4);
 }
 
-private double NextSwapInSeconds() {
+private double NextSwapInSeconds(PerModeSettings perMode) {
     if (fFullUnstackSwapTimestamp == DateTime.MinValue) return 0;
     double since = DateTime.Now.Subtract(fFullUnstackSwapTimestamp).TotalSeconds;
-    if (since > SWAP_TIMEOUT) return 0;
-    return (SWAP_TIMEOUT - since);
+    if (since > perMode.DelaySecondsBetweenSwaps) return 0;
+    return (perMode.DelaySecondsBetweenSwaps - since);
 }
 
 
@@ -4573,7 +4650,7 @@ static class PROTObalancerUtils {
 <p>These settings control balancing and unstacking, depending on the round phase and server population.
 For each phase, there are three unstacking settings for server population: Low, Medium and High, by number of players. Each number is the ticket percentage ratio that triggers unstacking for each combination of phase and population. Setting the value to 0 disables team unstacking for that combination. If the number is not 0, if the ratio of the winning team's tickets to the losing teams tickets is equal to or greater than the ticket percentage ratio specified, unstacking will be activated.</p>
 
-<p><i>Example</i>: for the <b>Ticket Percentage To Unstack</b> setting, there are three phases, Early, Mid and Late. For each phase, the value is a list of 3 number, either 0 or greater than or equal to 100, one for each of the population levels of Low, Medium, and High, respectively:
+<p><i>Example</i>: for the <b>Ticket Percentage To Unstack</b> setting, there are three phases, Early, Mid and Late. For each phase, the value is a list of 3 number, either 0 or greater than 100, one for each of the population levels of Low, Medium, and High, respectively:
 <pre>
     Early Phase: Ticket Percentage To Unstack        0, 120, 120
     Mid Phase: Ticket Percentage To Unstack          0, 120, 120
@@ -4656,6 +4733,8 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Max Unstacking Swaps Per Round</b>: Number greater than or equal to 0. To prevent the plugin from swapping every player on every team for unstacking, a maximum per round is set here. If set to 0, no unstacking will occur for this mode.</p>
 
+<p><b>Delay Seconds Between Swaps</b>: Number greater than or equal to 60. After an unstacking swap, wait this number of seconds before doing another unstacking swap.</p>
+
 <p><b>Determine Strong Players By</b>: The setting defines how strong players are determined. Any player that is not a strong player is a weak player. See the <b>Definition of Strong</b> section above for the list of settings. All players in a single team are sorted by the specified definition. Any player above the median position after sorting is considered strong. For example, suppose there are 31 players on a team and this setting is set to <i>RoundScore</i> and after sorting, the median is position #16. If this player is position #7, he is considered strong. If his position is #16 or #17, he is considered weak.</p>
 
 <p><b>Disperse Evenly For Rank >=</b>: Number greater than or equal to 0 and less than or equal to 145, default 145. Any players with this absolute rank (Colonel 100 is 145) or higher will be dispersed evenly across teams. This is useful to insure that Colonel 100 ranked players don't all stack on one team. Set to 0 to disable.</p>
@@ -4676,7 +4755,16 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p>These settings are unique to Rush and Squad Rush.</p>
 
-<p><b>TBD</b>: TBD</p>
+<p>Rush and Squad Rush require adjustments to the ticket percentage to unstack values specified in section 3 above. For example, if you have a mixed mode server with TDM and Rush, you may set ticket percentage to unstack to 120 for certain combinations of phase and population. This works great for TDM with 200 tickets. It does not work well for Rush with 150 tickets. The ticket ratio may easily exceed 120% without the teams being stacked. It's just the nature of the stages. Rather than have completely different settings for Rush and Squad Rush for section 3, instead, the per-mode settings define adjustments to the section 3 settings. For example, if you specify 30 for <b>Stage 1 Ticket Percentage To Unstack Adjustment</b>, 30 is added to 120 to yield 150% as the ratio for stage 1. You may also use negative numbers to reduce the value, for example, if the normal setting is 120 and you want stage 4 to have no unstacking, you may set the adjustment to -120. If the adjustment results in a value less than or equal to 100, it is set to 0. If you use 0 for the adjustment value, no change is made. <b>If the normal value is 0, no adjustment is applied.</b> Otherwise, the adjustment is applied to all phase and population combinations for that stage.</p>
+
+<p><b>Stage 1 Ticket Percentage To Unstack Adjustment</b>: Any positive or negative number whose absolute value is 0 or less than or equal to the corresponding <b>Ticket Percentage To Unstack</b> value. If the defending team is stacked, the game will be unlikely to get past stage 1, so ratios in the range 125 to 150 after adjustment are good for stage 1. For example, if your normal ratio is 120, set the adjustment to 5 to get 125 for Rush.</p>
+
+<p><b>Stage 2 Ticket Percentage To Unstack Adjustment</b>: Any positive or negative number whose absolute value is 0 or less than or equal to the corresponding <b>Ticket Percentage To Unstack</b> value. If the attacking team is stacked, the game will get to stage 2 quickly, so ratios in the range 125 to 150 are good for stage 2. For example, if  your normal ratio is 120, set the adjustment to 30 to get 150 for Rush</p>
+
+<p><b>Stage 3 Ticket Percentage To Unstack Adjustment</b>: Any positive or negative number whose absolute value is 0 or less than or equal to the corresponding <b>Ticket Percentage To Unstack</b> value. Evenly matched teams will often get to stage 3, so set the ratio high to catch unsual situations only, ratios in the range 200 or more are good for stage 3. For example, if your normal ratio is 120, set the adjustment to 80 to get 200 for Rush.</p>
+
+<p><b>Stage 4 Ticket Percentage To Unstack Adjustment</b>: Any positive or negative number whose absolute value is 0 or less than or equal to the corresponding <b>Ticket Percentage To Unstack</b> value. This is tricky, since a team that is stacked for attackers or evenly matched teams will both get to stage 4. To give the benefit of the doubt, aim for a ratio of 0. For example, if your normal ratio is 120, set the adjustment to -120 to get 0 for Rush.</p>
+
 
 <h3>9 - Debugging</h3>
 <p>These settings are used for debugging problems with the plugin.</p>
