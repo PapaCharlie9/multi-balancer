@@ -2064,13 +2064,19 @@ private void BalanceAndUnstack(String name) {
     }
 
     if (diff > MaxDiff()) {
-        if (totalPlayerCount < 6) {
-            if (DebugLevel >= 7) DebugBalance("Not enough players in server, minimum is " + 6);
+        int floorPlayers = 6;
+        if (totalPlayerCount < floorPlayers) {
+            if (DebugLevel >= 7) DebugBalance("Not enough players in server, minimum is " + floorPlayers);
             return;
         }
 
         if (totalPlayerCount >= (MaximumServerSize-1)) {
             if (DebugLevel >= 7) DebugBalance("Server is full, no balancing or unstacking will be attempted!");
+            return;
+        }
+
+        if (fUnassigned.Count > 0) {
+            DebugBalance("Wait for " + fUnassigned + " unassigned players to be assigned before activating autobalance");
             return;
         }
 
@@ -2755,14 +2761,15 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     MoveInfo move = null;
     bool toLosing = false;
     bool toSmallest = false;
+    bool isSQDM = IsSQDM();
 
     AnalyzeTeams(out diff, out ascendingSize, out descendingTickets, out biggestTeam, out smallestTeam, out winningTeam, out losingTeam);
 
     int iFrom = 0;
     int iTo = 0;
 
-    if (IsSQDM()) {
-        // Score before size
+    if (isSQDM) {
+        // Moving to any team with fewer tickets is encouraged
         for (int i = 0; i < descendingTickets.Length; ++i) {
             if (fromTeam == descendingTickets[i]) iFrom = i;
             if (toTeam == descendingTickets[i]) iTo = i;
@@ -2784,7 +2791,8 @@ private bool CheckTeamSwitch(String name, int toTeam) {
         return true;
     }
 
-    if (IsSQDM()) {
+    if (isSQDM) {
+        // Moving to any team with fewer players is encouraged
         for (int i = 0; i < ascendingSize.Length; ++i) {
             if (fromTeam == ascendingSize[i]) iFrom = i;
             if (toTeam == ascendingSize[i]) iTo = i;
@@ -2805,6 +2813,22 @@ private bool CheckTeamSwitch(String name, int toTeam) {
         CheckAbortMove(name);
         return true;
     }
+
+    // Adjust for SQDM
+    if (isSQDM && fServerInfo != null) {
+        PerModeSettings perMode = null;
+        String simpleMode = String.Empty;
+        if (fModeToSimple.TryGetValue(fServerInfo.GameMode, out simpleMode) && fPerMode.TryGetValue(simpleMode, out perMode) && perMode != null) {
+            if (GetPopulation(perMode, true) == Population.Low) {
+                // Allow team switch to any team except biggest and winning
+                if (toTeam != biggestTeam && toTeam != winningTeam) {
+                    DebugUnswitch("ALLOWED: SQDM Low population and not switching to biggest or winning team: ^b" + name);
+                    return true;
+                }
+            }
+        }
+    }
+    
 
     // Otherwise, do not allow the team switch
 
@@ -3888,6 +3912,7 @@ private int ToTeam(String name, int fromTeam, out int diff, out bool mustMove) {
     if (fromTeam < 1 || fromTeam > 4) return 0;
 
     List<PlayerModel> from = null;
+    List<PlayerModel>[] byId = new List<PlayerModel>[5]{null, fTeam1, fTeam2, fTeam3, fTeam4};
     
     if (fromTeam == 1) {
         from = fTeam1;
@@ -3921,17 +3946,67 @@ private int ToTeam(String name, int fromTeam, out int diff, out bool mustMove) {
     // diff is maximum difference between any two teams
 
     if (diff <= MaxDiff()) return 0;
+    int superDiff = diff;
 
     int targetTeam = smallestTeam;
     
-    // Special handling for SQDM, when small teams are equal, pick the lowest numbered ID
-    if (IsSQDM()) {
+    // Special handling for SQDM
+    bool isSQDM = IsSQDM();
+    if (isSQDM) {
+        // when small teams are equal, pick the lowest numbered ID
+        int orig = targetTeam;
+        int i = 0;
+
         if (targetTeam == 4 && fTeam3.Count == fTeam4.Count && fromTeam != 3) targetTeam = 3;
         if (targetTeam == 3 && fTeam2.Count == fTeam3.Count && fromTeam != 2) targetTeam = 2;
+        if (targetTeam < 1 || targetTeam > 4 || targetTeam == fromTeam) {
+            ConsoleDebug("ToTeam, bad targetTeam = " + targetTeam);
+            return 0;
+        }
+        // don't move a player to a team with 0 if there are other choices
+        List<PlayerModel> targetList = byId[targetTeam];
+        if (targetList.Count == 0) {
+            // all vars that start with "i" are indices into ascendingSize array, values of array are team IDs
+            int iFrom = 0;
+            int iTo = 0;
+            for (i = 0; i < ascendingSize.Length; ++i) {
+                if (ascendingSize[i] == fromTeam) iFrom = i;
+                if (ascendingSize[i] == targetTeam) iTo = i;
+            }
+            // search for larger team that isn't where we are from or biggest or winning
+            int nonZero = ascendingSize.Length;
+            for (i = iTo; i < 3; ++i) { // index 3 is biggest team
+                if (i == iFrom || i == iTo || ascendingSize[i] == winningTeam) continue;
+                // Take first team that is bigger that original target
+                nonZero = i;
+                break;
+            }
+            if (nonZero != ascendingSize.Length) {
+                targetTeam = ascendingSize[nonZero];
+            }
+        }
+        if (targetTeam != orig) {
+            String szs = "(";
+            for (i = 1; i < byId.Length; ++i) {
+                szs = byId[i].Count.ToString();
+                if (i == 4) {
+                    szs = szs + ")";
+                } else {
+                    szs = szs + ", ";
+                }
+            }
+            DebugBalance("SQDM adjusted target from " + orig + " to " + targetTeam + ": " + szs);
+        }
     }
 
     // recompute diff to be difference between fromTeam and target team
     diff = GetTeamDifference(ref fromTeam, ref targetTeam);
+
+    // Fake out difference due to adjustment
+    if (isSQDM && diff < MaxDiff() && diff != 0) {
+        DebugBalance("SQDM fake out diff due to adjustment, was " + diff + ", will be reported as " + superDiff);
+        diff = superDiff;
+    }
 
     // TBD, for SQDM, based on name, might need to take into account dispersal by Rank, etc.
     // mustMove set to True if dispersal policy (etc) must override other policies
