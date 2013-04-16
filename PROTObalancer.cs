@@ -1557,6 +1557,8 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
     
     DebugWrite("^9^bGot OnPlayerTeamChange^n: " + soldierName + " " + teamId + " " + squadId, 7);
 
+    if (fPluginState == PluginState.Disabled || fPluginState == PluginState.Error) return;
+
     try {
         // Only teamId is valid for BF3, squad change is sent on separate event
 
@@ -1582,7 +1584,7 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
             } else {
                 Reassign(soldierName, teamId, reassignTo, diff);
             }
-        } else if (fPluginState == PluginState.Active && fGameState == GameState.Playing) {
+        } else if (fGameState == GameState.Playing) {
 
             // If this was an MB move, finish it
             FinishMove(soldierName, teamId);
@@ -1610,6 +1612,9 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
 
             // Admin move event may still be on its way, so do a round-trip to check
             ServerCommand("player.isAlive", soldierName);
+        } else if (fGameState == GameState.RoundStarting || fGameState == GameState.RoundEnding) {
+            UpdatePlayerTeam(soldierName, teamId);
+            UpdateTeams();
         }
     } catch (Exception e) {
         ConsoleException(e.ToString());
