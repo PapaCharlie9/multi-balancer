@@ -2087,7 +2087,7 @@ private void BalanceAndUnstack(String name) {
             return;
         }
 
-        if (fUnassigned.Count > 0) {
+        if (fUnassigned.Count >= (diff - MaxDiff())) {
             DebugBalance("Wait for " + fUnassigned.Count + " unassigned players to be assigned before activating autobalance");
             return;
         }
