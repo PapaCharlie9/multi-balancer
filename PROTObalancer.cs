@@ -264,6 +264,9 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         public int Rounds; // incremented OnRoundOverPlayers
         public int Rank;
         public bool IsDeployed;
+        public String SpawnChatMessage;
+        public String SpawnYellMessage;
+        public bool QuietMessage;
         
         // Battlelog
         public String Tag;
@@ -304,6 +307,9 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
             IsDeployed = false;
             MovesRound = 0;
             MovedByMB = false;
+            SpawnChatMessage = String.Empty;
+            SpawnYellMessage = String.Empty;
+            QuietMessage = false;
         }
         
         public PlayerModel(String name, int team) : this() {
@@ -1983,6 +1989,7 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
         if (fPluginState == PluginState.Active && fGameState != GameState.RoundEnding) {
             ValidateMove(soldierName);
             SpawnUpdate(soldierName);
+            FireMessages(soldierName);
         }
     } catch (Exception e) {
         ConsoleException(e.ToString());
@@ -2081,7 +2088,7 @@ private void BalanceAndUnstack(String name) {
         }
 
         if (fUnassigned.Count > 0) {
-            DebugBalance("Wait for " + fUnassigned + " unassigned players to be assigned before activating autobalance");
+            DebugBalance("Wait for " + fUnassigned.Count + " unassigned players to be assigned before activating autobalance");
             return;
         }
 
@@ -2984,8 +2991,11 @@ private void FinishMove(String name, int team) {
     }
     if (move != null) {
         // MB move for balance/unstacking/unswitching
+        SetSpawnMessages(move.Name, move.ChatAfter, move.YellAfter, move.Reason == ReasonFor.Unswitch);
+        /*
         Yell(move.Name, move.YellAfter);
         Chat(move.Name, move.ChatAfter, move.Reason == ReasonFor.Unswitch); // play only if unswitch
+        */
         IncrementTotal();
     } else {
         /* Shouldn't we let caller decide if this is an admin move?
@@ -4430,6 +4440,45 @@ private String GetTimeInRoundString() {
     DateTime rst = (fRoundStartTimestamp == DateTime.MinValue) ? DateTime.Now : fRoundStartTimestamp;
     Match rm = Regex.Match(DateTime.Now.Subtract(fRoundStartTimestamp).ToString(), @"([0-9]+:[0-9]+:[0-9]+)");
     return ( (rm.Success) ? rm.Groups[1].Value : "?" );
+}
+
+private void SetSpawnMessages(String name, String chat, String yell, bool quiet) {
+    PlayerModel player = null;
+
+    lock (fKnownPlayers) {
+        if (!fKnownPlayers.TryGetValue(name, out player)) {
+            player = null;
+        }
+    }
+    if (player == null) {
+        ConsoleDebug("SetSpawnMessages unknown player ^b" + name);
+        return;
+    }
+
+    player.SpawnChatMessage = chat;
+    player.SpawnYellMessage = yell;
+    player.QuietMessage = quiet;
+}
+
+private void FireMessages(String name) {
+    PlayerModel player = null;
+
+    lock (fKnownPlayers) {
+        if (!fKnownPlayers.TryGetValue(name, out player)) {
+            player = null;
+        }
+    }
+    if (player == null) {
+        ConsoleDebug("FireMessages unknown player ^b" + name);
+        return;
+    }
+    if (!String.IsNullOrEmpty(player.SpawnChatMessage) || !String.IsNullOrEmpty(player.SpawnYellMessage)) {
+        DebugWrite("^5(SPAWN)^9 firing messages delayed until spawn", 5);
+    }
+    if (!String.IsNullOrEmpty(player.SpawnChatMessage)) Chat(name, player.SpawnChatMessage, player.QuietMessage);
+    if (!String.IsNullOrEmpty(player.SpawnYellMessage)) Yell(name, player.SpawnYellMessage);
+    player.SpawnChatMessage = String.Empty;
+    player.SpawnYellMessage = String.Empty;
 }
 
 
