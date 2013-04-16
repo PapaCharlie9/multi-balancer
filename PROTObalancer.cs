@@ -351,6 +351,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         public String YellBefore = String.Empty;
         public String ChatAfter = String.Empty;
         public String YellAfter = String.Empty;
+        public bool aborted = false;
 
         public MoveInfo() {}
 
@@ -465,6 +466,7 @@ private UnstackState fUnstackState = UnstackState.Off;
 private DateTime fFullUnstackSwapTimestamp;
 private int fRushStage = 0;
 private double fRushAttackerTickets = 0;
+private List<MoveInfo> fMoveStash = null;
 
 // Operational statistics
 private int fReassignedRound = 0;
@@ -632,6 +634,7 @@ public PROTObalancer() {
     fLastMsg = null;
     fRushStage = 0;
     fRushAttackerTickets = 0;
+    fMoveStash = new List<MoveInfo>();
     
     /* Settings */
 
@@ -2706,6 +2709,16 @@ private bool CheckTeamSwitch(String name, int toTeam) {
         ConsoleDebug("CheckTeamSwitch: name = " + name + ", changing to same team " + toTeam + "?");
         return false;
     }
+
+    // Check if move already in progress for this player and abort it
+    lock (fMoveStash) {
+        if (fMoveStash.Count > 0) {
+             // list only ever has one item
+            if (fMoveStash[0].Name == name) {
+                fMoveStash.Clear();
+            }
+        }
+    }
     
     // Whitelisted?
     if (OnWhitelist) {
@@ -2718,6 +2731,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
         */
         if (vip.Contains(name) || vip.Contains(ExtractTag(player)) || vip.Contains(player.EAGUID)) {
             DebugUnswitch("ALLOWED: On whitelist: ^b" + name);
+            CheckAbortMove(name);
             return true;
         }
     }
@@ -2725,6 +2739,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     // Unlimited time?
     if (UnlimitedTeamSwitchingDuringFirstMinutesOfRound > 0 && GetTimeInRoundMinutes() < UnlimitedTeamSwitchingDuringFirstMinutesOfRound) {
         DebugUnswitch("ALLOWED: Time in round " + GetTimeInRoundMinutes().ToString("F0") + " < " + UnlimitedTeamSwitchingDuringFirstMinutesOfRound.ToString("F0"));
+        CheckAbortMove(name);
         return true;
     }
 
@@ -2765,6 +2780,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
         DebugUnswitch("ALLOWED: Team switch to losing team ^b: " + name);
         Chat(name, move.ChatBefore);
         Yell(name, move.YellBefore);
+        CheckAbortMove(name);
         return true;
     }
 
@@ -2786,6 +2802,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
         DebugUnswitch("ALLOWED: Team switch to smallest team ^b: " + name);
         Chat(name, move.ChatBefore);
         Yell(name, move.YellBefore);
+        CheckAbortMove(name);
         return true;
     }
 
@@ -2807,6 +2824,16 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     KillAndMoveAsync(move);
 
     return false;
+}
+
+private void CheckAbortMove(String name) {
+    lock (fMoveQ) {
+        if (fMoveQ.Count > 0) {
+            foreach (MoveInfo mi in fMoveQ) {
+                if (mi.Name == name) mi.aborted = true;
+            }
+        }
+    }
 }
 
 private void SpawnUpdate(String name) {
@@ -2886,7 +2913,7 @@ private void StartMoveImmediate(MoveInfo move, bool sendMessages) {
     // Send before messages?
     if (sendMessages) {
         Yell(move.Name, move.YellBefore);
-        Chat(move.Name, move.ChatBefore);
+        Chat(move.Name, move.ChatBefore, move.Reason == ReasonFor.Unswitch); // player only if unswitch
     }
 
     lock (fMoving) {
@@ -2929,7 +2956,7 @@ private void FinishMove(String name, int team) {
     if (move != null) {
         // MB move for balance/unstacking/unswitching
         Yell(move.Name, move.YellAfter);
-        Chat(move.Name, move.ChatAfter);
+        Chat(move.Name, move.ChatAfter, move.Reason == ReasonFor.Unswitch); // play only if unswitch
         IncrementTotal();
     } else {
         /* Shouldn't we let caller decide if this is an admin move?
@@ -2959,13 +2986,42 @@ public void MoveLoop() {
                 move = fMoveQ.Dequeue();
             }
 
+            // Check abort flag
+            if (move.aborted) {
+                DebugUnswitch("ABORTING original move for ^b" + move.Name + "^n to " + move.Destination + ", newer move in progress");
+                continue;
+            }
+
             // Sending before messages
             Yell(move.Name, move.YellBefore);
-            Chat(move.Name, move.ChatBefore);
+            Chat(move.Name, move.ChatBefore, move.Reason == ReasonFor.Unswitch); // player only if unswitching
+
+            // Stash for check later
+            lock (fMoveStash) {
+                fMoveStash.Clear();
+                fMoveStash.Add(move);
+            }
 
             // Pause
             Thread.Sleep(Convert.ToInt32(YellDurationSeconds*1000));
             if (!fIsEnabled) return;
+
+            // Player may have started another move during the delay, check and abort
+            lock (fMoveStash) {
+                if (fMoveStash.Count == 0) {
+                    DebugUnswitch("ABORTING original move for ^b" + move.Name + "^n to " + move.Destination + ", new move pending");
+                    continue;
+                }
+                fMoveStash.Clear();
+            }
+            lock (fMoveQ) {
+                foreach (MoveInfo mi in fMoveQ) {
+                    if (mi.Name == move.Name) {
+                        DebugUnswitch("ABORTING original move for ^b" + move.Name + "^n to " + move.Destination + ", now moving to " + mi.Destination);
+                        continue;
+                    }
+                }
+            }
 
             // Make sure player is dead
             if (!EnableLoggingOnlyMode) {
@@ -3056,8 +3112,12 @@ private void ValidateMove(String name) {
 }
 
 private void Chat(String who, String what) {
+    Chat(who, what, QuietMode);
+}
+
+private void Chat(String who, String what, bool quiet) {
     String doing = null;
-    if (QuietMode) {
+    if (quiet) {
         if (!EnableLoggingOnlyMode) {
             ServerCommand("admin.say", what, "player", who); // chat player only
         }
@@ -3541,6 +3601,10 @@ private void Reset() {
 
     lock (fMoving) {
         fMoving.Clear();
+    }
+
+    lock (fMoveStash) {
+        fMoveStash.Clear();
     }
 
     fReassigned.Clear();
