@@ -3717,10 +3717,12 @@ private bool IsRush() {
 }
 
 private int MaxDiff() {
-    if (fServerInfo == null || IsSQDM()) return 2;
+    if (fServerInfo == null) return 2;
     PerModeSettings perMode = null;
     String simpleMode = String.Empty;
-    if (fModeToSimple.TryGetValue(fServerInfo.GameMode, out simpleMode) && fPerMode.TryGetValue(simpleMode, out perMode) && perMode != null) {
+    if (IsSQDM()) {
+        return ((TotalPlayerCount <= 32) ? 1 : 2);
+    } else if (fModeToSimple.TryGetValue(fServerInfo.GameMode, out simpleMode) && fPerMode.TryGetValue(simpleMode, out perMode) && perMode != null) {
         return ((GetPopulation(perMode, false) == Population.High) ? 2 : 1);
     }
     return 2;
@@ -3965,6 +3967,9 @@ private int ToTeam(String name, int fromTeam, out int diff, out bool mustMove) {
 
     int targetTeam = smallestTeam;
     
+    if (targetTeam == fromTeam) return 0;
+
+    /*
     // Special handling for SQDM
     bool isSQDM = IsSQDM();
     if (isSQDM) {
@@ -4022,6 +4027,7 @@ private int ToTeam(String name, int fromTeam, out int diff, out bool mustMove) {
         DebugBalance("SQDM fake out diff due to adjustment, was " + diff + ", will be reported as " + superDiff);
         diff = superDiff;
     }
+    */
 
     // TBD, for SQDM, based on name, might need to take into account dispersal by Rank, etc.
     // mustMove set to True if dispersal policy (etc) must override other policies
@@ -4473,7 +4479,7 @@ private void FireMessages(String name) {
         return;
     }
     if (!String.IsNullOrEmpty(player.SpawnChatMessage) || !String.IsNullOrEmpty(player.SpawnYellMessage)) {
-        DebugWrite("^5(SPAWN)^9 firing messages delayed until spawn", 5);
+        DebugWrite("^5(SPAWN)^9 firing messages delayed until spawn for ^b" + name, 5);
     }
     if (!String.IsNullOrEmpty(player.SpawnChatMessage)) Chat(name, player.SpawnChatMessage, player.QuietMessage);
     if (!String.IsNullOrEmpty(player.SpawnYellMessage)) Yell(name, player.SpawnYellMessage);
