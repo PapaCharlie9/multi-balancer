@@ -692,8 +692,8 @@ public PROTObalancer() {
     YellMovedForBalance = "Moved %name% for balance ...";
     ChatMovedToUnstack = "*** MOVED %name% to unstack teams ...";
     YellMovedToUnstack = "Moved %name% to unstack teams ...";
-    ChatDetectedBadTeamSwitch = "%name%, the %fromTeam% team needs your help, sending you back ...";
-    YellDetectedBadTeamSwitch = "The %fromTeam% team needs your help, sending you back!";
+    ChatDetectedBadTeamSwitch = "%name%, the %toTeam% team needs your help, sending you back ...";
+    YellDetectedBadTeamSwitch = "The %toTeam% team needs your help, sending you back!";
     ChatDetectedGoodTeamSwitch = "%name%, thanks for helping out the %toTeam% team!";
     YellDetectedGoodTeamSwitch = "Thanks for helping out the %toTeam% team!";
     ChatAfterUnswitching = "%name%, please stay on the %toTeam% team for the rest of this round";
@@ -2346,7 +2346,8 @@ private void BalanceAndUnstack(String name) {
         // TBD
 
         /* Move for balance */
-
+        
+        DebugWrite("^4^bBALANCE^n^0 moving ^b" + name + "^n from " + GetTeamName(player.Team) + " to " + GetTeamName(toTeam) + " because difference is " + diff, 2);
         MoveInfo move = new MoveInfo(name, player.Tag, player.Team, GetTeamName(player.Team), toTeam, GetTeamName(toTeam));
         move.Reason = ReasonFor.Balance;
         move.Format(ChatMovedForBalance, false, false);
@@ -2383,7 +2384,7 @@ private void BalanceAndUnstack(String name) {
     }
 
     if (perMode.CheckTeamStackingAfterFirstMinutes == 0) {
-        if (DebugLevel >= 5) DebugBalance("Unstacking has been disabled, Check Team Stacking After First Minutes set to zero)");
+        if (DebugLevel >= 5) DebugBalance("Unstacking has been disabled, Check Team Stacking After First Minutes set to zero");
         return;
     }
 
@@ -2506,7 +2507,8 @@ private void BalanceAndUnstack(String name) {
     }
 
     /* Move for unstacking */
-
+    
+    DebugWrite("^4^bUNSTACK^n^0 moving ^b" + name + "^n from " + moveUnstack.SourceName + " to " + moveUnstack.DestinationName + " because: " + um, 2);
     moveUnstack.Reason = ReasonFor.Unstack;
     moveUnstack.Format(ChatMovedToUnstack, false, false);
     moveUnstack.Format(YellMovedToUnstack, true, false);
@@ -2729,6 +2731,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     }
 
     // Check if move already in progress for this player and abort it
+    bool sendAbortMessage = false;
     lock (fMoveStash) {
         if (fMoveStash.Count > 0) {
              // list only ever has one item
@@ -2736,6 +2739,10 @@ private bool CheckTeamSwitch(String name, int toTeam) {
                 fMoveStash.Clear();
             }
         }
+    }
+    if (sendAbortMessage) {
+        DebugUnswitch("ABORTED (by move stash): abort previous move by ^b" + name);
+        sendAbortMessage = false;
     }
     
     // Whitelisted?
@@ -2792,7 +2799,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     }
 
     // Trying to switch to losing team?
-    if (toLosing) {
+    if (toLosing && toTeam != biggestTeam) {
         move = new MoveInfo(player.Name, player.Tag, fromTeam, GetTeamName(fromTeam), toTeam, GetTeamName(toTeam));
         move.Format(ChatDetectedGoodTeamSwitch, false, true);
         move.Format(YellDetectedGoodTeamSwitch, true, true);
@@ -2815,7 +2822,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     }
 
     // Trying to switch to smallest team?
-    if (toSmallest) {
+    if (toSmallest && toTeam != winningTeam) {
         move = new MoveInfo(player.Name, player.Tag, fromTeam, GetTeamName(fromTeam), toTeam, GetTeamName(toTeam));
         move.Format(ChatDetectedGoodTeamSwitch, false, true);
         move.Format(YellDetectedGoodTeamSwitch, true, true);
@@ -2848,6 +2855,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
 
     // Tried to switch "toTeam" from "player.Team", so moving from "toTeam" back to original team (player.Team)
     DebugUnswitch("FORBIDDEN: Detected bad team switch, scheduling admin kill and move for ^b: " + name);
+    DebugWrite("^4^bUNSWITCHING^n^0 ^b" + name + "^n from " + GetTeamName(toTeam) + " back to " + GetTeamName(player.Team), 3);
     move = new MoveInfo(name, player.Tag, toTeam, GetTeamName(toTeam), player.Team, GetTeamName(player.Team));
     move.Reason = ReasonFor.Unswitch;
     move.Format(ChatDetectedBadTeamSwitch, false, true);
@@ -3067,7 +3075,7 @@ public void MoveLoop() {
                 ServerCommand("admin.killPlayer", move.Name);
                 DebugWrite("^b^1ADMIN KILL^0 " + move.Name, 2);
             } else {
-                DebugWrite("^9(SIMULATING) ^b^1ADMIN KILL^0 " + move.Name, 2);
+                DebugWrite("^9(SIMULATING) ^b^1ADMIN KILL^0 " + move.Name, 3);
             }
 
             // Pause
@@ -3088,7 +3096,7 @@ public void MoveLoop() {
 private void Reassign(String name, int fromTeam, int toTeam, int diff) {
     // This is not a known player yet, so not PlayerModel to use
     // Just do a raw move as quickly as possible, not messages, just logging
-    String doing = (EnableLoggingOnlyMode) ? "^9(SIMULATING) ^b^1REASSIGNING^0^n new player ^b" : "^b^1REASSIGNING^0^n new player ^b";
+    String doing = (EnableLoggingOnlyMode) ? "^9(SIMULATING) ^b^4REASSIGNING^0^n new player ^b" : "^b^4REASSIGNING^0^n new player ^b";
     DebugWrite(doing + name + "^n from team " + fromTeam + " to team " + toTeam + " because difference is " + diff, 2);
     int toSquad = ToSquad(name, toTeam);
     if (!EnableLoggingOnlyMode) {
@@ -3162,14 +3170,14 @@ private void Chat(String who, String what, bool quiet) {
         }
         ProconChatPlayer(who, what);
         doing = (EnableLoggingOnlyMode) ? "^9(SIMULATING) ^b^1CHAT^0^n to ^b" : "^b^1CHAT^0^n to ^b";
-        DebugWrite(doing + who + "^n: " + what, 2);
+        DebugWrite(doing + who + "^n: " + what, 3);
     } else {
         if (!EnableLoggingOnlyMode) {
             ServerCommand("admin.say", what, "all"); // chat all
         }
         ProconChat(what);
         doing = (EnableLoggingOnlyMode) ? "^9(SIMULATING) ^b^1CHAT^0^n to all: " : "^b^1CHAT^0^n to all: ";
-        DebugWrite(doing + what, 2);
+        DebugWrite(doing + what, 3);
     }
 }
 
@@ -3179,7 +3187,7 @@ private void Yell(String who, String what) {
         ServerCommand("admin.yell", what, YellDurationSeconds.ToString("F0"), "player", who); // yell to player
     }
     doing = (EnableLoggingOnlyMode) ? "^9(SIMULATING) ^b^1YELL^0^n to ^b" : "^b^1YELL^0^n to ^b";
-    DebugWrite(doing + who + "^n: " + what, 2);
+    DebugWrite(doing + who + "^n: " + what, 3);
 }
 
 private void ProconChat(String what) {
@@ -3237,11 +3245,41 @@ private Phase GetPhase(PerModeSettings perMode, bool verbose) {
     // lateTickets relative to 0 for count down, max for count up
     double earlyTickets = perMode.DefinitionOfEarlyPhaseFromStart;
     double lateTickets = perMode.DefinitionOfLatePhaseFromEnd;
-    Phase phase = Phase.Early;
+    Phase phase = Phase.Mid;
+
+    if (fServerInfo == null) return phase;
+
+    // Special handling for CTF mode
+    if (fServerInfo.GameMode == "CaptureTheFlag0") {
+        if (fRoundStartTimestamp == DateTime.MinValue) return Phase.Early;
+
+        double earlyMinutes = earlyTickets;
+        double lateMinutes = lateTickets;
+
+        // TBD - assume max round time is 20 minutes
+        double maxMinutes = 20;
+        double totalRoundMins = DateTime.Now.Subtract(fRoundStartTimestamp).TotalMinutes;
+
+        // Late is higher priority than early - TBD, move this to settings validation
+        if (lateMinutes > maxMinutes) {earlyMinutes = 0; lateMinutes = maxMinutes;}
+        if (earlyMinutes > (maxMinutes - lateMinutes)) {earlyMinutes = maxMinutes - lateMinutes;}
+
+        if (totalRoundMins <= earlyMinutes) {
+            phase = Phase.Early;
+        } else if (totalRoundMins >= (maxMinutes - lateMinutes)) {
+            phase = Phase.Late;
+        } else {
+            phase = Phase.Mid;
+        }
+
+        if (verbose && DebugLevel >= 8) DebugBalance("Phase: " + phase + " (" + totalRoundMins.ToString("F0") + " mins [" + earlyMinutes.ToString("F0") + " - " + (maxMinutes - lateMinutes).ToString("F0") + "])");
+    }
 
     double tickets = -1;
     double goal = 0;
     bool countDown = true;
+
+    if (fMaxTickets == -1) return Phase.Early;
 
     if (Regex.Match(fServerInfo.GameMode, @"(?:TeamDeathMatch|SquadDeathMatch)").Success) {
         countDown = false;
@@ -3266,6 +3304,10 @@ private Phase GetPhase(PerModeSettings perMode, bool verbose) {
     }
 
     if (countDown) {
+        // Late takes priority over early -- TBD, move this to settings validation
+        if (lateTickets > fMaxTickets) {earlyTickets = 0; lateTickets = fMaxTickets;}
+        if (lateTickets > (fMaxTickets - earlyTickets)) {earlyTickets = fMaxTickets - lateTickets;}
+
         if (tickets <= lateTickets) {
             phase = Phase.Late;
         } else if (fIsFullRound && (earlyTickets < fMaxTickets) && tickets >= (fMaxTickets - earlyTickets)) {
@@ -3275,6 +3317,10 @@ private Phase GetPhase(PerModeSettings perMode, bool verbose) {
         }
     } else {
         // count up
+        // Late takes priority over early -- TBD, move this to settings validation
+        if (lateTickets > goal) {earlyTickets = 0; lateTickets = goal;}
+        if (earlyTickets > (goal - lateTickets)) {earlyTickets = goal - lateTickets;}
+
         if (lateTickets < goal && tickets >= (goal - lateTickets)) {
             phase = Phase.Late;
         } else if (tickets <= earlyTickets) {
@@ -4881,8 +4927,8 @@ For each phase, there are three unstacking settings for server population: Low, 
 <table border='0'>
 <tr><td>%name%</td><td>player name</td></tr>
 <tr><td>%tag%</td><td>player clan tag</td></tr>
-<tr><td>%fromTeam%</td><td>original team a player came from, as 'US' or 'RU', or 'Alpha', 'Bravo', 'Charlie', or 'Delta' for SQDM</td></tr>
-<tr><td>%toTeam%</td><td>new team a player is/was moved to, ditto</td></tr>
+<tr><td>%fromTeam%</td><td>team the player is currently on, as 'US' or 'RU', or 'Alpha', 'Bravo', 'Charlie', or 'Delta' for SQDM</td></tr>
+<tr><td>%toTeam%</td><td>team the plugin will move the player to, same team name substitutions as for %fromTeam%</td></tr>
 </table></p>
 
 <p><b>Quiet Mode</b>: True or False, default False. If False, chat messages are sent to all players and yells are sent to the player being moved. If True, chat and yell messages are only sent to the player being moved.</p>
