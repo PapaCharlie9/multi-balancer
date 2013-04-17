@@ -2060,6 +2060,7 @@ private void BalanceAndUnstack(String name) {
     bool needsBalancing = false;
     bool loggedStats = false;
     bool isSQDM = IsSQDM();
+    String log = String.Empty;
 
     /* Sanity checks */
 
@@ -2347,7 +2348,9 @@ private void BalanceAndUnstack(String name) {
 
         /* Move for balance */
         
-        DebugWrite("^4^bBALANCE^n^0 moving ^b" + name + "^n from " + GetTeamName(player.Team) + " to " + GetTeamName(toTeam) + " because difference is " + diff, 2);
+        log = "^4^bBALANCE^n^0 moving ^b" + name + "^n from " + GetTeamName(player.Team) + " to " + GetTeamName(toTeam) + " because difference is " + diff;
+        log = (EnableLoggingOnlyMode) ? "^9(SIMULATING)^0 " + log : log;
+        DebugWrite(log, 2);
         MoveInfo move = new MoveInfo(name, player.Tag, player.Team, GetTeamName(player.Team), toTeam, GetTeamName(toTeam));
         move.Reason = ReasonFor.Balance;
         move.Format(ChatMovedForBalance, false, false);
@@ -2508,7 +2511,9 @@ private void BalanceAndUnstack(String name) {
 
     /* Move for unstacking */
     
-    DebugWrite("^4^bUNSTACK^n^0 moving ^b" + name + "^n from " + moveUnstack.SourceName + " to " + moveUnstack.DestinationName + " because: " + um, 2);
+    log = "^4^bUNSTACK^n^0 moving ^b" + name + "^n from " + moveUnstack.SourceName + " to " + moveUnstack.DestinationName + " because: " + um;
+    log = (EnableLoggingOnlyMode) ? "^9(SIMULATING)^0 " + log : log;
+    DebugWrite(log, 2);
     moveUnstack.Reason = ReasonFor.Unstack;
     moveUnstack.Format(ChatMovedToUnstack, false, false);
     moveUnstack.Format(YellMovedToUnstack, true, false);
@@ -2606,8 +2611,7 @@ private void UpdatePlayerModel(String name, int team, int squad, String eaGUID, 
     }
     
     if (!fKnownPlayers.ContainsKey(name)) {
-        DebugWrite("^b^1ERROR^0^n: player ^b" + name + "^n not in master table!", 1);
-        fPluginState = PluginState.Error;
+        ConsoleDebug("UpdatePlayerModel: player ^b" + name + "^n not in master table!");
         return;
     }
     
@@ -2855,7 +2859,9 @@ private bool CheckTeamSwitch(String name, int toTeam) {
 
     // Tried to switch "toTeam" from "player.Team", so moving from "toTeam" back to original team (player.Team)
     DebugUnswitch("FORBIDDEN: Detected bad team switch, scheduling admin kill and move for ^b: " + name);
-    DebugWrite("^4^bUNSWITCHING^n^0 ^b" + name + "^n from " + GetTeamName(toTeam) + " back to " + GetTeamName(player.Team), 3);
+    String log = "^4^bUNSWITCHING^n^0 ^b" + name + "^n from " + GetTeamName(toTeam) + " back to " + GetTeamName(player.Team);
+    log = (EnableLoggingOnlyMode) ? "^9(SIMULATING)^0 " + log : log;
+    DebugWrite(log, 3);
     move = new MoveInfo(name, player.Tag, toTeam, GetTeamName(toTeam), player.Team, GetTeamName(player.Team));
     move.Reason = ReasonFor.Unswitch;
     move.Format(ChatDetectedBadTeamSwitch, false, true);
@@ -2976,7 +2982,7 @@ private void StartMoveImmediate(MoveInfo move, bool sendMessages) {
         default: r = " for ???"; break;
     }
     String doing = (EnableLoggingOnlyMode) ? "^9(SIMULATING) ^b^1MOVING^0 " : "^b^1MOVING^0 ";
-    DebugWrite(doing + move.Name + "^n from " + move.SourceName + " to " + move.DestinationName + r, 2);
+    DebugWrite(doing + move.Name + "^n from " + move.SourceName + " to " + move.DestinationName + r, 3);
 }
 
 private void FinishMove(String name, int team) {
@@ -3073,7 +3079,7 @@ public void MoveLoop() {
             // Make sure player is dead
             if (!EnableLoggingOnlyMode) {
                 ServerCommand("admin.killPlayer", move.Name);
-                DebugWrite("^b^1ADMIN KILL^0 " + move.Name, 2);
+                DebugWrite("^b^1ADMIN KILL^0 " + move.Name, 3);
             } else {
                 DebugWrite("^9(SIMULATING) ^b^1ADMIN KILL^0 " + move.Name, 3);
             }
@@ -3097,7 +3103,7 @@ private void Reassign(String name, int fromTeam, int toTeam, int diff) {
     // This is not a known player yet, so not PlayerModel to use
     // Just do a raw move as quickly as possible, not messages, just logging
     String doing = (EnableLoggingOnlyMode) ? "^9(SIMULATING) ^b^4REASSIGNING^0^n new player ^b" : "^b^4REASSIGNING^0^n new player ^b";
-    DebugWrite(doing + name + "^n from team " + fromTeam + " to team " + toTeam + " because difference is " + diff, 2);
+    DebugWrite(doing + name + "^n from team " + GetTeamName(fromTeam) + " to team " + GetTeamName(toTeam) + " because difference is " + diff, 2);
     int toSquad = ToSquad(name, toTeam);
     if (!EnableLoggingOnlyMode) {
         fReassigned.Add(name);
@@ -3890,7 +3896,7 @@ private void AnalyzeTeams(out int maxDiff, out int[] ascendingSize, out int[] de
     });
 
     for (int i = 0; i < ascendingSize.Length; ++i) {
-        if (isSQDM || i < 2) {
+        if (i < teams.Count) {
             ascendingSize[i] = teams[i].Team;
         } else {
             ascendingSize[i] = 0;
@@ -4548,6 +4554,17 @@ private void LogStatus() {
 
     String tm = fTickets[1] + "/" + fTickets[2];
     if (IsSQDM()) tm = tm + "/" + fTickets[3] + "/" + fTickets[4];
+
+    double goal = 0;
+    if (fServerInfo != null && Regex.Match(fServerInfo.GameMode, @"(?:TeamDeathMatch|SquadDeathMatch)").Success) {
+        goal = fServerInfo.TeamScores[0].WinningScore;
+    }
+
+    if (goal == 0) {
+        if (fMaxTickets != -1) tm = tm + " <- (" + fMaxTickets.ToString("F0") + ")";
+    } else {
+        tm = tm + " -> [" + goal.ToString("F0") + "]";
+    }
 
     String rt = GetTimeInRoundString();
 
