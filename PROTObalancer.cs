@@ -1090,7 +1090,7 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
 
     } catch (Exception e) {
-        ConsoleException(e.ToString());
+        ConsoleException(e);
     }
 
     return lstReturn;
@@ -1136,7 +1136,7 @@ public void SetPluginVariable(String strVariable, String strValue) {
                     Preset = (PresetItems)Enum.Parse(fieldType, strValue);
                     isPresetVar = true;
                 } catch (Exception e) {
-                    ConsoleException(e.ToString());
+                    ConsoleException(e);
                 }
             } else if (tmp.Contains("Spelling Of Speed Names Reminder")) {
                 fieldType = typeof(Speed);
@@ -1144,7 +1144,7 @@ public void SetPluginVariable(String strVariable, String strValue) {
                     field.SetValue(this, (Speed)Enum.Parse(fieldType, strValue));
                     isReminderVar = true;
                 } catch (Exception e) {
-                    ConsoleException(e.ToString());
+                    ConsoleException(e);
                 }
             } else if (tmp.Contains("Balance Speed")) {
                 fieldType = typeof(Speed[]);
@@ -1153,7 +1153,7 @@ public void SetPluginVariable(String strVariable, String strValue) {
                     Speed[] items = PROTObalancerUtils.ParseSpeedArray(this, strValue); // also validates
                     field.SetValue(this, items);
                 } catch (Exception e) {
-                    ConsoleException(e.ToString());
+                    ConsoleException(e);
                 }
             } else if (tmp.Contains("Ticket Percentage To Unstack")) {
                 fieldType = typeof(double[]);
@@ -1162,7 +1162,7 @@ public void SetPluginVariable(String strVariable, String strValue) {
                     double[] nums = PROTObalancerUtils.ParseNumArray(strValue); // also validates
                     field.SetValue(this, nums);
                 } catch (Exception e) {
-                    ConsoleException(e.ToString());
+                    ConsoleException(e);
                 }
             } else if (fEasyTypeDict.ContainsValue(fieldType)) {
                 field.SetValue(this, TypeDescriptor.GetConverter(fieldType).ConvertFromString(strValue));
@@ -1212,7 +1212,7 @@ public void SetPluginVariable(String strVariable, String strValue) {
                         try {
                             field.SetValue(pms, (DefineStrong)Enum.Parse(fieldType, strValue));
                         } catch (Exception e) {
-                            ConsoleException(e.ToString());
+                            ConsoleException(e);
                         }
                     }
                 } else {
@@ -1221,7 +1221,7 @@ public void SetPluginVariable(String strVariable, String strValue) {
             }
         }
     } catch (System.Exception e) {
-        ConsoleException(e.ToString());
+        ConsoleException(e);
     } finally {
         // TBD: Validate() function needed here!
         // Validate all values and correct if needed
@@ -1437,7 +1437,7 @@ private void CommandToLog(string cmd) {
             
 
     } catch (Exception e) {
-        ConsoleException(e.ToString());
+        ConsoleException(e);
     }
 }
 
@@ -1471,9 +1471,9 @@ public void OnPluginLoaded(String strHostName, String strPort, String strPRoConV
         "OnPlayerKilled",
         "OnPlayerSpawned",
         "OnPlayerTeamChange",
-        "OnGlobalChat",
-        "OnTeamChat",
-        "OnSquadChat",
+        //"OnGlobalChat",
+        //"OnTeamChat",
+        //"OnSquadChat",
         "OnRoundOverPlayers",
         "OnRoundOver",
         "OnRoundOverTeamScores",
@@ -1526,7 +1526,7 @@ public void OnPluginDisable() {
         DebugWrite("^b^3State = " + fPluginState, 6);
         DebugWrite("^b^3Game state = " + fGameState, 6);
     } catch (Exception e) {
-        ConsoleException(e.ToString());
+        ConsoleException(e);
     }
 }
 
@@ -1538,11 +1538,11 @@ public override void OnVersion(String type, String ver) {
     try {
         fGotVersion = true;
     } catch (Exception e) {
-        ConsoleException(e.ToString());
+        ConsoleException(e);
     }
 }
 
-public override void OnPlayerJoin(String soldierName) { }
+//public override void OnPlayerJoin(String soldierName) { }
 
 public override void OnPlayerLeft(CPlayerInfo playerInfo) {
     if (!fIsEnabled) return;
@@ -1557,7 +1557,7 @@ public override void OnPlayerLeft(CPlayerInfo playerInfo) {
     
         DebugWrite("Player left: ^b" + playerInfo.SoldierName, 3);
     } catch (Exception e) {
-        ConsoleException(e.ToString());
+        ConsoleException(e);
     }
 }
 
@@ -1586,7 +1586,7 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
             int reassignTo = ToTeam(soldierName, teamId, true, out diff, out mustMove);
             if (reassignTo == 0 || reassignTo == teamId) {
                 // New player was going to the right team anyway
-                IncrementTotal();
+                IncrementTotal(); // no matching stat, reflects non-reassigment joins
                 AddNewPlayer(soldierName, teamId);
                 UpdateTeams();
                 DebugWrite("^4New player^0: ^b" + soldierName + "^n, assigned to team " + teamId + " by game server", 3);
@@ -1626,7 +1626,7 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
             UpdateTeams();
         }
     } catch (Exception e) {
-        ConsoleException(e.ToString());
+        ConsoleException(e);
     }
 }
 
@@ -1645,19 +1645,17 @@ public override void OnPlayerIsAlive(string soldierName, bool isAlive) {
         if (fPendingTeamChange.ContainsKey(soldierName)) {
             int team = fPendingTeamChange[soldierName];
             fPendingTeamChange.Remove(soldierName);
-        
-            DebugWrite("Player team switch: ^b" + soldierName + "^n to team " + team, 6);
-            IncrementTotal();
 
             // Check if player is allowed to switch teams
             // Unswitch is handled in CheckTeamSwitch
             if (CheckTeamSwitch(soldierName, team)) {
                 UpdatePlayerTeam(soldierName, team);
-                UpdateTeams();
+                UpdateTeams();        
+                IncrementTotal(); // No matching stat, reflects allowed team switches
             }
         }
     } catch (Exception e) {
-        ConsoleException(e.ToString());
+        ConsoleException(e);
     }
 }
 
@@ -1683,7 +1681,7 @@ public override void OnPlayerMovedByAdmin(string soldierName, int destinationTea
             }
         }
     } catch (Exception e) {
-        ConsoleException(e.ToString());
+        ConsoleException(e);
     }
 }
 
@@ -1717,7 +1715,7 @@ public override void OnSquadListPlayers(int teamId, int squadId, int playerCount
             ConsoleWrite("^9" + ss);
         }
     } catch (Exception e) {
-        ConsoleException(e.ToString());
+        ConsoleException(e);
     }
 }
 */
@@ -1749,15 +1747,13 @@ public override void OnPlayerKilled(Kill kKillerVictimDetails) {
     
         if (!isAdminKill) {
             KillUpdate(killer, victim);
-
-            IncrementTotal();
     
             if (fPluginState == PluginState.Active && fGameState == GameState.Playing && IsModelInSync()) {
                 BalanceAndUnstack(victim);
             }
         }
     } catch (Exception e) {
-        ConsoleException(e.ToString());
+        ConsoleException(e);
     }
 }
 
@@ -1796,7 +1792,7 @@ public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subs
                 try {
                     UpdatePlayerModel(p.SoldierName, p.TeamID, p.SquadID, p.GUID, p.Score, p.Kills, p.Deaths, p.Rank);
                 } catch (Exception e) {
-                    ConsoleException(e.ToString());
+                    ConsoleException(e);
                     continue;
                 }
             }
@@ -1815,7 +1811,7 @@ public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subs
             DebugWrite("^b^3State = " + fPluginState, 6);  
         }
     } catch (Exception e) {
-        ConsoleException(e.ToString());
+        ConsoleException(e);
     }
 }
 
@@ -1901,19 +1897,17 @@ public override void OnServerInfo(CServerInfo serverInfo) {
             fRushAttackerTickets = attacker;
         }
     } catch (Exception e) {
-        ConsoleException(e.ToString());
+        ConsoleException(e);
     }
 }
 
-public override void OnResponseError(List<String> requestWords, String error) { }
+//public override void OnResponseError(List<String> requestWords, String error) { }
 
+//public override void OnGlobalChat(String speaker, String message) { }
 
+//public override void OnTeamChat(String speaker, String message, int teamId) { }
 
-public override void OnGlobalChat(String speaker, String message) { }
-
-public override void OnTeamChat(String speaker, String message, int teamId) { }
-
-public override void OnSquadChat(String speaker, String message, int teamId, int squadId) { }
+//public override void OnSquadChat(String speaker, String message, int teamId, int squadId) { }
 
 public override void OnRoundOverPlayers(List<CPlayerInfo> players) {
     if (!fIsEnabled) return;
@@ -1923,7 +1917,7 @@ public override void OnRoundOverPlayers(List<CPlayerInfo> players) {
     try {
         // TBD
     } catch (Exception e) {
-        ConsoleException(e.ToString());
+        ConsoleException(e);
     }
 }
 
@@ -1936,7 +1930,7 @@ public override void OnRoundOverTeamScores(List<TeamScore> teamScores) {
         fFinalStatus = teamScores;
         ServerCommand("serverInfo"); // get info for final status report
     } catch (Exception e) {
-        ConsoleException(e.ToString());
+        ConsoleException(e);
     }
 }
 
@@ -1953,7 +1947,7 @@ public override void OnRoundOver(int winningTeamId) {
             DebugWrite("OnRoundOver: ^b^3Game state = " + fGameState, 6);
         }
     } catch (Exception e) {
-        ConsoleException(e.ToString());
+        ConsoleException(e);
     }
 }
 
@@ -1973,7 +1967,7 @@ public override void OnLevelLoaded(String mapFileName, String Gamemode, int roun
         fMaxTickets = -1; // flag to pay attention to next serverInfo
         ServerCommand("serverInfo");
     } catch (Exception e) {
-        ConsoleException(e.ToString());
+        ConsoleException(e);
     }
 }
 
@@ -2007,7 +2001,7 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
             }
         }
     } catch (Exception e) {
-        ConsoleException(e.ToString());
+        ConsoleException(e);
     }
 }
 
@@ -2100,11 +2094,13 @@ private void BalanceAndUnstack(String name) {
 
         if (totalPlayerCount >= (MaximumServerSize-1)) {
             if (DebugLevel >= 7) DebugBalance("Server is full, no balancing or unstacking will be attempted!");
+            IncrementTotal(); // no matching stat, reflect total deaths handled
             return;
         }
 
         if (fUnassigned.Count >= (diff - MaxDiff())) {
             DebugBalance("Wait for " + fUnassigned.Count + " unassigned players to be assigned before activating autobalance");
+            IncrementTotal(); // no matching stat, reflect total deaths handled
             return;
         }
 
@@ -2346,6 +2342,7 @@ private void BalanceAndUnstack(String name) {
             // Don't move to same team
             if (player.Team == toTeam) {
                 if (DebugLevel >= 7) DebugBalance("Exempting ^b" + name + "^n, don't move player to his own team!");
+                IncrementTotal(); // no matching stat, reflect total deaths handled
                 return;
             }
         }
@@ -2372,6 +2369,7 @@ private void BalanceAndUnstack(String name) {
             OnPlayerTeamChange(name, toTeam, 0);
             OnPlayerMovedByAdmin(name, toTeam, 0, false); // simulate reverse order
         }
+        // no increment total, handled later when move is processed
         return;
     }
 
@@ -2383,6 +2381,7 @@ private void BalanceAndUnstack(String name) {
     /* Unstack */
 
     if (winningTeam <= 0 || winningTeam >= fTickets.Length || losingTeam <= 0 || losingTeam >= fTickets.Length || balanceSpeed == Speed.Stop) {
+        IncrementTotal(); // no matching stat, reflect total deaths handled
         return;
     }
 
@@ -2390,11 +2389,13 @@ private void BalanceAndUnstack(String name) {
     if (tpc > (MaximumServerSize-2) || tpc > (perMode.MaxPlayers-2)) {
         // TBD - kick idle players?
         if (DebugLevel >= 7) DebugBalance("No room to swap players for unstacking");
+        IncrementTotal(); // no matching stat, reflect total deaths handled
         return;
     }
 
     if (perMode.CheckTeamStackingAfterFirstMinutes == 0) {
         if (DebugLevel >= 5) DebugBalance("Unstacking has been disabled, Check Team Stacking After First Minutes set to zero");
+        IncrementTotal(); // no matching stat, reflect total deaths handled
         return;
     }
 
@@ -2409,6 +2410,7 @@ private void BalanceAndUnstack(String name) {
 
     if ((fUnstackedRound/2) >= perMode.MaxUnstackingSwapsPerRound) {
         if (DebugLevel >= 7) DebugBalance("Maximum swaps have already occurred this round (" + (fUnstackedRound/2) + ")");
+        IncrementTotal(); // no matching stat, reflect total deaths handled
         return;
     }
 
@@ -2428,12 +2430,14 @@ private void BalanceAndUnstack(String name) {
 
     if (unstackTicketRatio == 0 || ratio < unstackTicketRatio) {
         if (DebugLevel >= 7) DebugBalance("No unstacking needed: " + um);
+        IncrementTotal(); // no matching stat, reflect total deaths handled
         return;
     }
 
     double nsis = NextSwapInSeconds(perMode);
     if (nsis > 0 && fUnstackState == UnstackState.SwappedWeak) {
         if (DebugLevel >= 7) DebugBalance("Too soon to do another unstack swap, wait another " + nsis.ToString("F1") + " seconds!");
+        IncrementTotal(); // no matching stat, reflect total deaths handled
         return;
     }
 
@@ -2534,6 +2538,7 @@ private void BalanceAndUnstack(String name) {
         OnPlayerTeamChange(name, toTeam, 0);
         OnPlayerMovedByAdmin(name, toTeam, 0, false); // simulate reverse order
     }
+    // no increment total, handled by unstacking move
 }
 
 private bool IsKnownPlayer(String name) {
@@ -2650,7 +2655,7 @@ private void UpdatePlayerModel(String name, int team, int squad, String eaGUID, 
         // TBD
     }
 
-    if (!EnableLoggingOnlyMode && unTeam != -2) {
+    if (!EnableLoggingOnlyMode && unTeam != -2 && !fPendingTeamChange.ContainsKey(name)) {
         ConsoleDebug("player model for ^b" + name + "^n has team " + unTeam + " but update says " + team + "!");
     }
 }
@@ -2678,7 +2683,7 @@ private void UpdatePlayerTeam(String name, int team) {
         if (m.Team == 0) {
             DebugWrite("Assigning ^b" + name + "^n to " + team, 3);
         } else {
-            DebugWrite("Team switch: ^b" + name + "^n from " + m.Team + " to " + team, 7);
+            DebugWrite("Update player ^b" + name + "^n team from " + m.Team + " to " + team, 7);
             m.Team = team;
         }
         m.LastSeenTimestamp = DateTime.Now;
@@ -2703,7 +2708,7 @@ private void ValidateModel(List<CPlayerInfo> players) {
             try {
                 UpdatePlayerModel(p.SoldierName, p.TeamID, p.SquadID, p.GUID, p.Score, p.Kills, p.Deaths, p.Rank);
             } catch (Exception e) {
-                ConsoleException(e.ToString());
+                ConsoleException(e);
             }
         }
         /* Special handling for Reconnected state */
@@ -2727,8 +2732,9 @@ private bool CheckTeamSwitch(String name, int toTeam) {
 
     // Same team?
     if (toTeam == player.Team) {
-        ConsoleDebug("CheckTeamSwitch: name = " + name + ", changing to same team " + toTeam + "?");
-        return false;
+        DebugUnswitch("Player team switch: ^b" + name + "^n, player model already updated to team " + toTeam);
+    } else {
+        DebugUnswitch("Player team switch: ^b" + name + "^n from " + player.Team + " to team " + toTeam);
     }
 
     // Check if move already in progress for this player and abort it
@@ -3009,24 +3015,15 @@ private void FinishMove(String name, int team) {
                 else if (move.Reason == ReasonFor.Unstack) {fUnstackedRound = fUnstackedRound + 1; IncrementMoves(name);}
                 else if (move.Reason == ReasonFor.Unswitch) {fUnswitchedRound = fUnswitchedRound + 1; IncrementTotal();}
             } catch (Exception e) {
-                ConsoleException(e.ToString());
+                ConsoleException(e);
             }
         }
     }
     if (move != null) {
         // MB move for balance/unstacking/unswitching
         SetSpawnMessages(move.Name, move.ChatAfter, move.YellAfter, move.Reason == ReasonFor.Unswitch);
-        /*
-        Yell(move.Name, move.YellAfter);
-        Chat(move.Name, move.ChatAfter, move.Reason == ReasonFor.Unswitch); // play only if unswitch
-        */
-        IncrementTotal();
-    } else {
-        /* Shouldn't we let caller decide if this is an admin move?
-        // Some other admin.movePlayer, so update to account for it
-        UpdatePlayerTeam(name, team);
-        UpdateTeams();
-        */
+        
+        //++ IncrementTotal();
     }
 }
 
@@ -3102,7 +3099,7 @@ public void MoveLoop() {
             StartMoveImmediate(move, false);
         }
     } catch (Exception e) {
-        ConsoleException(e.ToString());
+        ConsoleException(e);
     } finally {
         ConsoleWrite("^bMoveLoop^n thread stopped");
     }
@@ -3530,9 +3527,9 @@ public void ConsoleError(String msg)
     ConsoleWrite(msg, MessageType.Error);
 }
 
-public void ConsoleException(String msg)
+public void ConsoleException(Exception e)
 {
-    if (DebugLevel >= 3) ConsoleWrite(msg, MessageType.Exception);
+    if (DebugLevel >= 3) ConsoleWrite(e.ToString(), MessageType.Exception);
 }
 
 public void DebugWrite(String msg, int level)
@@ -4188,7 +4185,7 @@ private void StopThreads() {
                 }
                 catch (Exception e)
                 {
-                    ConsoleException(e.ToString());
+                    ConsoleException(e);
                 }
 
                 fFinalizerActive = false;
@@ -4201,7 +4198,7 @@ private void StopThreads() {
     }
     catch (Exception e)
     {
-        ConsoleException(e.ToString());
+        ConsoleException(e);
     }
 }
 
@@ -4212,6 +4209,7 @@ private void IncrementMoves(String name) {
         m.MovesRound = m.MovesRound + 1;
         m.MovedByMB = true;
     }
+    IncrementTotal();
 }
 
 private void ConditionalIncrementMoves(String name) {
@@ -4227,6 +4225,7 @@ private void ConditionalIncrementMoves(String name) {
             m.MovesRound = m.MovesRound + 1;
         }
     }
+    IncrementTotal(); // no matching stat, reflects handling of non-MB admin move
 }
 
 /*
@@ -4283,7 +4282,7 @@ private void ListPlayersLoop() {
             if (request.LastUpdate == fListPlayersTimestamp) ServerCommand("admin.listPlayers", "all");
         }
     } catch (Exception e) {
-        ConsoleException(e.ToString());
+        ConsoleException(e);
     } finally {
         ConsoleWrite("^bListPlayersLoop^n thread stopped");
     }
@@ -4552,6 +4551,7 @@ private void CheckDelayedMove(String name) {
 
 
 private void LogStatus() {
+  try {
     // If server is empty, log status only every 20 minutes
     if (TotalPlayerCount == 0) {
         if (fRoundStartTimestamp != DateTime.MinValue && DateTime.Now.Subtract(fRoundStartTimestamp).TotalMinutes <= 20) {
@@ -4568,7 +4568,9 @@ private void LogStatus() {
 
     double goal = 0;
     if (fServerInfo != null && Regex.Match(fServerInfo.GameMode, @"(?:TeamDeathMatch|SquadDeathMatch)").Success) {
-        goal = fServerInfo.TeamScores[0].WinningScore;
+        if (fServerInfo.TeamScores != null && fServerInfo.TeamScores.Count > 0) {
+            goal = fServerInfo.TeamScores[0].WinningScore;
+        }
     }
 
     if (goal == 0) {
@@ -4603,9 +4605,9 @@ private void LogStatus() {
     DebugWrite("^bStatus^n: " + fReassignedRound + " reassigned, " + fBalancedRound + " balanced, " + fUnstackedRound + " unstacked, " + fUnswitchedRound + " unswitched, " + fExcludedRound + " excluded, " + fExemptRound + " exempted, " + fFailedRound + " failed; of " + fTotalRound + " TOTAL", 5);
     
     if (IsSQDM()) {
-        DebugWrite("^bStatus^n: Team counts = " + fTeam1.Count + "(A) vs " + fTeam2.Count + "(B) vs " + fTeam3.Count + "(C) vs " + fTeam4.Count + "(D), with " + fUnassigned.Count + " unassigned", 3);
+        DebugWrite("^bStatus^n: Team counts [" + TotalPlayerCount + "] = " + fTeam1.Count + "(A) vs " + fTeam2.Count + "(B) vs " + fTeam3.Count + "(C) vs " + fTeam4.Count + "(D), with " + fUnassigned.Count + " unassigned", 3);
     } else {
-        DebugWrite("^bStatus^n: Team counts = " + fTeam1.Count + "(US) vs " + fTeam2.Count + "(RU), with " + fUnassigned.Count + " unassigned", 3);
+        DebugWrite("^bStatus^n: Team counts [" + TotalPlayerCount + "] = " + fTeam1.Count + "(US) vs " + fTeam2.Count + "(RU), with " + fUnassigned.Count + " unassigned", 3);
     }
     
     List<int> counts = new List<int>();
@@ -4621,6 +4623,9 @@ private void LogStatus() {
     String next = (diff > MaxDiff() && fGameState == GameState.Playing && balanceSpeed != Speed.Stop && !fBalanceIsActive) ? "^n^0 ... autobalance will activate on next death!" : "^n";
     
     DebugWrite("^bStatus^n: Team difference = " + ((diff > MaxDiff()) ? "^8^b" : "^b") + diff + next, 3);
+  } catch (Exception e) {
+    ConsoleException(e);
+  }
 }
 
 } // end PROTObalancer
