@@ -1663,7 +1663,7 @@ public override void OnPlayerIsAlive(string soldierName, bool isAlive) {
 public override void OnPlayerMovedByAdmin(string soldierName, int destinationTeamId, int destinationSquadId, bool forceKilled) {
     if (!fIsEnabled) return;
 
-    DebugWrite("^9^bGot OnPlayerMovedByAdmin^n: " + soldierName + " " + destinationTeamId + "/" + destinationSquadId + " " + forceKilled, 7);
+    DebugWrite("^9^bGot OnPlayerMovedByAdmin^n: " + soldierName + " " + destinationTeamId + " " + destinationSquadId + " " + forceKilled, 7);
 
     try {
         if (fPluginState == PluginState.Active && fGameState == GameState.Playing) {
@@ -1729,9 +1729,14 @@ public override void OnPlayerKilled(Kill kKillerVictimDetails) {
     String victim = kKillerVictimDetails.Victim.SoldierName;
     String weapon = kKillerVictimDetails.DamageType;
     
-    if (String.IsNullOrEmpty(killer)) killer = victim;
+    bool isAdminKill = false;
+    if (String.IsNullOrEmpty(killer)) {
+        killer = victim;
+        isAdminKill = (weapon == "Death");
+    }
     
     DebugWrite("^9^bGot OnPlayerKilled^n: " + killer  + " -> " + victim + " (" + weapon + ")", 8);
+    if (isAdminKill) DebugWrite("^9Admin kill ignored: ^b" + victim + "^n (" + weapon + ")", 7);
 
     try {
     
@@ -1741,11 +1746,15 @@ public override void OnPlayerKilled(Kill kKillerVictimDetails) {
             if (wasUnknown || fGameState == GameState.Playing) DebugWrite("OnPlayerKilled: ^b^3Game state = " + fGameState, 6);  
         }
     
-        KillUpdate(killer, victim);
+        if (!isAdminKill) {
+            KillUpdate(killer, victim);
 
-        IncrementTotal();
+            IncrementTotal();
     
-        if (fPluginState == PluginState.Active && fGameState == GameState.Playing && IsModelInSync()) BalanceAndUnstack(victim);
+            if (fPluginState == PluginState.Active && fGameState == GameState.Playing && IsModelInSync()) {
+                BalanceAndUnstack(victim);
+            }
+        }
     } catch (Exception e) {
         ConsoleException(e.ToString());
     }
@@ -2857,7 +2866,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     move.Format(YellDetectedBadTeamSwitch, true, true);
     move.Format(ChatAfterUnswitching, false, false);
     move.Format(YellAfterUnswitching, true, false);
-    DebugUnswitch("FORBIDDEN: delaying unswitch action until spawn of ^b" + name + "^n from " + move.SourceName + " to " + move.DestinationName);
+    DebugUnswitch("FORBIDDEN: delaying unswitch action until spawn of ^b" + name + "^n from " + move.SourceName + " back to " + move.DestinationName);
 
     if (DebugLevel >= 8) DebugUnswitch(move.ToString());
 
@@ -2947,12 +2956,6 @@ private void KillUpdate(String killer, String victim) {
     
     if (!okVictim) {
         ConsoleDebug("player ^b" + victim + "^n is a victim, but not a known player!");
-    } else {
-        int toTeam = 0;
-        int fromTeam = 0;
-        int level = (GetTeamDifference(ref fromTeam, ref toTeam) > MaxDiff()) ? 4 : 8;
-
-        // XXX DebugWrite("^9" + GetPlayerStatsString(victim), level);
     }
 }
 
@@ -3835,7 +3838,7 @@ private int GetTeamDifference(ref int fromTeam, ref int toTeam) {
         to = GetTeam(toTeam);
         if (to == null) return 0;
 
-        return (from.Count - to.Count);
+        return (to.Count - from.Count);
     }
 
     // otherwise find min and max
@@ -4045,7 +4048,7 @@ private int ToTeam(String name, int fromTeam, out int diff, out bool mustMove) {
         if (targetTeam != orig) {
             String szs = "(";
             for (i = 1; i < byId.Length; ++i) {
-                szs = byId[i].Count.ToString();
+                szs = szs + byId[i].Count.ToString();
                 if (i == 4) {
                     szs = szs + ")";
                 } else {
@@ -4058,6 +4061,10 @@ private int ToTeam(String name, int fromTeam, out int diff, out bool mustMove) {
 
     // recompute diff to be difference between fromTeam and target team
     diff = GetTeamDifference(ref fromTeam, ref targetTeam);
+    if (diff < 0) {
+        ConsoleDebug("ToTeam, GetTeamDifference returned negative diff = " + diff);
+        diff = Math.Abs(diff);
+    }
 
     // Fake out difference due to adjustment
     if (isSQDM && diff < MaxDiff() && diff != 0) {
