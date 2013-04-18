@@ -1551,6 +1551,7 @@ public override void OnPlayerLeft(CPlayerInfo playerInfo) {
 
     try {
         if (IsKnownPlayer(playerInfo.SoldierName)) {
+            ValidateMove(playerInfo.SoldierName);
             RemovePlayer(playerInfo.SoldierName);
         }
     
@@ -1582,7 +1583,7 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
        } else if (!IsKnownPlayer(soldierName)) {
             int diff = 0;
             bool mustMove = false;
-            int reassignTo = ToTeam(soldierName, teamId, out diff, out mustMove);
+            int reassignTo = ToTeam(soldierName, teamId, true, out diff, out mustMove);
             if (reassignTo == 0 || reassignTo == teamId) {
                 // New player was going to the right team anyway
                 IncrementTotal();
@@ -1736,7 +1737,7 @@ public override void OnPlayerKilled(Kill kKillerVictimDetails) {
     }
     
     DebugWrite("^9^bGot OnPlayerKilled^n: " + killer  + " -> " + victim + " (" + weapon + ")", 8);
-    if (isAdminKill) DebugWrite("^9Admin kill ignored: ^b" + victim + "^n (" + weapon + ")", 7);
+    if (isAdminKill) DebugWrite("^9OnPlayerKilled: admin kill ignored: ^b" + victim + "^n (" + weapon + ")", 7);
 
     try {
     
@@ -1997,11 +1998,13 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
             fIsFullRound = true;
         }
     
-        if (fPluginState == PluginState.Active && fGameState != GameState.RoundEnding) {
+        if (fPluginState == PluginState.Active) {
             ValidateMove(soldierName);
-            SpawnUpdate(soldierName);
-            FireMessages(soldierName);
-            CheckDelayedMove(soldierName);
+            if (fGameState != GameState.RoundEnding) {
+                SpawnUpdate(soldierName);
+                FireMessages(soldierName);
+                CheckDelayedMove(soldierName);
+            }
         }
     } catch (Exception e) {
         ConsoleException(e.ToString());
@@ -2262,7 +2265,7 @@ private void BalanceAndUnstack(String name) {
     bool mustMove = false;
 
     int toTeamDiff = 0;
-    int toTeam = ToTeam(name, player.Team, out toTeamDiff, out mustMove); // take into account dispersal by Rank, etc.
+    int toTeam = ToTeam(name, player.Team, false, out toTeamDiff, out mustMove); // take into account dispersal by Rank, etc.
 
     if (needsBalancing && (toTeam == 0 || toTeam == player.Team)) {
         if (DebugLevel >= 8) DebugBalance("Exempting ^b" + name + "^n, target team selected is same or zero");
@@ -3840,7 +3843,7 @@ private int GetTeamDifference(ref int fromTeam, ref int toTeam) {
         to = GetTeam(toTeam);
         if (to == null) return 0;
 
-        return (to.Count - from.Count);
+        return (from.Count - to.Count);
     }
 
     // otherwise find min and max
@@ -3984,7 +3987,7 @@ private int DifferenceFromSmallest(int fromTeam) {
 }
 
 
-private int ToTeam(String name, int fromTeam, out int diff, out bool mustMove) {
+private int ToTeam(String name, int fromTeam, bool isReassign, out int diff, out bool mustMove) {
     diff = 0;
     mustMove = false;
     if (fromTeam < 1 || fromTeam > 4) return 0;
@@ -4036,8 +4039,8 @@ private int ToTeam(String name, int fromTeam, out int diff, out bool mustMove) {
         int orig = targetTeam;
         int i = 0;
 
-        // Don't send to the winning team, even if it is the smallest
-        if (targetTeam == winningTeam) {
+        // Don't send to the winning team, even if it is the smallest, unless reassigning
+        if (!isReassign && targetTeam == winningTeam) {
             while (i < ascendingSize.Length) {
                 int aTeam = ascendingSize[i];
                 ++i;
