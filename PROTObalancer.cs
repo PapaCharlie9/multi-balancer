@@ -3204,10 +3204,12 @@ private void Yell(String who, String what) {
 }
 
 private void ProconChat(String what) {
+    if (EnableLoggingOnlyMode) what = "(SIMULATING) " + what;
     if (LogChat) ExecuteCommand("procon.protected.chat.write", "MB > All: " + what);
 }
 
 private void ProconChatPlayer(String who, String what) {
+    if (EnableLoggingOnlyMode) what = "(SIMULATING) " + what;
     if (LogChat) ExecuteCommand("procon.protected.chat.write", "MB > " + who + ": " + what);
 }
 
