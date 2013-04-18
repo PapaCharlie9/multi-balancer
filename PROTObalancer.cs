@@ -2815,8 +2815,6 @@ private bool CheckTeamSwitch(String name, int toTeam) {
         player.SpawnChatMessage = move.ChatBefore;
         player.QuietMessage = false;
         player.SpawnYellMessage = move.YellBefore;
-        //Chat(name, move.ChatBefore);
-        //Yell(name, move.YellBefore);
         CheckAbortMove(name);
         return true;
     }
@@ -2842,8 +2840,6 @@ private bool CheckTeamSwitch(String name, int toTeam) {
         player.SpawnChatMessage = move.ChatBefore;
         player.QuietMessage = false;
         player.SpawnYellMessage = move.YellBefore;
-        //Chat(name, move.ChatBefore);
-        //Yell(name, move.YellBefore);
         CheckAbortMove(name);
         return true;
     }
@@ -2884,6 +2880,12 @@ private bool CheckTeamSwitch(String name, int toTeam) {
         DebugUnswitch("IGNORED: previously delayed move of ^b" + name + "^n to " + player.DelayedMove.DestinationName);
     }
     player.DelayedMove = move;
+
+    if (!String.IsNullOrEmpty(player.SpawnChatMessage)) {
+        DebugUnswitch("IGNORED: previously delayed spawn message for ^b" + name + "^n: " + player.SpawnChatMessage);
+        player.SpawnChatMessage = String.Empty;
+        player.SpawnYellMessage = String.Empty;
+    }
 
     //KillAndMoveAsync(move);
 
@@ -3022,8 +3024,6 @@ private void FinishMove(String name, int team) {
     if (move != null) {
         // MB move for balance/unstacking/unswitching
         SetSpawnMessages(move.Name, move.ChatAfter, move.YellAfter, move.Reason == ReasonFor.Unswitch);
-        
-        //++ IncrementTotal();
     }
 }
 
@@ -4506,6 +4506,7 @@ private void FireMessages(String name) {
     if (!String.IsNullOrEmpty(player.SpawnYellMessage)) Yell(name, player.SpawnYellMessage);
     player.SpawnChatMessage = String.Empty;
     player.SpawnYellMessage = String.Empty;
+    player.QuietMessage = false;
 }
 
 private void CheckDelayedMove(String name) {
