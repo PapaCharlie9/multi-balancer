@@ -267,6 +267,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         public String SpawnChatMessage;
         public String SpawnYellMessage;
         public bool QuietMessage;
+        public MoveInfo DelayedMove;
         
         // Battlelog
         public String Tag;
@@ -310,6 +311,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
             SpawnChatMessage = String.Empty;
             SpawnYellMessage = String.Empty;
             QuietMessage = false;
+            DelayedMove = null;
         }
         
         public PlayerModel(String name, int team) : this() {
@@ -1990,6 +1992,7 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
             ValidateMove(soldierName);
             SpawnUpdate(soldierName);
             FireMessages(soldierName);
+            CheckDelayedMove(soldierName);
         }
     } catch (Exception e) {
         ConsoleException(e.ToString());
@@ -2098,16 +2101,8 @@ private void BalanceAndUnstack(String name) {
 
     /* Pre-conditions */
 
-    lock (fKnownPlayers) {
-        if (!fKnownPlayers.TryGetValue(name, out player)) {
-            DebugBalance("Unknown player: ^b" + name);
-            return;
-        }
-    }
-    if (player == null) {
-        DebugBalance("No model for player: ^b" + name);
-        return;
-    }
+    player = GetPlayer(name);
+    if (player == null) return;
     if (!fModeToSimple.TryGetValue(fServerInfo.GameMode, out simpleMode)) {
         DebugBalance("Unknown game mode: " + fServerInfo.GameMode);
         simpleMode = fServerInfo.GameMode;
@@ -2310,9 +2305,9 @@ private void BalanceAndUnstack(String name) {
             return;
         }
 
-        // SQDM, not on the biggest team nor the next biggest team
-        if (isSQDM && !mustMove && balanceSpeed != Speed.Fast && player.Team != biggestTeam && player.Team != ascendingSize[2]) {
-            DebugBalance("Exempting ^b" + name + "^n, not on the biggest team nor next biggest team");
+        // SQDM, not on the biggest team
+        if (isSQDM && !mustMove && balanceSpeed != Speed.Fast && player.Team != biggestTeam) {
+            DebugBalance("Exempting ^b" + name + "^n, not on the biggest team");
             fExemptRound = fExemptRound + 1;
             IncrementTotal();
             return;
@@ -2356,7 +2351,7 @@ private void BalanceAndUnstack(String name) {
         move.Format(ChatMovedForBalance, false, false);
         move.Format(YellMovedForBalance, true, false);
 
-        DebugWrite("^9" + move, 7);
+        DebugWrite("^9" + move, 8);
 
         StartMoveImmediate(move, false);
 
@@ -2664,13 +2659,8 @@ private void UpdatePlayerTeam(String name, int team) {
         }
     }
     
-    PlayerModel m = null;
-    lock (fKnownPlayers) {
-        if (!fKnownPlayers.TryGetValue(name, out m)) {
-            ConsoleDebug("UpdatePlayerTeam(" + name + ", " + team + ") no model for player!");
-            return;            
-        }
-    }
+    PlayerModel m = GetPlayer(name);
+    if (m == null) return;
     
     if (m.Team != team) {
         if (m.Team == 0) {
@@ -2720,13 +2710,8 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     if (fPluginState != PluginState.Active || fGameState != GameState.Playing) return false;
 
     // Get model
-    PlayerModel player = null;
-    lock (fKnownPlayers) {
-        if (!fKnownPlayers.TryGetValue(name, out player) || player == null) {
-            DebugUnswitch("IGNORED: Unknown player: ^b" + name);
-            return false;
-        }
-    }
+    PlayerModel player = GetPlayer(name);
+    if (player == null) return false;
 
     // Same team?
     if (toTeam == player.Team) {
@@ -2808,8 +2793,12 @@ private bool CheckTeamSwitch(String name, int toTeam) {
         move.Format(ChatDetectedGoodTeamSwitch, false, true);
         move.Format(YellDetectedGoodTeamSwitch, true, true);
         DebugUnswitch("ALLOWED: Team switch to losing team ^b: " + name);
-        Chat(name, move.ChatBefore);
-        Yell(name, move.YellBefore);
+        if (!String.IsNullOrEmpty(player.SpawnChatMessage)) {DebugWrite("^9Overwriting previous chat message for ^b" + name + ": " + player.SpawnChatMessage, 7); }
+        player.SpawnChatMessage = move.ChatBefore;
+        player.QuietMessage = false;
+        player.SpawnYellMessage = move.YellBefore;
+        //Chat(name, move.ChatBefore);
+        //Yell(name, move.YellBefore);
         CheckAbortMove(name);
         return true;
     }
@@ -2831,8 +2820,12 @@ private bool CheckTeamSwitch(String name, int toTeam) {
         move.Format(ChatDetectedGoodTeamSwitch, false, true);
         move.Format(YellDetectedGoodTeamSwitch, true, true);
         DebugUnswitch("ALLOWED: Team switch to smallest team ^b: " + name);
-        Chat(name, move.ChatBefore);
-        Yell(name, move.YellBefore);
+        if (!String.IsNullOrEmpty(player.SpawnChatMessage)) {DebugWrite("^9Overwriting previous chat message for ^b" + name + ": " + player.SpawnChatMessage, 7); }
+        player.SpawnChatMessage = move.ChatBefore;
+        player.QuietMessage = false;
+        player.SpawnYellMessage = move.YellBefore;
+        //Chat(name, move.ChatBefore);
+        //Yell(name, move.YellBefore);
         CheckAbortMove(name);
         return true;
     }
@@ -2858,20 +2851,23 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     // TBD: select forbidden message from: moved by autobalance, moved to unstack, dispersal, ...
 
     // Tried to switch "toTeam" from "player.Team", so moving from "toTeam" back to original team (player.Team)
-    DebugUnswitch("FORBIDDEN: Detected bad team switch, scheduling admin kill and move for ^b: " + name);
-    String log = "^4^bUNSWITCHING^n^0 ^b" + name + "^n from " + GetTeamName(toTeam) + " back to " + GetTeamName(player.Team);
-    log = (EnableLoggingOnlyMode) ? "^9(SIMULATING)^0 " + log : log;
-    DebugWrite(log, 3);
     move = new MoveInfo(name, player.Tag, toTeam, GetTeamName(toTeam), player.Team, GetTeamName(player.Team));
     move.Reason = ReasonFor.Unswitch;
     move.Format(ChatDetectedBadTeamSwitch, false, true);
     move.Format(YellDetectedBadTeamSwitch, true, true);
     move.Format(ChatAfterUnswitching, false, false);
     move.Format(YellAfterUnswitching, true, false);
+    DebugUnswitch("FORBIDDEN: delaying unswitch action until spawn of ^b" + name + "^n from " + move.SourceName + " to " + move.DestinationName);
 
-    if (DebugLevel >= 7) DebugUnswitch(move.ToString());
+    if (DebugLevel >= 8) DebugUnswitch(move.ToString());
 
-    KillAndMoveAsync(move);
+    // Delay action until after the player spawns
+    if (player.DelayedMove != null) {
+        DebugUnswitch("IGNORED: previously delayed move of ^b" + name + "^n to " + player.DelayedMove.DestinationName);
+    }
+    player.DelayedMove = move;
+
+    //KillAndMoveAsync(move);
 
     return false;
 }
@@ -2883,6 +2879,14 @@ private void CheckAbortMove(String name) {
                 if (mi.Name == name) mi.aborted = true;
             }
         }
+    }
+    
+    PlayerModel player = GetPlayer(name);
+    if (player == null) return;
+
+    if (player.DelayedMove != null) {
+        DebugUnswitch("IGNORED: abort delayed move of ^b" + name + "^n to " + player.DelayedMove.DestinationName);
+        player.DelayedMove = null;
     }
 }
 
@@ -4021,42 +4025,23 @@ private int ToTeam(String name, int fromTeam, out int diff, out bool mustMove) {
     
     if (targetTeam == fromTeam) return 0;
 
-    /*
     // Special handling for SQDM
     bool isSQDM = IsSQDM();
     if (isSQDM) {
-        // when small teams are equal, pick the lowest numbered ID
         int orig = targetTeam;
         int i = 0;
 
-        if (targetTeam == 4 && fTeam3.Count == fTeam4.Count && fromTeam != 3) targetTeam = 3;
-        if (targetTeam == 3 && fTeam2.Count == fTeam3.Count && fromTeam != 2) targetTeam = 2;
-        if (targetTeam < 1 || targetTeam > 4 || targetTeam == fromTeam) {
-            ConsoleDebug("ToTeam, bad targetTeam = " + targetTeam);
-            return 0;
-        }
-        // don't move a player to a team with 0 if there are other choices
-        List<PlayerModel> targetList = byId[targetTeam];
-        if (targetList.Count == 0) {
-            // all vars that start with "i" are indices into ascendingSize array, values of array are team IDs
-            int iFrom = 0;
-            int iTo = 0;
-            for (i = 0; i < ascendingSize.Length; ++i) {
-                if (ascendingSize[i] == fromTeam) iFrom = i;
-                if (ascendingSize[i] == targetTeam) iTo = i;
-            }
-            // search for larger team that isn't where we are from or biggest or winning
-            int nonZero = ascendingSize.Length;
-            for (i = iTo; i < 3; ++i) { // index 3 is biggest team
-                if (i == iFrom || i == iTo || ascendingSize[i] == winningTeam) continue;
-                // Take first team that is bigger that original target
-                nonZero = i;
+        // Don't send to the winning team, even if it is the smallest
+        if (targetTeam == winningTeam) {
+            while (i < ascendingSize.Length) {
+                int aTeam = ascendingSize[i];
+                ++i;
+                if (aTeam == orig || aTeam == winningTeam || aTeam == fromTeam) continue;
+                targetTeam = aTeam;
                 break;
             }
-            if (nonZero != ascendingSize.Length) {
-                targetTeam = ascendingSize[nonZero];
-            }
         }
+
         if (targetTeam != orig) {
             String szs = "(";
             for (i = 1; i < byId.Length; ++i) {
@@ -4079,7 +4064,16 @@ private int ToTeam(String name, int fromTeam, out int diff, out bool mustMove) {
         DebugBalance("SQDM fake out diff due to adjustment, was " + diff + ", will be reported as " + superDiff);
         diff = superDiff;
     }
-    */
+
+    String tm = "(";
+    for (int j = 1; j <= 4; ++j) {
+        if (j == winningTeam) tm = tm + "+";
+        if (j == losingTeam) tm = tm + "-";
+        tm = tm + byId[j].Count;
+        if (j != 4) tm = tm + "/";
+    }
+    tm = tm + ")";
+    DebugWrite("ToTeam: analyze returned " + tm + ", " + fromTeam + " ==> " + targetTeam, 7);
 
     // TBD, for SQDM, based on name, might need to take into account dispersal by Rank, etc.
     // mustMove set to True if dispersal policy (etc) must override other policies
@@ -4394,9 +4388,10 @@ private PlayerModel GetPlayer(String name) {
     PlayerModel p = null;
     lock (fKnownPlayers) {
         if (!fKnownPlayers.TryGetValue(name, out p)) {
-            return null;
+            p = null;
         }
     }
+    if (p == null) ConsoleDebug("GetPlayer unknown player ^b" + name);
     return p;
 }
 
@@ -4503,15 +4498,8 @@ private String GetTimeInRoundString() {
 private void SetSpawnMessages(String name, String chat, String yell, bool quiet) {
     PlayerModel player = null;
 
-    lock (fKnownPlayers) {
-        if (!fKnownPlayers.TryGetValue(name, out player)) {
-            player = null;
-        }
-    }
-    if (player == null) {
-        ConsoleDebug("SetSpawnMessages unknown player ^b" + name);
-        return;
-    }
+    player = GetPlayer(name);
+    if (player == null) return;
 
     player.SpawnChatMessage = chat;
     player.SpawnYellMessage = yell;
@@ -4519,25 +4507,36 @@ private void SetSpawnMessages(String name, String chat, String yell, bool quiet)
 }
 
 private void FireMessages(String name) {
-    PlayerModel player = null;
+    PlayerModel player = GetPlayer(name);
+    if (player == null) return;
 
-    lock (fKnownPlayers) {
-        if (!fKnownPlayers.TryGetValue(name, out player)) {
-            player = null;
-        }
-    }
-    if (player == null) {
-        ConsoleDebug("FireMessages unknown player ^b" + name);
-        return;
-    }
     if (!String.IsNullOrEmpty(player.SpawnChatMessage) || !String.IsNullOrEmpty(player.SpawnYellMessage)) {
-        DebugWrite("^5(SPAWN)^9 firing messages delayed until spawn for ^b" + name, 5);
+        DebugWrite("^5(SPAWN)^9 firing messages delayed until spawn for ^b" + name, 4);
     }
     if (!String.IsNullOrEmpty(player.SpawnChatMessage)) Chat(name, player.SpawnChatMessage, player.QuietMessage);
     if (!String.IsNullOrEmpty(player.SpawnYellMessage)) Yell(name, player.SpawnYellMessage);
     player.SpawnChatMessage = String.Empty;
     player.SpawnYellMessage = String.Empty;
 }
+
+private void CheckDelayedMove(String name) {
+    PlayerModel player = GetPlayer(name);
+    if (player == null) return;
+    
+    if (player.DelayedMove != null) {
+        MoveInfo dm = player.DelayedMove;
+        player.DelayedMove = null;
+
+        DebugWrite("^5(SPAWN)^9 executing delayed move of ^b" + name, 4);
+        DebugUnswitch("FORBIDDEN: Detected bad team switch, scheduling admin kill and move for ^b: " + name);
+        String log = "^4^bUNSWITCHING^n^0 ^b" + name + "^n from " + dm.SourceName + " back to " + dm.DestinationName;
+        log = (EnableLoggingOnlyMode) ? "^9(SIMULATING)^0 " + log : log;
+        DebugWrite(log, 3);
+        KillAndMoveAsync(dm);
+    }
+}
+
+
 
 
 private void LogStatus() {
