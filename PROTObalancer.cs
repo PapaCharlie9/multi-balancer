@@ -3989,29 +3989,8 @@ private int ToTeam(String name, int fromTeam, bool isReassign, out int diff, out
     mustMove = false;
     if (fromTeam < 1 || fromTeam > 4) return 0;
 
-    List<PlayerModel> from = null;
     List<PlayerModel>[] byId = new List<PlayerModel>[5]{null, fTeam1, fTeam2, fTeam3, fTeam4};
     
-    if (fromTeam == 1) {
-        from = fTeam1;
-    }
-
-    if (fromTeam == 2) {
-        from = fTeam2;
-    } 
-
-    if (IsSQDM()) {
-        if (fromTeam == 3) {
-            from = fTeam3;
-        }
-
-        if (fromTeam == 4) {
-            from = fTeam4;
-        }
-    }
-
-    if (from != null && from.Count == 0) return 0;
-
     int biggestTeam = 0;
     int smallestTeam = 0;
     int winningTeam = 0;
@@ -4022,8 +4001,7 @@ private int ToTeam(String name, int fromTeam, bool isReassign, out int diff, out
     AnalyzeTeams(out diff, out ascendingSize, out descendingTickets, out biggestTeam, out smallestTeam, out winningTeam, out losingTeam);
 
     // diff is maximum difference between any two teams
-
-    if (diff <= MaxDiff()) return 0;
+    if (!isReassign && diff <= MaxDiff()) return 0;
     int superDiff = diff;
 
     int targetTeam = smallestTeam;
