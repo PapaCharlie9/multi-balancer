@@ -4544,6 +4544,7 @@ private void LogStatus() {
 
     String tm = fTickets[1] + "/" + fTickets[2];
     if (IsSQDM()) tm = tm + "/" + fTickets[3] + "/" + fTickets[4];
+    if (IsRush()) tm = tm  + "(" + Math.Max(fTickets[1]/2, fMaxTickets - (fRushMaxTickets - fTickets[2])) + ")";
 
     double goal = 0;
     if (fServerInfo != null && Regex.Match(fServerInfo.GameMode, @"(?:TeamDeathMatch|SquadDeathMatch)").Success) {
@@ -4553,7 +4554,7 @@ private void LogStatus() {
     }
 
     if (goal == 0) {
-        if (fMaxTickets != -1) tm = tm + " <- (" + fMaxTickets.ToString("F0") + ")";
+        if (fMaxTickets != -1) tm = tm + " <- [" + fMaxTickets.ToString("F0") + "]";
     } else {
         tm = tm + " -> [" + goal.ToString("F0") + "]";
     }
@@ -4562,7 +4563,7 @@ private void LogStatus() {
 
     DebugWrite("^bStatus^n: Plugin state = " + fPluginState + ", game state = " + fGameState + ", Enable Logging Only Mode = " + EnableLoggingOnlyMode, 4);
     if (IsRush()) {
-        DebugWrite("^bStatus^n: Map = " + FriendlyMap + ", mode = " + FriendlyMode + ", stage = " + fRushStage + ", time in round = " + rt + ", tickets = " + tm + "(" + Math.Max(fTickets[1]/2, fMaxTickets - (fRushMaxTickets - fTickets[2])) + ")", 4);
+        DebugWrite("^bStatus^n: Map = " + FriendlyMap + ", mode = " + FriendlyMode + ", stage = " + fRushStage + ", time in round = " + rt + ", tickets = " + tm, 4);
     } else {
         DebugWrite("^bStatus^n: Map = " + FriendlyMap + ", mode = " + FriendlyMode + ", time in round = " + rt + ", tickets = " + tm, 4);
     }
