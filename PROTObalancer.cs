@@ -1481,9 +1481,13 @@ public void OnPluginLoaded(String strHostName, String strPort, String strPRoConV
         "OnPlayerKilledByAdmin",
         "OnPlayerMovedByAdmin",
         "OnPlayerIsAlive",
-        "OnReservedSlotsList"
+        "OnReservedSlotsList",
+        "OnEndRound",
+        "OnRunNextLevel"
     );
 }
+
+
 
 public void OnPluginEnable() {
     if (fFinalizerActive) {
@@ -2375,7 +2379,7 @@ private void BalanceAndUnstack(String name) {
 
     if (!fBalanceIsActive) {
         fLastBalancedTimestamp = now;
-        if (DebugLevel >= 8) DebugBalance("fLastBalancedTimestamp = " + fLastBalancedTimestamp.ToString("HH:mm:ss"));
+        if (DebugLevel >= 8) ConsoleDebug("fLastBalancedTimestamp = " + fLastBalancedTimestamp.ToString("HH:mm:ss"));
     }
 
     /* Unstack */
@@ -3380,7 +3384,7 @@ private Population GetPopulation(PerModeSettings perMode, bool verbose) {
         pop = Population.Medium;
     }
 
-    if (verbose && DebugLevel >= 8) DebugBalance("Population: " + pop + " (" + totalPop + " [" + lowPop + " - " + highPop + "])");
+    if (verbose && DebugLevel >= 8) ConsoleDebug("Population: " + pop + " (" + totalPop + " [" + lowPop + " - " + highPop + "])");
 
     return pop;
 }
@@ -3895,6 +3899,7 @@ private int GetTeamDifference(ref int fromTeam, ref int toTeam) {
 
 
 private void AnalyzeTeams(out int maxDiff, out int[] ascendingSize, out int[] descendingTickets, out int biggestTeam, out int smallestTeam, out int winningTeam, out int losingTeam) {
+
     biggestTeam = 0;
     smallestTeam = 0;
     winningTeam = 0;
@@ -3939,7 +3944,9 @@ private void AnalyzeTeams(out int maxDiff, out int[] ascendingSize, out int[] de
     maxDiff = big.Roster.Count - small.Roster.Count;
 
     List<TeamScore> byScore = new List<TeamScore>();
-    if (fServerInfo.TeamScores == null || fServerInfo.TeamScores.Count == 0) return;
+    if (fServerInfo.TeamScores == null) return;
+    bool isCTF = IsCTF();
+    if (!isCTF && fServerInfo.TeamScores.Count == 0) return;
     if (IsRush()) {
         // Normalize scores
         TeamScore attackers = fServerInfo.TeamScores[0];
@@ -3948,11 +3955,11 @@ private void AnalyzeTeams(out int maxDiff, out int[] ascendingSize, out int[] de
         normalized = Math.Max(normalized, Convert.ToDouble(attackers.Score)/2);
         byScore.Add(attackers); // attackers
         byScore.Add(new TeamScore(defenders.TeamID, Convert.ToInt32(normalized), defenders.WinningScore));
-    } else if (IsCTF()) {
+    } else if (isCTF) {
         // Base sort on team points rather than tickets
         int usPoints = Convert.ToInt32(GetTeamPoints(1));
         int ruPoints = Convert.ToInt32(GetTeamPoints(2));
-        DebugWrite("^9CTF analysis: US/RU points = " + usPoints + "/" + ruPoints, 5);
+        DebugWrite("^9CTF analysis: US/RU points = " + usPoints + "/" + ruPoints, 8);
         byScore.Add(new TeamScore(1, usPoints, 0));
         byScore.Add(new TeamScore(2, ruPoints, 0));
     } else {
@@ -3977,7 +3984,7 @@ private void AnalyzeTeams(out int maxDiff, out int[] ascendingSize, out int[] de
 
     winningTeam = byScore[0].TeamID;
     losingTeam = byScore[byScore.Count-1].TeamID;
-    DebugWrite("^9AnalyzeTeams: winning/losing = " + winningTeam + "/" + losingTeam, (IsCTF() ? 7 : 8));
+    DebugWrite("^9AnalyzeTeams: biggest/smallest/winning/losing = " + biggestTeam + "/" + smallestTeam + "/" + winningTeam + "/" + losingTeam, 8);
 }
 
 private int DifferenceFromSmallest(int fromTeam) {
@@ -4027,6 +4034,16 @@ private int ToTeam(String name, int fromTeam, bool isReassign, out int diff, out
     int[] descendingTickets = null;
 
     AnalyzeTeams(out diff, out ascendingSize, out descendingTickets, out biggestTeam, out smallestTeam, out winningTeam, out losingTeam);
+
+    DebugWrite("^9ToTeam: winning/losing = " + winningTeam + "/" + losingTeam, 8);
+    if (DebugLevel >= 8 && descendingTickets != null) {
+        String ds = "^9ToTeam: descendingTickets = [";
+        for (int k = 0; k < descendingTickets.Length; ++k) {
+            ds = ds + descendingTickets[k] + " ";
+        }
+        ds = ds + "]";
+        DebugWrite(ds, 7);
+    }
 
     // diff is maximum difference between any two teams
     if (!isReassign && diff <= MaxDiff()) return 0;
@@ -4088,7 +4105,7 @@ private int ToTeam(String name, int fromTeam, bool isReassign, out int diff, out
         if (j != 4) tm = tm + "/";
     }
     tm = tm + ")";
-    DebugWrite("ToTeam: analyze returned " + tm + ", " + fromTeam + " ==> " + targetTeam, 7);
+    DebugWrite("ToTeam: analyze returned " + tm + ", " + fromTeam + " ==> " + targetTeam, 5);
 
     // TBD, for SQDM, based on name, might need to take into account dispersal by Rank, etc.
     // mustMove set to True if dispersal policy (etc) must override other policies
