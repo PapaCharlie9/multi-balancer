@@ -2780,6 +2780,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
         */
         if (vip.Contains(name) || vip.Contains(ExtractTag(player)) || vip.Contains(player.EAGUID)) {
             DebugUnswitch("ALLOWED: On whitelist: ^b" + name);
+            SetSpawnMessages(name, String.Empty, String.Empty, false);
             CheckAbortMove(name);
             return true;
         }
@@ -2788,6 +2789,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     // Unlimited time?
     if (UnlimitedTeamSwitchingDuringFirstMinutesOfRound > 0 && GetTimeInRoundMinutes() < UnlimitedTeamSwitchingDuringFirstMinutesOfRound) {
         DebugUnswitch("ALLOWED: Time in round " + GetTimeInRoundMinutes().ToString("F0") + " < " + UnlimitedTeamSwitchingDuringFirstMinutesOfRound.ToString("F0"));
+        SetSpawnMessages(name, String.Empty, String.Empty, false);
         CheckAbortMove(name);
         return true;
     }
@@ -2828,10 +2830,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
         move.Format(ChatDetectedGoodTeamSwitch, false, true);
         move.Format(YellDetectedGoodTeamSwitch, true, true);
         DebugUnswitch("ALLOWED: Team switch to losing team ^b: " + name);
-        if (!String.IsNullOrEmpty(player.SpawnChatMessage)) {DebugWrite("^9Overwriting previous chat message for ^b" + name + ": " + player.SpawnChatMessage, 7); }
-        player.SpawnChatMessage = move.ChatBefore;
-        player.QuietMessage = false;
-        player.SpawnYellMessage = move.YellBefore;
+        SetSpawnMessages(name, move.ChatBefore, move.YellBefore, false);
         CheckAbortMove(name);
         return true;
     }
@@ -2853,10 +2852,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
         move.Format(ChatDetectedGoodTeamSwitch, false, true);
         move.Format(YellDetectedGoodTeamSwitch, true, true);
         DebugUnswitch("ALLOWED: Team switch to smallest team ^b: " + name);
-        if (!String.IsNullOrEmpty(player.SpawnChatMessage)) {DebugWrite("^9Overwriting previous chat message for ^b" + name + ": " + player.SpawnChatMessage, 7); }
-        player.SpawnChatMessage = move.ChatBefore;
-        player.QuietMessage = false;
-        player.SpawnYellMessage = move.YellBefore;
+        SetSpawnMessages(name, move.ChatBefore, move.YellBefore, false);
         CheckAbortMove(name);
         return true;
     }
@@ -2870,9 +2866,43 @@ private bool CheckTeamSwitch(String name, int toTeam) {
                 // Allow team switch to any team except biggest and winning
                 if (toTeam != biggestTeam && toTeam != winningTeam) {
                     DebugUnswitch("ALLOWED: SQDM Low population and not switching to biggest or winning team: ^b" + name);
+                    SetSpawnMessages(name, String.Empty, String.Empty, false);
+                    CheckAbortMove(name);
                     return true;
                 }
             }
+        }
+    }
+
+    // Allow if ticket/point difference is less than allowed margin
+    double win = 0;
+    double lose = 0;
+    double margin = 100;
+    if (IsCTF()) {
+        win = GetTeamPoints(winningTeam);
+        if (win == 0) win = 1;
+        lose = GetTeamPoints(losingTeam);
+        if (lose == 0) lose = 1;
+        margin = ((win > lose) ? win/lose : lose/win);
+        // margin is 110%
+        if ((margin * 100) <= 110) {
+            DebugUnswitch("ALLOWED: CTF move by ^b" + name + "^n because margin is only " + (margin*100).ToString("F0") + "%");
+            SetSpawnMessages(name, String.Empty, String.Empty, false);
+            CheckAbortMove(name);
+            return true;
+        }
+    } else {
+        win = fTickets[winningTeam];
+        if (win == 0) win = 1;
+        lose = fTickets[losingTeam];
+        if (lose == 0) lose = 1;
+        margin = ((win > lose) ? win/lose : lose/win);
+        // margin is 105%
+        if ((margin * 100) <= 105) {
+            DebugUnswitch("ALLOWED: move by ^b" + name + "^n because margin is only " + (margin*100).ToString("F0") + "%");
+            SetSpawnMessages(name, String.Empty, String.Empty, false);
+            CheckAbortMove(name);
+            return true;
         }
     }
     
@@ -2894,14 +2924,13 @@ private bool CheckTeamSwitch(String name, int toTeam) {
 
     // Delay action until after the player spawns
     if (player.DelayedMove != null) {
-        DebugUnswitch("IGNORED: previously delayed move of ^b" + name + "^n to " + player.DelayedMove.DestinationName);
+        CheckAbortMove(name);
     }
     player.DelayedMove = move;
 
     if (!String.IsNullOrEmpty(player.SpawnChatMessage)) {
         DebugUnswitch("IGNORED: previously delayed spawn message for ^b" + name + "^n: " + player.SpawnChatMessage);
-        player.SpawnChatMessage = String.Empty;
-        player.SpawnYellMessage = String.Empty;
+        SetSpawnMessages(name, String.Empty, String.Empty, false);
     }
 
     //KillAndMoveAsync(move);
@@ -4535,6 +4564,9 @@ private void SetSpawnMessages(String name, String chat, String yell, bool quiet)
     player = GetPlayer(name);
     if (player == null) return;
 
+    if (!String.IsNullOrEmpty(player.SpawnChatMessage)) {
+        DebugWrite("^9Overwriting previous chat message for ^b" + name + ": " + player.SpawnChatMessage, 7);
+    }
     player.SpawnChatMessage = chat;
     player.SpawnYellMessage = yell;
     player.QuietMessage = quiet;
