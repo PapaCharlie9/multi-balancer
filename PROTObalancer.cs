@@ -4079,6 +4079,11 @@ private int ToTeam(String name, int fromTeam, bool isReassign, out int diff, out
     int superDiff = diff;
 
     int targetTeam = smallestTeam;
+
+    // if teams are same size, send to losing team
+    if (biggestTeam != smallestTeam && byId[biggestTeam].Count == byId[smallestTeam].Count && losingTeam != fromTeam) {
+        targetTeam = losingTeam;
+    }
     
     if (targetTeam == fromTeam) return 0;
 
