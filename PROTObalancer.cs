@@ -1566,7 +1566,7 @@ public override void OnPlayerLeft(CPlayerInfo playerInfo) {
             RemovePlayer(playerInfo.SoldierName);
         }
     
-        DebugWrite("Player left: ^b" + playerInfo.SoldierName, 3);
+        DebugWrite("Player left: ^b" + playerInfo.SoldierName, 4);
     } catch (Exception e) {
         ConsoleException(e);
     }
@@ -1590,7 +1590,7 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
             fReassignedRound = fReassignedRound + 1;
             AddNewPlayer(soldierName, teamId);
             UpdateTeams();
-            DebugWrite("^4New player^0: ^b" + soldierName + "^n, ^b^1REASSIGNED^0^n to " + GetTeamName(teamId) + " team by " + GetPluginName(), 3);
+            DebugWrite("^4New player^0: ^b" + soldierName + "^n, ^b^1REASSIGNED^0^n to " + GetTeamName(teamId) + " team by " + GetPluginName(), 4);
        } else if (!IsKnownPlayer(soldierName)) {
             int diff = 0;
             bool mustMove = false;
@@ -1600,7 +1600,7 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
                 IncrementTotal(); // no matching stat, reflects non-reassigment joins
                 AddNewPlayer(soldierName, teamId);
                 UpdateTeams();
-                DebugWrite("^4New player^0: ^b" + soldierName + "^n, assigned to " + GetTeamName(teamId) + " team by game server", 3);
+                DebugWrite("^4New player^0: ^b" + soldierName + "^n, assigned to " + GetTeamName(teamId) + " team by game server", 4);
             } else {
                 Reassign(soldierName, teamId, reassignTo, diff);
             }
@@ -1854,7 +1854,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
         }
 
         if (fServerInfo == null || fServerInfo.GameMode != serverInfo.GameMode || fServerInfo.Map != serverInfo.Map) {
-            DebugWrite("ServerInfo update: " + serverInfo.Map + "/" + serverInfo.GameMode, 3);
+            DebugWrite("ServerInfo update: " + serverInfo.Map + "/" + serverInfo.GameMode, 4);
         }
     
         if (fServerUptime > 0 && fServerUptime > serverInfo.ServerUptime) {
@@ -1885,7 +1885,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
         if (fMaxTickets == -1) {
             if (!isRush) {
                 fMaxTickets = maxTickets;
-                DebugWrite("ServerInfo update: fMaxTickets = " + fMaxTickets.ToString("F0"), 3);
+                DebugWrite("ServerInfo update: fMaxTickets = " + fMaxTickets.ToString("F0"), 4);
             } else if (fServerInfo.TeamScores.Count == 2) {
                 fRushMaxTickets = defender;
                 fMaxTickets = attacker;
@@ -2095,12 +2095,14 @@ private void BalanceAndUnstack(String name) {
     if (totalPlayerCount >= (MaximumServerSize-1)) {
         if (DebugLevel >= 7) DebugBalance("Server is full, no balancing or unstacking will be attempted!");
         IncrementTotal(); // no matching stat, reflect total deaths handled
+        CheckDeativateBalancer("Full");
         return;
     }
 
     if (totalPlayerCount > 0) {
         AnalyzeTeams(out diff, out ascendingSize, out descendingTickets, out biggestTeam, out smallestTeam, out winningTeam, out losingTeam);
     } else {
+        CheckDeativateBalancer("Empty");
         return;
     }
 
@@ -2108,7 +2110,10 @@ private void BalanceAndUnstack(String name) {
     /* Pre-conditions */
 
     player = GetPlayer(name);
-    if (player == null) return;
+    if (player == null) {
+        CheckDeativateBalancer("Unknown player " + name);
+        return;
+    }
 
     if (!fModeToSimple.TryGetValue(fServerInfo.GameMode, out simpleMode)) {
         DebugBalance("Unknown game mode: " + fServerInfo.GameMode);
@@ -2116,6 +2121,7 @@ private void BalanceAndUnstack(String name) {
     }
     if (String.IsNullOrEmpty(simpleMode)) {
         DebugBalance("Simple mode is null: " + fServerInfo.GameMode);
+        CheckDeativateBalancer("Unknown mode");
         return;
     }
     if (!fPerMode.TryGetValue(simpleMode, out perMode)) {
@@ -2136,6 +2142,7 @@ private void BalanceAndUnstack(String name) {
     if (totalPlayerCount >= (perMode.MaxPlayers-1)) {
         if (DebugLevel >= 7) DebugBalance("Server is full by per-mode Max Players, no balancing or unstacking will be attempted!");
         IncrementTotal(); // no matching stat, reflect total deaths handled
+        CheckDeativateBalancer("Full per-mode");
         return;
     }
 
@@ -2167,6 +2174,7 @@ private void BalanceAndUnstack(String name) {
         int floorPlayers = 6;
         if (totalPlayerCount < floorPlayers) {
             if (DebugLevel >= 7) DebugBalance("Not enough players in server, minimum is " + floorPlayers);
+            CheckDeativateBalancer("Not enough players");
             return;
         }
 
@@ -2199,13 +2207,8 @@ private void BalanceAndUnstack(String name) {
             fLastBalancedTimestamp = now;
         }
         fBalanceIsActive = true;
-    } else if (fBalanceIsActive) {
-        fBalanceIsActive = false;
-        double dur = now.Subtract(fLastBalancedTimestamp).TotalSeconds;
-        if (fLastBalancedTimestamp == DateTime.MinValue) dur = 0;
-        if (dur > 0) {
-            DebugBalance("^2^bDeactiving autobalance! Was active for " + dur.ToString("F0") + " seconds!");
-        }
+    } else {
+        CheckDeativateBalancer("Deactiving autobalance");
     }
 
     /* Exclusions */
@@ -2433,7 +2436,7 @@ private void BalanceAndUnstack(String name) {
         move.Format(YellMovedForBalance, true, false);
         log = "^4^bBALANCE^n^0 moving ^b" + name + "^n from " + move.SourceName + " team to " + move.DestinationName + " team because difference is " + diff;
         log = (EnableLoggingOnlyMode) ? "^9(SIMULATING)^0 " + log : log;
-        DebugWrite(log, 2);
+        DebugWrite(log, 3);
 
         DebugWrite("^9" + move, 8);
 
@@ -2612,7 +2615,7 @@ private void BalanceAndUnstack(String name) {
     
     log = "^4^bUNSTACK^n^0 moving ^b" + name + "^n from " + moveUnstack.SourceName + " to " + moveUnstack.DestinationName + " because: " + um;
     log = (EnableLoggingOnlyMode) ? "^9(SIMULATING)^0 " + log : log;
-    DebugWrite(log, 2);
+    DebugWrite(log, 3);
     moveUnstack.Reason = ReasonFor.Unstack;
     moveUnstack.Format(ChatMovedToUnstack, false, false);
     moveUnstack.Format(YellMovedToUnstack, true, false);
@@ -2690,19 +2693,19 @@ private void UpdatePlayerModel(String name, int team, int squad, String eaGUID, 
                 if (team != 0) {
                     known = AddNewPlayer(name, team);
                     String verb = (known) ? "^6renewing^0" : "^4adding^0";
-                    DebugWrite(state + " state, " + verb + " new player: ^b" + name, 3);
+                    DebugWrite(state + " state, " + verb + " new player: ^b" + name, 4);
                 } else {
-                    DebugWrite(state + " state, unassigned player: ^b" + name, 3);
+                    DebugWrite(state + " state, unassigned player: ^b" + name, 4);
                     if (!fUnassigned.Contains(name)) fUnassigned.Add(name);
                     return;
                 }
                 break;
             case PluginState.Active:
-                DebugWrite("Update waiting for ^b" + name + "^n to be assigned a team", 3);
+                DebugWrite("Update waiting for ^b" + name + "^n to be assigned a team", 4);
                 if (!fUnassigned.Contains(name)) fUnassigned.Add(name);
                 return;
             case PluginState.Error:
-                DebugWrite("Error state, adding new player: ^b" + name, 3);
+                DebugWrite("Error state, adding new player: ^b" + name, 4);
                 AddNewPlayer(name, team);
                 break;
             default:
@@ -2769,7 +2772,7 @@ private void UpdatePlayerTeam(String name, int team) {
     
     if (m.Team != team) {
         if (m.Team == 0) {
-            DebugWrite("Assigning ^b" + name + "^n to " + team, 3);
+            DebugWrite("Assigning ^b" + name + "^n to " + team, 4);
         } else {
             DebugWrite("Update player ^b" + name + "^n team from " + m.Team + " to " + team, 7);
             m.Team = team;
@@ -3114,7 +3117,7 @@ private void StartMoveImmediate(MoveInfo move, bool sendMessages) {
         default: r = " for ???"; break;
     }
     String doing = (EnableLoggingOnlyMode) ? "^9(SIMULATING) ^b^1MOVING^0 " : "^b^1MOVING^0 ";
-    DebugWrite(doing + move.Name + "^n from " + move.SourceName + " to " + move.DestinationName + r, 3);
+    DebugWrite(doing + move.Name + "^n from " + move.SourceName + " to " + move.DestinationName + r, 4);
 }
 
 private void FinishMove(String name, int team) {
@@ -3200,9 +3203,9 @@ public void MoveLoop() {
             // Make sure player is dead
             if (!EnableLoggingOnlyMode) {
                 ServerCommand("admin.killPlayer", move.Name);
-                DebugWrite("^b^1ADMIN KILL^0 " + move.Name, 3);
+                DebugWrite("^b^1ADMIN KILL^0 " + move.Name, 4);
             } else {
-                DebugWrite("^9(SIMULATING) ^b^1ADMIN KILL^0 " + move.Name, 3);
+                DebugWrite("^9(SIMULATING) ^b^1ADMIN KILL^0 " + move.Name, 4);
             }
 
             // Pause
@@ -3224,7 +3227,7 @@ private void Reassign(String name, int fromTeam, int toTeam, int diff) {
     // This is not a known player yet, so not PlayerModel to use
     // Just do a raw move as quickly as possible, not messages, just logging
     String doing = (EnableLoggingOnlyMode) ? "^9(SIMULATING) ^b^4REASSIGNING^0^n new player ^b" : "^b^4REASSIGNING^0^n new player ^b";
-    DebugWrite(doing + name + "^n from " + GetTeamName(fromTeam) + " team to " + GetTeamName(toTeam) + " team because difference is " + diff, 2);
+    DebugWrite(doing + name + "^n from " + GetTeamName(fromTeam) + " team to " + GetTeamName(toTeam) + " team because difference is " + diff, 3);
     int toSquad = ToSquad(name, toTeam);
     if (!EnableLoggingOnlyMode) {
         fReassigned.Add(name);
@@ -3297,14 +3300,14 @@ private void Chat(String who, String what, bool quiet) {
         }
         ProconChatPlayer(who, what);
         doing = (EnableLoggingOnlyMode) ? "^9(SIMULATING) ^b^1CHAT^0^n to ^b" : "^b^1CHAT^0^n to ^b";
-        DebugWrite(doing + who + "^n: " + what, 3);
+        DebugWrite(doing + who + "^n: " + what, 4);
     } else {
         if (!EnableLoggingOnlyMode) {
             ServerCommand("admin.say", what, "all"); // chat all
         }
         ProconChat(what);
         doing = (EnableLoggingOnlyMode) ? "^9(SIMULATING) ^b^1CHAT^0^n to all: " : "^b^1CHAT^0^n to all: ";
-        DebugWrite(doing + what, 3);
+        DebugWrite(doing + what, 4);
     }
 }
 
@@ -3314,7 +3317,7 @@ private void Yell(String who, String what) {
         ServerCommand("admin.yell", what, YellDurationSeconds.ToString("F0"), "player", who); // yell to player
     }
     doing = (EnableLoggingOnlyMode) ? "^9(SIMULATING) ^b^1YELL^0^n to ^b" : "^b^1YELL^0^n to ^b";
-    DebugWrite(doing + who + "^n: " + what, 3);
+    DebugWrite(doing + who + "^n: " + what, 4);
 }
 
 private void ProconChat(String what) {
@@ -3655,7 +3658,7 @@ public void DebugWrite(String msg, int level)
 
 public void ConsoleDebug(String msg)
 {
-    if (DebugLevel >= 3) ConsoleWrite(msg, MessageType.Debug);
+    if (DebugLevel >= 4) ConsoleWrite(msg, MessageType.Debug);
 }
 
 public void ConsoleDump(String msg)
@@ -4554,7 +4557,7 @@ private void ListPlayersLoop() {
 
 private void ScheduleListPlayers(double delay) {
     ListPlayersRequest r = new ListPlayersRequest(delay, fListPlayersTimestamp);
-    DebugWrite("^9Scheduling listPlayers no sooner than " + r.MaxDelay  + " seconds from " + r.LastUpdate.ToString("HH:mm:ss"), 5);
+    DebugWrite("^9Scheduling listPlayers no sooner than " + r.MaxDelay  + " seconds from " + r.LastUpdate.ToString("HH:mm:ss"), 7);
     lock (fListPlayersQ) {
         fListPlayersQ.Enqueue(r);
         Monitor.Pulse(fListPlayersQ);
@@ -4690,7 +4693,7 @@ private TimeSpan GetPlayerJoinedTimeSpan(PlayerModel player) {
 
 private void DebugBalance(String msg) {
     // Filter out repeat messages
-    int level = 4;
+    int level = 5;
     if (fLastMsg != null) {
         if (msg.Equals(fLastMsg)) {
             level = 8;
@@ -4710,8 +4713,9 @@ private void DebugBalance(String msg) {
     fLastMsg = msg;
 }
 
+
 private void DebugUnswitch(String msg) {
-    DebugWrite("^5(SWITCH)^9 " + msg, 4);
+    DebugWrite("^5(SWITCH)^9 " + msg, 5);
 }
 
 private double NextSwapInSeconds(PerModeSettings perMode) {
@@ -4789,7 +4793,7 @@ private void FireMessages(String name) {
     if (player == null) return;
 
     if (!String.IsNullOrEmpty(player.SpawnChatMessage) || !String.IsNullOrEmpty(player.SpawnYellMessage)) {
-        DebugWrite("^5(SPAWN)^9 firing messages delayed until spawn for ^b" + name, 4);
+        DebugWrite("^5(SPAWN)^9 firing messages delayed until spawn for ^b" + name, 5);
     }
     if (!String.IsNullOrEmpty(player.SpawnChatMessage)) Chat(name, player.SpawnChatMessage, player.QuietMessage);
     if (!String.IsNullOrEmpty(player.SpawnYellMessage)) Yell(name, player.SpawnYellMessage);
@@ -4806,7 +4810,7 @@ private void CheckDelayedMove(String name) {
         MoveInfo dm = player.DelayedMove;
         player.DelayedMove = null;
 
-        DebugWrite("^5(SPAWN)^9 executing delayed move of ^b" + name, 4);
+        DebugWrite("^5(SPAWN)^9 executing delayed move of ^b" + name, 5);
         DebugUnswitch("FORBIDDEN: Detected bad team switch, scheduling admin kill and move for ^b: " + name);
         String log = "^4^bUNSWITCHING^n^0 ^b" + name + "^n from " + dm.SourceName + " back to " + dm.DestinationName;
         log = (EnableLoggingOnlyMode) ? "^9(SIMULATING)^0 " + log : log;
@@ -4845,7 +4849,16 @@ private PerModeSettings GetPerModeSettings() {
     return new PerModeSettings();
 }
 
-
+private void CheckDeativateBalancer(String reason) {
+    if (fBalanceIsActive) {
+        fBalanceIsActive = false;
+        double dur = DateTime.Now.Subtract(fLastBalancedTimestamp).TotalSeconds;
+        if (fLastBalancedTimestamp == DateTime.MinValue) dur = 0;
+        if (dur > 0) {
+            if (DebugLevel >= 7) DebugBalance("^2^b" + reason + "^n: Was active for " + dur.ToString("F0") + " seconds!");
+        }
+    }
+}
 
 private void LogStatus() {
   try {
@@ -4857,6 +4870,8 @@ private void LogStatus() {
             fRoundStartTimestamp = DateTime.Now;
         }
     }
+
+    if (DebugLevel == 3 || DebugLevel == 4) ConsoleWrite("+------------------------------------------------+");
 
     Speed balanceSpeed = Speed.Adaptive;
 
@@ -4882,11 +4897,11 @@ private void LogStatus() {
 
     DebugWrite("^bStatus^n: Plugin state = " + fPluginState + ", game state = " + fGameState + ", Enable Logging Only Mode = " + EnableLoggingOnlyMode, 4);
     if (IsRush()) {
-        DebugWrite("^bStatus^n: Map = " + FriendlyMap + ", mode = " + FriendlyMode + ", stage = " + fRushStage + ", time in round = " + rt + ", tickets = " + tm, 4);
+        DebugWrite("^bStatus^n: Map = " + FriendlyMap + ", mode = " + FriendlyMode + ", stage = " + fRushStage + ", time in round = " + rt + ", tickets = " + tm, 3);
     } else if (IsCTF()) {
-        DebugWrite("^bStatus^n: Map = " + FriendlyMap + ", mode = " + FriendlyMode + ", time in round = " + rt + ", points = " + tm, 4);
+        DebugWrite("^bStatus^n: Map = " + FriendlyMap + ", mode = " + FriendlyMode + ", time in round = " + rt + ", points = " + tm, 3);
     } else {
-        DebugWrite("^bStatus^n: Map = " + FriendlyMap + ", mode = " + FriendlyMode + ", time in round = " + rt + ", tickets = " + tm, 4);
+        DebugWrite("^bStatus^n: Map = " + FriendlyMap + ", mode = " + FriendlyMode + ", time in round = " + rt + ", tickets = " + tm, 3);
     }
     if (fPluginState == PluginState.Active) {
         double secs = DateTime.Now.Subtract(fLastBalancedTimestamp).TotalSeconds;
@@ -4923,7 +4938,8 @@ private void LogStatus() {
     int diff = Math.Abs(counts[0] - counts[counts.Count-1]);
     String next = (diff > MaxDiff() && fGameState == GameState.Playing && balanceSpeed != Speed.Stop && !fBalanceIsActive) ? "^n^0 ... autobalance will activate on next death!" : "^n";
     
-    DebugWrite("^bStatus^n: Team difference = " + ((diff > MaxDiff()) ? "^8^b" : "^b") + diff + next, 3);
+    DebugWrite("^bStatus^n: Team difference = " + ((diff > MaxDiff()) ? "^8^b" : "^b") + diff + next, 4);
+
   } catch (Exception e) {
     ConsoleException(e);
   }
