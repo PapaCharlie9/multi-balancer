@@ -104,6 +104,8 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         public PerModeSettings(String simplifiedModeName) {
             DetermineStrongPlayersBy = DefineStrong.RoundScore;
             DisperseEvenlyForRank = 145;
+            EnableDisperseEvenlyList = false;
+            isDefault = false;
             // Rush only
             Stage1TicketPercentageToUnstackAdjustment = 0;
             Stage2TicketPercentageToUnstackAdjustment = 0;
@@ -235,6 +237,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         public double DefinitionOfEarlyPhaseFromStart = 50;
         public double DefinitionOfLatePhaseFromEnd = 50;
         public int DisperseEvenlyForRank = 145;
+        public bool EnableDisperseEvenlyList = false;
 
         // Rush only
         public double Stage1TicketPercentageToUnstackAdjustment = 0;
@@ -244,6 +247,8 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         
         //public double MinTicketsPercentage = 10.0; // TBD
         public int GoAggressive = 0; // TBD
+        
+        public bool isDefault = true; // not a setting
     } // end PerModeSettings
 
 
@@ -1053,6 +1058,8 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Disperse Evenly For Rank >=", oneSet.DisperseEvenlyForRank.GetType(), oneSet.DisperseEvenlyForRank));
 
+            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Enable Disperse Evenly List", oneSet.EnableDisperseEvenlyList.GetType(), oneSet.EnableDisperseEvenlyList));
+
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of High Population For Players >=", oneSet.DefinitionOfHighPopulationForPlayers.GetType(), oneSet.DefinitionOfHighPopulationForPlayers));
 
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Low Population For Players <=", oneSet.DefinitionOfLowPopulationForPlayers.GetType(), oneSet.DefinitionOfLowPopulationForPlayers));
@@ -1587,7 +1594,7 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
        } else if (!IsKnownPlayer(soldierName)) {
             int diff = 0;
             bool mustMove = false;
-            int reassignTo = ToTeam(soldierName, teamId, true, out diff, out mustMove);
+            int reassignTo = ToTeam(soldierName, teamId, true, out diff, ref mustMove);
             if (reassignTo == 0 || reassignTo == teamId) {
                 // New player was going to the right team anyway
                 IncrementTotal(); // no matching stat, reflects non-reassigment joins
@@ -1674,7 +1681,7 @@ public override void OnPlayerMovedByAdmin(string soldierName, int destinationTea
                 // this is an admin move in reversed order, clear from pending table and ignore the move
                 // (unless MB initiated it)
                 fPendingTeamChange.Remove(soldierName);
-                DebugWrite("(REVERSED) Moved by admin: ^b" + soldierName + " to team " + destinationTeamId, 6);
+                DebugWrite("(REVERSED) Moved by admin: ^b" + soldierName + "^n to team " + destinationTeamId, 6);
                 ConditionalIncrementMoves(soldierName);
                 // Some other admin.movePlayer, so update to account for it
                 UpdatePlayerTeam(soldierName, destinationTeamId);
@@ -1739,7 +1746,7 @@ public override void OnPlayerKilled(Kill kKillerVictimDetails) {
     }
     
     DebugWrite("^9^bGot OnPlayerKilled^n: " + killer  + " -> " + victim + " (" + weapon + ")", 8);
-    if (isAdminKill) DebugWrite("^9OnPlayerKilled: admin kill ignored: ^b" + victim + "^n (" + weapon + ")", 7);
+    if (isAdminKill) DebugWrite("^9OnPlayerKilled: admin kill: ^b" + victim + "^n (" + weapon + ")", 7);
 
     try {
     
@@ -1994,6 +2001,8 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
 
             ResetRound();
             fIsFullRound = true;
+            ServerCommand("serverInfo");
+            ScheduleListPlayers(2);
         }
     
         if (fPluginState == PluginState.Active) {
@@ -2083,38 +2092,24 @@ private void BalanceAndUnstack(String name) {
 
     int totalPlayerCount = TotalPlayerCount;
 
+    if (totalPlayerCount >= (MaximumServerSize-1)) {
+        if (DebugLevel >= 7) DebugBalance("Server is full, no balancing or unstacking will be attempted!");
+        IncrementTotal(); // no matching stat, reflect total deaths handled
+        return;
+    }
+
     if (totalPlayerCount > 0) {
         AnalyzeTeams(out diff, out ascendingSize, out descendingTickets, out biggestTeam, out smallestTeam, out winningTeam, out losingTeam);
     } else {
         return;
     }
 
-    if (diff > MaxDiff()) {
-        int floorPlayers = 6;
-        if (totalPlayerCount < floorPlayers) {
-            if (DebugLevel >= 7) DebugBalance("Not enough players in server, minimum is " + floorPlayers);
-            return;
-        }
-
-        if (totalPlayerCount >= (MaximumServerSize-1)) {
-            if (DebugLevel >= 7) DebugBalance("Server is full, no balancing or unstacking will be attempted!");
-            IncrementTotal(); // no matching stat, reflect total deaths handled
-            return;
-        }
-
-        if (fUnassigned.Count >= (diff - MaxDiff())) {
-            DebugBalance("Wait for " + fUnassigned.Count + " unassigned players to be assigned before activating autobalance");
-            IncrementTotal(); // no matching stat, reflect total deaths handled
-            return;
-        }
-
-        needsBalancing = true;
-    }
 
     /* Pre-conditions */
 
     player = GetPlayer(name);
     if (player == null) return;
+
     if (!fModeToSimple.TryGetValue(fServerInfo.GameMode, out simpleMode)) {
         DebugBalance("Unknown game mode: " + fServerInfo.GameMode);
         simpleMode = fServerInfo.GameMode;
@@ -2132,10 +2127,59 @@ private void BalanceAndUnstack(String name) {
         perMode = new PerModeSettings();
     }
 
-    /* Per-mode settings */
+    /* Per-mode and player info */
 
+    String extractedTag = ExtractTag(player);
     Speed balanceSpeed = GetBalanceSpeed(perMode);
     double unstackTicketRatio = GetUnstackTicketRatio(perMode);
+
+    if (totalPlayerCount >= (perMode.MaxPlayers-1)) {
+        if (DebugLevel >= 7) DebugBalance("Server is full by per-mode Max Players, no balancing or unstacking will be attempted!");
+        IncrementTotal(); // no matching stat, reflect total deaths handled
+        return;
+    }
+
+    /* Check dispersals */
+    
+    bool mustMove = false;
+    bool isDisperseByRank = (player.Rank >= perMode.DisperseEvenlyForRank);
+    List<String> dispersalList = null;
+    bool isDisperseByList = false;
+    if (perMode.EnableDisperseEvenlyList) {
+        dispersalList = new List<String>(DisperseEvenlyList);
+        if (dispersalList.Contains(name) || dispersalList.Contains(player.EAGUID)) {
+            isDisperseByList = true;
+        } else if (!String.IsNullOrEmpty(extractedTag) && dispersalList.Contains(extractedTag)) {
+            isDisperseByList = true;
+        }
+    }
+    if (isDisperseByRank) {
+        DebugBalance("ON MUST MOVE LIST ^b" + name + "^n T:" + player.Team + ", Rank " + player.Rank + " >= " + perMode.DisperseEvenlyForRank);
+        mustMove = true;
+    } else if (isDisperseByList) {
+        DebugBalance("ON MUST MOVE LIST ^b" + player.FullName + "^n T:" + player.Team + ", disperse evenly enabled");
+        mustMove = true;
+    }
+
+    /* Check if balancing is needed */
+
+    if (diff > MaxDiff()) {
+        int floorPlayers = 6;
+        if (totalPlayerCount < floorPlayers) {
+            if (DebugLevel >= 7) DebugBalance("Not enough players in server, minimum is " + floorPlayers);
+            return;
+        }
+
+        if (!mustMove && fUnassigned.Count >= (diff - MaxDiff())) {
+            DebugBalance("Wait for " + fUnassigned.Count + " unassigned players to be assigned before activating autobalance");
+            IncrementTotal(); // no matching stat, reflect total deaths handled
+            return;
+        }
+
+        needsBalancing = true;
+    }
+
+    /* Per-mode settings */
 
     // Adjust for duration of balance active
     if (needsBalancing && fBalanceIsActive && balanceSpeed == Speed.Adaptive && fLastBalancedTimestamp != DateTime.MinValue) {
@@ -2175,7 +2219,9 @@ private void BalanceAndUnstack(String name) {
             vip.Remove(String.Empty);
         }
         */
-        if (vip.Contains(name) || vip.Contains(ExtractTag(player)) || vip.Contains(player.EAGUID)) {
+        if (vip.Contains(name) 
+        || (!String.IsNullOrEmpty(extractedTag) && vip.Contains(extractedTag))
+        || vip.Contains(player.EAGUID)) {
             DebugBalance("Excluding ^b" + player.FullName + "^n: whitelisted" + andSlow);
             fExcludedRound = fExcludedRound + 1;
             IncrementTotal();
@@ -2228,7 +2274,12 @@ private void BalanceAndUnstack(String name) {
     }
     for (int i = 0; i < fromList.Count; ++i) {
         if (fromList[i].Name == player.Name) {
-            if (needsBalancing && balanceSpeed != Speed.Fast && fromList.Count >= minPlayers && topPlayersPerTeam != 0 && i < topPlayersPerTeam) {
+            if (!mustMove 
+            && needsBalancing 
+            && balanceSpeed != Speed.Fast 
+            && fromList.Count >= minPlayers 
+            && topPlayersPerTeam != 0 
+            && i < topPlayersPerTeam) {
                 String why = (balanceSpeed == Speed.Slow) ? "Speed is slow, excluding top scorers" : "Top Scorers enabled";
                 if (!loggedStats) {
                     DebugBalance(GetPlayerStatsString(name));
@@ -2249,7 +2300,11 @@ private void BalanceAndUnstack(String name) {
     // Exclude if player joined less than MinutesAfterJoining
     double joinedMinutesAgo = GetPlayerJoinedTimeSpan(player).TotalMinutes;
     double enabledForMinutes = now.Subtract(fEnabledTimestamp).TotalMinutes;
-    if (needsBalancing && (enabledForMinutes > MinutesAfterJoining) && balanceSpeed != Speed.Fast && (joinedMinutesAgo < MinutesAfterJoining)) {
+    if (!mustMove 
+    && needsBalancing 
+    && (enabledForMinutes > MinutesAfterJoining) 
+    && balanceSpeed != Speed.Fast 
+    && (joinedMinutesAgo < MinutesAfterJoining)) {
         if (!loggedStats) {
             DebugBalance(GetPlayerStatsString(name));
             loggedStats = true;
@@ -2262,26 +2317,42 @@ private void BalanceAndUnstack(String name) {
 
     /* Balance */
 
-    bool mustMove = false;
-
     int toTeamDiff = 0;
-    int toTeam = ToTeam(name, player.Team, false, out toTeamDiff, out mustMove); // take into account dispersal by Rank, etc.
+    int toTeam = ToTeam(name, player.Team, false, out toTeamDiff, ref mustMove); // take into account dispersal by Rank, etc.
 
-    if (needsBalancing && (toTeam == 0 || toTeam == player.Team)) {
-        if (DebugLevel >= 8) DebugBalance("Exempting ^b" + name + "^n, target team selected is same or zero");
+    if (toTeam == 0 || toTeam == player.Team) {
+        if (needsBalancing || mustMove) {
+            if (DebugLevel >= 7) DebugBalance("Exempting ^b" + name + "^n, target team selected is same or zero");
+            fExemptRound = fExemptRound + 1;
+            IncrementTotal();
+        }
+        return;
+    }
+
+    int numTeams = (isSQDM) ? 4 : 2;
+    int maxTeamSlots = (MaximumServerSize/numTeams);
+    int maxTeamPerMode = (perMode.MaxPlayers/numTeams);
+    List<PlayerModel> lt = GetTeam(toTeam);
+    int toTeamSize = (lt == null) ? 0 : lt.Count;
+
+    if (toTeamSize == maxTeamSlots || toTeamSize == maxTeamPerMode) {
+        if (DebugLevel >= 7) DebugBalance("Exempting ^b" + name + "^n, target team is full " + toTeamSize);
         fExemptRound = fExemptRound + 1;
         IncrementTotal();
         return;
     }
 
-    if (needsBalancing && toTeamDiff <= MaxDiff()) {
+    if (mustMove) DebugBalance("^4MUST MOVE^0 ^b" + name + "^n from " + GetTeamName(player.Team) + " to " + GetTeamName(toTeam));
+
+    if (!mustMove && needsBalancing && toTeamDiff <= MaxDiff()) {
         DebugBalance("Exempting ^b" + name + "^n, difference between " + GetTeamName(player.Team) + " team and " + GetTeamName(toTeam) + " team is only " + toTeamDiff);
         fExemptRound = fExemptRound + 1;
         IncrementTotal();
         return;
     }
 
-    if (fBalanceIsActive && toTeam != 0) {
+
+    if ((fBalanceIsActive || mustMove) && toTeam != 0) {
         String ts = null;
         if (isSQDM) {
             ts = fTeam1.Count + "(A) vs " + fTeam2.Count + "(B) vs " + fTeam3.Count + "(C) vs " + fTeam4.Count + "(D)";
@@ -2859,17 +2930,14 @@ private bool CheckTeamSwitch(String name, int toTeam) {
 
     // Adjust for SQDM
     if (isSQDM && fServerInfo != null) {
-        PerModeSettings perMode = null;
-        String simpleMode = String.Empty;
-        if (fModeToSimple.TryGetValue(fServerInfo.GameMode, out simpleMode) && fPerMode.TryGetValue(simpleMode, out perMode) && perMode != null) {
-            if (GetPopulation(perMode, true) == Population.Low) {
-                // Allow team switch to any team except biggest and winning
-                if (toTeam != biggestTeam && toTeam != winningTeam) {
-                    DebugUnswitch("ALLOWED: SQDM Low population and not switching to biggest or winning team: ^b" + name);
-                    SetSpawnMessages(name, String.Empty, String.Empty, false);
-                    CheckAbortMove(name);
-                    return true;
-                }
+        PerModeSettings perMode = GetPerModeSettings();
+        if (GetPopulation(perMode, true) == Population.Low) {
+            // Allow team switch to any team except biggest and winning
+            if (toTeam != biggestTeam && toTeam != winningTeam) {
+                DebugUnswitch("ALLOWED: SQDM Low population and not switching to biggest or winning team: ^b" + name);
+                SetSpawnMessages(name, String.Empty, String.Empty, false);
+                CheckAbortMove(name);
+                return true;
             }
         }
     }
@@ -3836,9 +3904,11 @@ private int MaxDiff() {
     String simpleMode = String.Empty;
     if (IsSQDM()) {
         return ((TotalPlayerCount <= 32) ? 1 : 2);
-    } else if (fModeToSimple.TryGetValue(fServerInfo.GameMode, out simpleMode) && fPerMode.TryGetValue(simpleMode, out perMode) && perMode != null) {
-        return ((GetPopulation(perMode, false) == Population.High) ? 2 : 1);
     }
+    perMode = GetPerModeSettings();
+
+    if (!perMode.isDefault) return ((GetPopulation(perMode, false) == Population.High) ? 2 : 1);
+
     return 2;
 }
 
@@ -4048,9 +4118,8 @@ private int DifferenceFromSmallest(int fromTeam) {
 }
 
 
-private int ToTeam(String name, int fromTeam, bool isReassign, out int diff, out bool mustMove) {
+private int ToTeam(String name, int fromTeam, bool isReassign, out int diff, ref bool mustMove) {
     diff = 0;
-    mustMove = false;
     if (fromTeam < 1 || fromTeam > 4) return 0;
 
     List<PlayerModel>[] byId = new List<PlayerModel>[5]{null, fTeam1, fTeam2, fTeam3, fTeam4};
@@ -4063,6 +4132,17 @@ private int ToTeam(String name, int fromTeam, bool isReassign, out int diff, out
     int[] descendingTickets = null;
 
     AnalyzeTeams(out diff, out ascendingSize, out descendingTickets, out biggestTeam, out smallestTeam, out winningTeam, out losingTeam);
+
+    // diff already set by AnalyzeTeams
+    if (mustMove) {
+        int disTeam = ToTeamByDispersal(name, fromTeam, byId);
+        if (disTeam != 0) {
+            DebugWrite("^9ToTeam: dispersal returned team " + disTeam, 7);
+            return disTeam;
+        }
+        // fall thru if dispersal doesn't find a suitable team
+        mustMove = false;
+    }
 
     DebugWrite("^9ToTeam: winning/losing = " + winningTeam + "/" + losingTeam, 8);
     if (DebugLevel >= 8 && descendingTickets != null) {
@@ -4144,6 +4224,133 @@ private int ToTeam(String name, int fromTeam, bool isReassign, out int diff, out
     // TBD, for SQDM, based on name, might need to take into account dispersal by Rank, etc.
     // mustMove set to True if dispersal policy (etc) must override other policies
     return targetTeam;
+}
+
+private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] byId) {
+    int targetTeam = 0;
+    bool allEqual = false;
+    int grandTotal = 0;
+
+    if (byId == null) return 0;
+
+    /*
+    Select a team that would disperse this player evenly with similar players,
+    regardless of balance or stacking. Dispersal list takes priority over
+    other dispersal types.
+    */
+
+    PlayerModel player = GetPlayer(name);
+    if (player == null) return 0;
+
+    PerModeSettings perMode = GetPerModeSettings();
+    if (perMode.isDefault) return 0;
+
+    bool isSQDM = IsSQDM();
+
+    bool isDispersalByRank = (player.Rank >= perMode.DisperseEvenlyForRank);
+    List<String> dispersalList = null;
+    bool isDispersalByList = false;
+    if (perMode.EnableDisperseEvenlyList) {
+        String extractedTag = ExtractTag(player);
+        dispersalList = new List<String>(DisperseEvenlyList);
+        if (dispersalList.Contains(name) 
+        || dispersalList.Contains(player.EAGUID) 
+        && (!String.IsNullOrEmpty(extractedTag) && dispersalList.Contains(extractedTag))) {
+            isDispersalByList = true;
+        }
+    }
+
+    /* By Dispersal List */
+
+    if (isDispersalByList) {
+        int[] usualSuspects = new int[5]{0,0,0,0,0};
+
+        for (int i = 1; i < byId.Length; ++i) {
+            foreach (PlayerModel p in byId[i]) {
+                if (p.Name == player.Name) continue; // don't count this player
+                
+                String et = ExtractTag(p);
+                if (dispersalList.Contains(p.Name) 
+                || dispersalList.Contains(p.EAGUID)
+                || (!String.IsNullOrEmpty(et) && dispersalList.Contains(et))) {
+                    usualSuspects[i] = usualSuspects[i] + 1;
+                    grandTotal = grandTotal + 1;
+                }
+            }
+        }
+
+        String an = usualSuspects[1] + "/" + usualSuspects[2];
+        if (isSQDM) an = an + "/" + usualSuspects[3] + "/" + usualSuspects[4];
+        DebugWrite("ToTeamByDispersal: analysis of ^b" + player.FullName + "^n dispersal by list: " + an, 5);
+
+        // Pick smallest one
+        targetTeam = 0;
+        allEqual = true;
+        int minSuspects = 64;
+        for (int i = 1; i < usualSuspects.Length; ++i) {
+            if (!isSQDM && i > 2) continue;
+            if (allEqual && usualSuspects[i] == minSuspects) {
+                allEqual = true;
+            } else if (usualSuspects[i] < minSuspects) {
+                minSuspects = usualSuspects[i];
+                targetTeam = i;
+                if (i != 1) allEqual = false;
+            } else {
+                if (i != 1) allEqual = false;
+            }
+        }
+
+        if (grandTotal > 1 && !allEqual && targetTeam != 0 && targetTeam != fromTeam) return targetTeam;
+
+        if (allEqual) DebugWrite("^9ToTeamByDispersal: all equal list, skipping", 5);
+        // otherwise fall through and try rank
+    }
+
+    /* By Rank? */
+
+    if (isDispersalByRank) {
+        int[] rankers = new int[5]{0,0,0,0,0};
+        grandTotal = 0;
+
+        for (int i = 1; i < byId.Length; ++i) {
+            foreach (PlayerModel p in byId[i]) {
+                if (p.Name == player.Name) continue; // don't count this player
+                if (p.Rank >= perMode.DisperseEvenlyForRank) {
+                    rankers[i] = rankers[i] + 1;
+                    grandTotal = grandTotal + 1;
+                }
+            }
+        }
+
+        String a = rankers[1] + "/" + rankers[2];
+        if (isSQDM) a = a + "/" + rankers[3] + "/" + rankers[4];
+        DebugWrite("ToTeamByDispersal: analysis of ^b" + name + "^n dispersal of rank >= " + perMode.DisperseEvenlyForRank + ": " + a, 5);
+
+        // Pick smallest one
+        targetTeam = 0;
+        allEqual = true;
+        int minRanks = 64;
+        for (int i = 1; i < rankers.Length; ++i) {
+            if (!isSQDM && i > 2) continue;
+            if (allEqual && rankers[i] == minRanks) {
+                allEqual = true;
+            } else if (rankers[i] < minRanks) {
+                minRanks = rankers[i];
+                targetTeam = i;
+                if (i != 1) allEqual = false;
+            } else {
+                if (i != 1) allEqual = false;
+            }
+        }
+
+        if (allEqual || grandTotal < 2) { // TBD
+            DebugWrite("^9ToTeamByDispersal: all equal by rank, skipping", 5);
+            return 0; // don't disperse
+        }
+        // TBD fall through
+    }
+
+    return targetTeam; // ok if 0 or same as fromTeam, caller checks
 }
 
 private int ToSquad(String name, int team) {
@@ -4570,7 +4777,7 @@ private void SetSpawnMessages(String name, String chat, String yell, bool quiet)
     if (player == null) return;
 
     if (!String.IsNullOrEmpty(player.SpawnChatMessage)) {
-        DebugWrite("^9Overwriting previous chat message for ^b" + name + ": " + player.SpawnChatMessage, 7);
+        DebugWrite("^9Overwriting previous chat message for ^b" + name + "^n: " + player.SpawnChatMessage, 7);
     }
     player.SpawnChatMessage = chat;
     player.SpawnYellMessage = yell;
@@ -4624,6 +4831,19 @@ private double GetTeamPoints(int team) {
     return total;
 }
 
+
+private PerModeSettings GetPerModeSettings() {
+    PerModeSettings perMode = null;
+    if (fModeToSimple == null || fServerInfo == null) return new PerModeSettings();
+    String simpleMode = String.Empty;
+    if (fModeToSimple.TryGetValue(fServerInfo.GameMode, out simpleMode) 
+    && !String.IsNullOrEmpty(simpleMode)
+    && fPerMode.TryGetValue(simpleMode, out perMode)
+    && perMode != null) {
+        return perMode;
+    }
+    return new PerModeSettings();
+}
 
 
 
@@ -4723,7 +4943,7 @@ private void LogStatus() {
 
 /* ======================== UTILITIES ============================= */
 
-
+#region UTILITIES
 
 
 
@@ -4848,8 +5068,13 @@ static class PROTObalancerUtils {
         return speeds;
     }
 
+#region HTML_DOC
     public const String HTML_DOC = @"
 <h1>Multi-Balancer &amp; Unstacker, including SQDM</h1>
+<h3>Acknowledgments</h3>
+<p>This plugin would not have been possible without the help and support of these individuals and communiites:<br></br>
+<small>[C2C]Blitz, [FTB]guapoloko, [Xtra]HexaCanon, [11]EBassie, Firejack, [IAF]SDS, dyn, Jaythegreat1, ADKGamers, AgentHawk, TreeSaint, Taxez, PatPgtips, Hutchew, LumpyNutz, popbndr, tarreltje, 24Flat ... and many others</small></p>
+
 <p>For BF3, this plugin does live round team balancing and unstacking for all game modes, including Squad Deathmatch (SQDM).</p>
 
 <h2>THIS IS JUST A PROTOTYPE FOR FEEDBACK!</h2>
@@ -5098,6 +5323,8 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Disperse Evenly For Rank >=</b>: Number greater than or equal to 0 and less than or equal to 145, default 145. Any players with this absolute rank (Colonel 100 is 145) or higher will be dispersed evenly across teams. This is useful to insure that Colonel 100 ranked players don't all stack on one team. Set to 0 to disable.</p>
 
+<p><b>Enable Disperse Evenly List</b>:  True or False, default False. If set to true, the players are matched against the <b>Disperse Evenly List</b> and any that match will be dispersed evenly across teams. This is useful to insure that certain clans or groups of players don't always dominate whatever team they are not on.</p>
+
 <p><b>Definition Of High Population For Players >=</b>: Number greater than or equal to 0 and less than or equal to <b>Max&nbsp;Players</b>. This is where you define the High population level. If the total number of players in the server is greater than or equal to this number, population is High.</p>
 
 <p><b>Definition Of Low Population For Players <=</b>: Number greater than or equal to 0 and less than or equal to <b>Max&nbsp;Players</b>. This is where you define the Low population level. If the total number of players in the server is less than or equal to this number, population is Low. If the total number is between the definition of High and Low, it is Medium.</p>
@@ -5110,7 +5337,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Definition Of Early Phase As Minutes From Start</b>: Number greater than or equal to 0. This is where you define the Early phase, as minutes from the start of the round. For example, if your round starts with 20 minutes on the clock and you set this to 5, the phase is Early until 20-5=15 minutes are left on the clock.</p>
 
-<p><b>Definition Of Late Phase As Minutes From End</b>: This is where you define the Late phase, as minutes from the end of the round. For example, if your round starts with 20 minutes on the clock and you set this to 8, the phase is Late for when there 8 minutes or less left on the clock.</p>
+<p><b>Definition Of Late Phase As Minutes From End</b>: Number greater than or equal to 0. This is where you define the Late phase, as minutes from the end of the round. For example, if your round starts with 20 minutes on the clock and you set this to 8, the phase is Late for when there 8 minutes or less left on the clock.</p>
 
 <p>These settings are unique to Rush and Squad Rush.</p>
 
@@ -5137,8 +5364,9 @@ For each phase, there are three unstacking settings for server population: Low, 
 <h2>Development</h2>
 <p>TBD</p>
 ";
+#endregion
 
 } // end PROTObalancerUtils
-
+#endregion
 
 } // end namespace PRoConEvents
