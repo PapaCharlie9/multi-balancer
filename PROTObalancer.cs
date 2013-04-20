@@ -4892,7 +4892,11 @@ public void CheckForPluginUpdate() {
 		XmlDocument xml = new XmlDocument();
         try {
             xml.Load("http://myrcon.com/procon/plugins/plugin/PROTObalancer");
-        } catch (System.Security.SecurityException) {
+            //WebClient c = new WebClient();
+            //String x = c.DownloadString("http://myrcon.com/procon/plugins/plugin/PROTObalancer");
+            //xml.LoadXml(x);
+        } catch (System.Security.SecurityException e) {
+            if (DebugLevel >= 7) ConsoleException(e);
             ConsoleWrite(" ");
             ConsoleWrite("^8^bNOTICE! Unable to check for plugin update!");
             ConsoleWrite("Tools => Options... => Plugins tab: ^bPlugin security^n is set to ^bRun plugins in a sandbox^n.");
