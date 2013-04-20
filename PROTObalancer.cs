@@ -33,6 +33,7 @@ using System.Timers;
 using System.Diagnostics;
 using System.ComponentModel;
 using System.Reflection;
+using System.Xml;
 
 using PRoCon.Core;
 using PRoCon.Core.Plugin;
@@ -84,6 +85,10 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
     public const double MODEL_TIMEOUT = 24*60; // in minutes
 
     public const int CRASH_COUNT_HEURISTIC = 6; // player count difference signifies a crash
+
+    public const int MIN_UPDATE_USAGE_COUNT = 10; // minimum number of plugin updates in use
+
+    public const double CHECK_FOR_UPDATES_MINS = 30;
 
     public static String[] TEAM_NAMES = new String[] { "None", "US", "RU" };
 
@@ -450,6 +455,7 @@ private bool fServerCrashed = false; // because fServerUptime >  fServerInfo.Ser
 private DateTime fLastBalancedTimestamp = DateTime.MinValue;
 private DateTime fEnabledTimestamp = DateTime.MinValue;
 private String fLastMsg = null;
+private DateTime fLastVersionCheckTimestamp = DateTime.MinValue;
 
 // Data model
 private List<String> fAllPlayers = null;
@@ -648,6 +654,7 @@ public PROTObalancer() {
     fRushStage = 0;
     fRushAttackerTickets = 0;
     fMoveStash = new List<MoveInfo>();
+    fLastVersionCheckTimestamp = DateTime.MinValue;
     
     /* Settings */
 
@@ -1518,6 +1525,8 @@ public void OnPluginEnable() {
     ServerCommand("reservedSlotsList.list");
     ServerCommand("serverInfo");
     ServerCommand("admin.listPlayers", "all");
+
+    CheckForPluginUpdate();
 }
 
 
@@ -1841,6 +1850,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
             }
         }
 
+        // Show final status 
         if (fFinalStatus != null) {
             try {
                 DebugWrite("^bFINAL STATUS FOR PREVIOUS ROUND:^n", 3);
@@ -1857,12 +1867,14 @@ public override void OnServerInfo(CServerInfo serverInfo) {
             DebugWrite("ServerInfo update: " + serverInfo.Map + "/" + serverInfo.GameMode, 4);
         }
     
+        // Check for server crash
         if (fServerUptime > 0 && fServerUptime > serverInfo.ServerUptime) {
             fServerCrashed = true;
         }
         fServerInfo = serverInfo;
         fServerUptime = serverInfo.ServerUptime;
 
+        // Update max tickets
         bool isRush = IsRush();
         double minTickets = Double.MaxValue;
         double maxTickets = 0;
@@ -1906,6 +1918,12 @@ public override void OnServerInfo(CServerInfo serverInfo) {
             }
             // update last known attacker ticket value
             fRushAttackerTickets = attacker;
+        }
+
+        // Check for plugin updates periodically
+        if (fLastVersionCheckTimestamp != DateTime.MinValue 
+        && DateTime.Now.Subtract(fLastVersionCheckTimestamp).TotalMinutes > CHECK_FOR_UPDATES_MINS) {
+            CheckForPluginUpdate();
         }
     } catch (Exception e) {
         ConsoleException(e);
@@ -2332,7 +2350,7 @@ private void BalanceAndUnstack(String name) {
         return;
     }
 
-    int numTeams = (isSQDM) ? 4 : 2;
+    int numTeams = 2; //(isSQDM) ? 4 : 2; // TBD
     int maxTeamSlots = (MaximumServerSize/numTeams);
     int maxTeamPerMode = (perMode.MaxPlayers/numTeams);
     List<PlayerModel> lt = GetTeam(toTeam);
@@ -2393,10 +2411,15 @@ private void BalanceAndUnstack(String name) {
 
         // SQDM, not on the biggest team
         if (isSQDM && !mustMove && balanceSpeed != Speed.Fast && player.Team != biggestTeam) {
-            DebugBalance("Exempting ^b" + name + "^n, not on the biggest team");
-            fExemptRound = fExemptRound + 1;
-            IncrementTotal();
-            return;
+            // Make sure player's team isn't the same size as biggest
+            List<PlayerModel> aTeam = GetTeam(player.Team);
+            List<PlayerModel> bigTeam = GetTeam(biggestTeam);
+            if (aTeam == null || bigTeam == null || (aTeam != null && bigTeam != null && aTeam.Count < bigTeam.Count)) {
+                DebugBalance("Exempting ^b" + name + "^n, not on the biggest team");
+                fExemptRound = fExemptRound + 1;
+                IncrementTotal();
+                return;
+            }
         }
 
         if (!mustMove && balanceSpeed != Speed.Fast && fromList.Count >= minPlayers) { // TBD
@@ -2463,8 +2486,7 @@ private void BalanceAndUnstack(String name) {
         return;
     }
 
-    int tpc = TotalPlayerCount;
-    if (tpc > (MaximumServerSize-2) || tpc > (perMode.MaxPlayers-2)) {
+    if (totalPlayerCount > (MaximumServerSize-2) || totalPlayerCount > (perMode.MaxPlayers-2)) {
         // TBD - kick idle players?
         if (DebugLevel >= 7) DebugBalance("No room to swap players for unstacking");
         IncrementTotal(); // no matching stat, reflect total deaths handled
@@ -3675,6 +3697,10 @@ private void ServerCommand(params String[] args)
     this.ExecuteCommand(list.ToArray());
 }
 
+private void TaskbarNotify(String title, String msg) {
+    this.ExecuteCommand("procon.protected.notification.write", title, msg);
+}
+
 
 
 private List<String> GetSimplifiedModes() {
@@ -4859,6 +4885,121 @@ private void CheckDeativateBalancer(String reason) {
         }
     }
 }
+
+
+public void CheckForPluginUpdate() {
+	try {
+		XmlDocument xml = new XmlDocument();
+        try {
+            xml.Load("http://myrcon.com/procon/plugins/plugin/PROTObalancer");
+        } catch (System.Security.SecurityException) {
+            ConsoleWrite(" ");
+            ConsoleWrite("^8^bNOTICE! Unable to check for plugin update!");
+            ConsoleWrite("Tools => Options... => Plugins tab: ^bPlugin security^n is set to ^bRun plugins in a sandbox^n.");
+            //ConsoleWrite("Please add ^bmyrcon.com^n to your trusted ^bOutgoing connections^n");
+            ConsoleWrite("Consider changing to ^bRun plugins with no restrictions.^n");
+            ConsoleWrite("Alternatively, check the ^bPlugins^n forum for an update to this plugin.");
+            ConsoleWrite(" ");
+            fLastVersionCheckTimestamp = DateTime.MaxValue;
+            return;
+        } 
+        if (DebugLevel >= 8) ConsoleDebug("CheckForPluginUpdate: Got " + xml.BaseURI);
+		XmlNodeList rows = xml.SelectNodes("//tr");
+        if (DebugLevel >= 8) ConsoleDebug("CheckForPluginUpdate: # rows = " + rows.Count);
+        Dictionary<String,int> versions = new Dictionary<String,int>();
+		foreach (XmlNode tr in rows) {
+            XmlNode ver = tr.SelectSingleNode("td[1]");
+            XmlNode count = tr.SelectSingleNode("td[2]");
+            if (ver != null && count != null) {
+                if (DebugLevel >= 8) ConsoleDebug("CheckForPluginUpdate: Version: " + ver.InnerText + ", Count: " + count.InnerText);
+                int n = 0;
+                if (!Int32.TryParse(count.InnerText, out n)) continue; 
+                versions[ver.InnerText] = n;
+            }
+		}
+
+        // Select current version and any "later" versions
+        int usage = 0;
+        String myVersion = GetPluginVersion();
+        if (!versions.TryGetValue(myVersion, out usage)) {
+            DebugWrite("CheckForPluginUpdate: " + myVersion + " not found!", 7);
+            return;
+        }
+
+        // Update check time
+        fLastVersionCheckTimestamp = DateTime.Now;
+
+        // numeric sort
+        List<String> byNumeric = new List<String>();
+        byNumeric.AddRange(versions.Keys);
+        // Sort numerically descending
+        byNumeric.Sort(delegate(String lhs, String rhs) {
+            if (lhs == rhs) return 0;
+            if (String.IsNullOrEmpty(lhs)) return 1;
+            if (String.IsNullOrEmpty(rhs)) return -1;
+            uint l = VersionToNumeric(lhs);
+            uint r = VersionToNumeric(rhs);
+            if (l < r) return 1;
+            if (l > r) return -1;
+            return 0;
+        });
+        DebugWrite("CheckForPluginUpdate: sorted version list:", 1);
+        foreach (String u in byNumeric) {
+            DebugWrite(u + " (" + String.Format("{0:X8}", VersionToNumeric(u)) + ")", 7);
+        }
+
+        int position = byNumeric.IndexOf(myVersion);
+
+        DebugWrite("CheckForPluginUpdate: found " + position + " newer versions", 5);
+
+        if (position != 0) {
+            // Newer versions found
+            // Find the newest version with the largest number of usages
+            int hasMost = -1;
+            int most = 0;
+            for (int i = position-1; i >= 0; --i) {
+                int newerVersionCount = versions[byNumeric[i]];
+                if (hasMost == -1 || most < newerVersionCount) {
+                    // Skip newer versions that don't have enough usage yet
+                    if (most > 0 && newerVersionCount < MIN_UPDATE_USAGE_COUNT) continue;
+                    hasMost = i;
+                    most = versions[byNumeric[i]];
+                }
+            }
+
+            if (hasMost != -1 && hasMost < byNumeric.Count && most >= MIN_UPDATE_USAGE_COUNT) {
+                String newVersion = byNumeric[hasMost];
+                ConsoleWrite("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+                ConsoleWrite(" ");
+                ConsoleWrite("^8^bA NEW VERSION OF THIS PLUGIN IS AVAILABLE!");
+                ConsoleWrite(" ");
+                ConsoleWrite("^8^bPLEASE UPDATE TO VERSION: ^0" + newVersion);
+                ConsoleWrite(" ");
+                ConsoleWrite("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+
+                TaskbarNotify(GetPluginName() + ": new version available!", "Please download and install " + newVersion); 
+            }
+        }
+	} catch (Exception e) {
+		ConsoleException(e);
+	}
+}
+
+private uint VersionToNumeric(String ver) {
+    uint numeric = 0;
+    byte part = 0;
+    Match m = Regex.Match(ver, @"^\s*([0-9]+)\.([0-9]+)\.([0-9]+)\.([0-9]+)(\w*)\s*$");
+    if (m.Success) {
+        for (int i = 1; i < 5; ++i) {
+            if (!Byte.TryParse(m.Groups[i].Value, out part)) {
+                part = 0;
+            }
+            numeric = (numeric << 8) | part;
+        }
+    }
+    return numeric;
+}
+
 
 private void LogStatus() {
   try {
