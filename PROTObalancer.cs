@@ -628,8 +628,7 @@ public PROTObalancer() {
     fBoolDict.Add(1, typeof(bool));
 
     fListStrDict = new Dictionary<int, Type>();
-    fListStrDict.Add(0, typeof(List<String>));
-    fListStrDict.Add(1, typeof(List<string>));
+    fListStrDict.Add(0, typeof(String[]));
     
     fPerMode = new Dictionary<String,PerModeSettings>();
     
@@ -1191,7 +1190,16 @@ public void SetPluginVariable(String strVariable, String strValue) {
             } else if (fEasyTypeDict.ContainsValue(fieldType)) {
                 field.SetValue(this, TypeDescriptor.GetConverter(fieldType).ConvertFromString(strValue));
             } else if (fListStrDict.ContainsValue(fieldType)) {
-                field.SetValue(this, new List<string>(CPluginVariable.DecodeStringArray(strValue)));
+                if (DebugLevel >= 8) ConsoleDebug("String array " + propertyName + " <- " + strValue);
+                field.SetValue(this, CPluginVariable.DecodeStringArray(strValue));
+                if (DebugLevel >= 8 && propertyName == "Whitelist") {
+                    String l = "Whitelist: ";
+                    for (int i = 0; i < Whitelist.Length; ++i) {
+                        l = l + Whitelist[i] + ", ";
+                    }
+                    l = l + "end";
+                    ConsoleDebug(l);
+                }
             } else if (fBoolDict.ContainsValue(fieldType)) {
                 DebugWrite(propertyName + " strValue = " + strValue, 6);
                 if (Regex.Match(strValue, "true", RegexOptions.IgnoreCase).Success) {
@@ -1199,6 +1207,8 @@ public void SetPluginVariable(String strVariable, String strValue) {
                 } else {
                     field.SetValue(this, false);
                 }
+            } else {
+                if (DebugLevel >= 8) ConsoleDebug("Unknown var " + propertyName + " with type " + fieldType);
             }
         } else {
             Match m = Regex.Match(tmp, @"([^:]+):\s([^:]+)$");
@@ -5035,7 +5045,7 @@ public void CheckForPluginUpdate() {
         });
         DebugWrite("CheckForPluginUpdate: sorted version list:", 7);
         foreach (String u in byNumeric) {
-            DebugWrite(u + " (" + String.Format("{0:X8}", VersionToNumeric(u)) + ")", 7);
+            DebugWrite(u + " (" + String.Format("{0:X8}", VersionToNumeric(u)) + "), count = " + versions[u], 7);
         }
 
         int position = byNumeric.IndexOf(myVersion);
