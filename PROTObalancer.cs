@@ -2524,6 +2524,7 @@ private void BalanceAndUnstack(String name) {
     /* Unstack */
 
     if (winningTeam <= 0 || winningTeam >= fTickets.Length || losingTeam <= 0 || losingTeam >= fTickets.Length || balanceSpeed == Speed.Stop) {
+        if (DebugLevel >= 5) DebugBalance("Skipping unstack: winning = " + winningTeam + ", losingTeam = " + losingTeam + ", speed = " + balanceSpeed);
         IncrementTotal(); // no matching stat, reflect total deaths handled
         return;
     }
@@ -4490,9 +4491,6 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] byI
 private int ToSquad(String name, int team) {
     int ret = 0;
     try {
-        PlayerModel player = GetPlayer(name);
-        if (player == null) return 0;
-
         List<PlayerModel> teamList = null;
 
         teamList = GetTeam(team);
@@ -4541,7 +4539,7 @@ private int ToSquad(String name, int team) {
                 ss = ss + k + ":" + squads[k] + "/";
             }
             ss = ss + "-";
-            ConsoleDebug("ToSquad " + ss);
+            ConsoleDebug("ToSquad ^b" + name + "^n: " + ss);
         }
     } catch (Exception e) {
         ConsoleException(e);
