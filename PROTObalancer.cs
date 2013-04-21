@@ -88,7 +88,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     public const int MIN_UPDATE_USAGE_COUNT = 10; // minimum number of plugin updates in use
 
-    public const double CHECK_FOR_UPDATES_MINS = 30;
+    public const double CHECK_FOR_UPDATES_MINS = 12*60; // 12 hours
 
     public static String[] TEAM_NAMES = new String[] { "None", "US", "RU" };
 
@@ -884,7 +884,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "0.0.0.14";
+    return "0.0.0.15";
 }
 
 public String GetPluginAuthor() {
@@ -5555,10 +5555,10 @@ For each phase, there are three unstacking settings for server population: Low, 
 <tr><td>CTF</td><td>Capture The Flag, uses minutes to define phase instead of tickets</td></tr>
 <tr><td>Gun Master</td><td>Only has a few settings</td></tr>
 <tr><td>Rush</td><td>Has unique settings shared with Squad Rush and no other modes</td></tr>
-<tr><td>Squad Deathmatch</td><td>Standard settings, similar to Conquest</td></tr>
+<tr><td>Squad Deathmatch</td><td>Standard settings, similar to Conquest, except that unstacking is disabled (default 0)</td></tr>
 <tr><td>Squad Rush</td><td>Has unique settings shared with Rush and no other modes</td></tr>
 <tr><td>Superiority</td><td>Air and Tank Superiority</td></tr>
-<tr><td>Team Deathmatch</td><td>Standard settings, similar to Conquest</td></tr>
+<tr><td>Team Deathmatch</td><td>TDM and TDM Close Quarters, standard settings, similar to Conquest</td></tr>
 <tr><td>Unknown or New Mode</td><td>Generic settings for any new mode that gets introduced before this plugin gets updated</td></tr>
 </table></p>
 
