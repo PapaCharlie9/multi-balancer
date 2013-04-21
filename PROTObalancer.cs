@@ -875,7 +875,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "0.0.0.13";
+    return "0.0.0.14";
 }
 
 public String GetPluginAuthor() {
@@ -5239,28 +5239,24 @@ static class PROTObalancerUtils {
 <p>For BF3, this plugin does live round team balancing and unstacking for all game modes, including Squad Deathmatch (SQDM).</p>
 
 <h2>THIS IS JUST A PROTOTYPE FOR FEEDBACK!</h2>
-<p>This version of the plugin is capable of doing balancing and reassignment by moving players. <font color=#FF0000>Set PROTObalancer's <b>Enable Logging Only Mode</b> to true</font>, which insures that actions are logged only, not actually applied to your server. If you do not do this, this prototype will conflict with other balancing or player switching plugins and a player might be moved back and forth between teams repeatedly.</p>
+<p>This version of the plugin is 90% functional. <font color=#FF0000>Set PROTObalancer's <b>Enable Logging Only Mode</b> to false</font> to test the plugin live.</p>
 
 <p><font color=#0000FF>The purpose of this prototype is to get feedback about usage and behavior.</font></p>
 
 <p>Since logging to plugin.log is an important part of this phase of testing, it would be best if you could reduce or eliminate logging of other plugins so that most or all of the log is from PROTObalancer. If you are planning to leave the plugin unattended to collect logs, set <b>Debug Level</b> to 5. If you are going to watch the log interactively for a while, you can experiment with higher or lower <b>Debug Level</b> settings. It would also be useful to set the console.log to enable Event logging, but be advised that the console.log might get quite large. Do <b>not</b> enable Debug on your console.log.</p>
 
 <h3>KNOWN ISSUES</h3>
-<p>Only balancing and unstacking (excluding SQDM) is working. Team unswitching/balance guarding is not working.</p>
-
+<p>SQDM unstacking is not working.</p>
 <p>The following settings are not hooked up, they don't do anything:
 <ul>
 <li>Enable Battlelog Requests</li>
 <li>Maximum Request Rate</li>
-<li>Unlimited Team Switching During First Minutes Of Round</li>
-<li>Disperse Evenly List</li>
 <li>Same Clan Tags In Squad</li>
-<li>Per-mode: Disperse Evenly For Rank</li>
 <li>Substitution %tag% for chat or yell message</li>
 </ul>
 </p>
 
-<p><b>Sections 4, 6 and 7 are intentionally not defined.</b></p>
+<p><b>Sections 4, 6 and 7 of settings are intentionally not defined.</b></p>
 
 <h2>Description</h2>
 <p>This plugin performs several automated operations:
