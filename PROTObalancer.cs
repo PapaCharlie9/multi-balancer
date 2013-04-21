@@ -1505,6 +1505,7 @@ public void OnPluginLoaded(String strHostName, String strPort, String strPRoConV
         "OnPlayerKilled",
         "OnPlayerSpawned",
         "OnPlayerTeamChange",
+        "OnPlayerSquadChange",
         //"OnGlobalChat",
         //"OnTeamChat",
         //"OnSquadChat",
@@ -1520,7 +1521,6 @@ public void OnPluginLoaded(String strHostName, String strPort, String strPRoConV
         "OnRunNextLevel"
     );
 }
-
 
 
 public void OnPluginEnable() {
@@ -1600,6 +1600,15 @@ public override void OnPlayerLeft(CPlayerInfo playerInfo) {
         ConsoleException(e);
     }
 }
+
+public override void OnPlayerSquadChange(String soldierName, int teamId, int squadId) {
+    if (!fIsEnabled) return;
+
+    if (squadId == 0) return;
+    
+    DebugWrite("^9^bGot OnPlayerSquadChange^n: " + soldierName + " " + teamId + " " + squadId, 7);
+}
+
 
 public override void OnPlayerTeamChange(String soldierName, int teamId, int squadId) {
     if (!fIsEnabled) return;
@@ -3205,7 +3214,8 @@ private void StartMoveImmediate(MoveInfo move, bool sendMessages) {
     }
     // Do the move
     if (!EnableLoggingOnlyMode) {
-        ServerCommand("admin.movePlayer", move.Name, move.Destination.ToString(), "0", "false"); // TBD, assign to squad also
+        int toSquad = ToSquad(move.Name, move.Destination);
+        ServerCommand("admin.movePlayer", move.Name, move.Destination.ToString(), toSquad.ToString(), "false");
         ScheduleListPlayers(10);
     }
 
@@ -4478,50 +4488,65 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] byI
 }
 
 private int ToSquad(String name, int team) {
-    String tag = String.Empty;
-    if (IsKnownPlayer(name)) {
-        lock (fKnownPlayers) {
-            tag = fKnownPlayers[name].Tag;
+    int ret = 0;
+    try {
+        PlayerModel player = GetPlayer(name);
+        if (player == null) return 0;
+
+        List<PlayerModel> teamList = null;
+
+        teamList = GetTeam(team);
+        if (teamList == null) return 0;
+
+        int[] squads = new int[SQUAD_NAMES.Length];
+
+        // Build table of squad counts
+        int i = 0;
+        for (i = 0; i < squads.Length; ++i) {
+            squads[i] = 0;
         }
-    }
-
-    List<PlayerModel> teamList = null;
-
-    teamList = GetTeam(team);
-    if (teamList == null) return 0;
-
-    int[] squads = new int[SQUAD_NAMES.Length];
-
-    // Build table of squad counts
-    int i = 0;
-    for (i = 0; i < squads.Length; ++i) {
-        squads[i] = 0;
-    }
-    foreach (PlayerModel p in teamList) {
-        i = p.Squad;
-        if (i < 0 || i >= squads.Length) continue;
-        squads[i] = squads[i] + 1;
-    }
-
-    // Find the smallest squad above zero (that isn't locked -- TBD)
-    int squad = 0;
-    int least = 4;
-    int atZero = 0;
-    for (int squadNum = 1; squadNum < squads.Length; ++squadNum) {
-        int n = squads[squadNum];
-        if (n == 0) {
-            if (atZero == 0) atZero = squadNum;
-            continue;
+        foreach (PlayerModel p in teamList) {
+            i = p.Squad;
+            if (i < 0 || i >= squads.Length) continue;
+            squads[i] = squads[i] + 1;
         }
-        if (n < least) {
-            squad = squadNum;
-            least = n;
+
+        // Find the biggest squad less than 4 (that isn't locked -- TBD)
+        int squad = 0;
+        int best = 0;
+        int atZero = 0;
+        for (int squadNum = 1; squadNum < squads.Length; ++squadNum) {
+            int n = squads[squadNum];
+            if (n == 0) {
+                if (atZero == 0) atZero = squadNum;
+                continue;
+            }
+            if (n >= 4) continue;
+            if (n > best) {
+                squad = squadNum;
+                best = n;
+            }
         }
+        // if no best squad, use empty squad with lowest slot number
+        if (squad == 0 && atZero != 0) {
+            ret = atZero;
+        } else {
+            // otherwise return the best squad
+            ret = squad;
+        }
+        if (DebugLevel >= 7) {
+            String ss = "selected " + ret + " out of ";
+            for (int k = 1; k < squads.Length; ++k) {
+                if (squads[k] == 0) continue;
+                ss = ss + k + ":" + squads[k] + "/";
+            }
+            ss = ss + "-";
+            ConsoleDebug("ToSquad " + ss);
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
     }
-    // if there is an empty squad at a lower slot than the smallest squad, return that
-    if (atZero < squad) return atZero;
-    // otherwise return the smallest squad
-    return squad;
+    return ret;
 }
 
 private void StartThreads() {
