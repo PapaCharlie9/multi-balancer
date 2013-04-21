@@ -278,6 +278,8 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         public String SpawnYellMessage;
         public bool QuietMessage;
         public MoveInfo DelayedMove;
+        public int LastMoveTo;
+        public int LastMoveFrom;
         
         // Battlelog
         public String Tag;
@@ -322,6 +324,8 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
             SpawnYellMessage = String.Empty;
             QuietMessage = false;
             DelayedMove = null;
+            LastMoveTo = 0;
+            LastMoveFrom = 0;
         }
         
         public PlayerModel(String name, int team) : this() {
@@ -341,6 +345,12 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
             KDRRound = -1;
             SPMRound = -1;
             IsDeployed = false;
+            SpawnChatMessage = String.Empty;
+            SpawnYellMessage = String.Empty;
+            QuietMessage = false;
+            DelayedMove = null;
+            LastMoveTo = 0;
+            LastMoveFrom = 0;
 
             MovesRound = 0;
             MovedByMB = false;
@@ -1599,7 +1609,7 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
             fReassignedRound = fReassignedRound + 1;
             AddNewPlayer(soldierName, teamId);
             UpdateTeams();
-            DebugWrite("^4New player^0: ^b" + soldierName + "^n, ^b^1REASSIGNED^0^n to " + GetTeamName(teamId) + " team by " + GetPluginName(), 4);
+            DebugWrite("^4New player^0: ^b" + soldierName + "^n, reassigned to " + GetTeamName(teamId) + " team by " + GetPluginName(), 4);
        } else if (!IsKnownPlayer(soldierName)) {
             int diff = 0;
             bool mustMove = false;
@@ -1616,7 +1626,7 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
         } else if (fGameState == GameState.Playing) {
 
             // If this was an MB move, finish it
-            FinishMove(soldierName, teamId);
+            bool wasPluginMove = FinishMove(soldierName, teamId);
 
             /*
              * We need to determine if this team change was instigated by a player or by an admin (plugin).
@@ -1630,9 +1640,11 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
                 fPendingTeamChange.Remove(soldierName);
                 DebugWrite("Moved by admin: ^b" + soldierName + "^n to team " + teamId, 6);
                 ConditionalIncrementMoves(soldierName);
-                // Some other admin.movePlayer, so update to account for it
-                UpdatePlayerTeam(soldierName, teamId);
-                UpdateTeams();
+                if (!wasPluginMove) {
+                    // Some other admin.movePlayer, so update to account for it
+                    UpdatePlayerTeam(soldierName, teamId);
+                    UpdateTeams();
+                }
                 return;
             }
 
@@ -1688,13 +1700,15 @@ public override void OnPlayerMovedByAdmin(string soldierName, int destinationTea
         if (fPluginState == PluginState.Active && fGameState == GameState.Playing) {
             if (fPendingTeamChange.ContainsKey(soldierName)) {
                 // this is an admin move in reversed order, clear from pending table and ignore the move
-                // (unless MB initiated it)
                 fPendingTeamChange.Remove(soldierName);
                 DebugWrite("(REVERSED) Moved by admin: ^b" + soldierName + "^n to team " + destinationTeamId, 6);
+                // Already handled updates in preceding team change event
+                /*
                 ConditionalIncrementMoves(soldierName);
                 // Some other admin.movePlayer, so update to account for it
                 UpdatePlayerTeam(soldierName, destinationTeamId);
                 UpdateTeams();
+                */
             } else if (!fUnassigned.Contains(soldierName)) {
                 // this is an admin move in correct order, add to pending table and let OnPlayerTeamChange handle it
                 fPendingTeamChange[soldierName] = destinationTeamId;
@@ -1818,7 +1832,7 @@ public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subs
             }
         }
 
-        GarbageCollectKnownPlayers();
+        GarbageCollectKnownPlayers(); // also resets LastMoveTo
  
         UpdateTeams();
 
@@ -2156,6 +2170,7 @@ private void BalanceAndUnstack(String name) {
     String extractedTag = ExtractTag(player);
     Speed balanceSpeed = GetBalanceSpeed(perMode);
     double unstackTicketRatio = GetUnstackTicketRatio(perMode);
+    int lastMoveFrom = player.LastMoveFrom;
 
     if (totalPlayerCount >= (perMode.MaxPlayers-1)) {
         if (DebugLevel >= 7) DebugBalance("Server is full by per-mode Max Players, no balancing or unstacking will be attempted!");
@@ -2452,8 +2467,15 @@ private void BalanceAndUnstack(String name) {
         // TBD
 
         /* Move for balance */
+        int origTeam = player.Team;
+        String origName = GetTeamName(player.Team);
+
+        if (lastMoveFrom != 0) {
+            origTeam = lastMoveFrom;
+            origName = GetTeamName(origTeam);
+        }
         
-        MoveInfo move = new MoveInfo(name, player.Tag, player.Team, GetTeamName(player.Team), toTeam, GetTeamName(toTeam));
+        MoveInfo move = new MoveInfo(name, player.Tag, origTeam, origName, toTeam, GetTeamName(toTeam));
         move.Reason = ReasonFor.Balance;
         move.Format(ChatMovedForBalance, false, false);
         move.Format(YellMovedForBalance, true, false);
@@ -2463,6 +2485,7 @@ private void BalanceAndUnstack(String name) {
 
         DebugWrite("^9" + move, 8);
 
+        player.LastMoveFrom = player.Team;
         StartMoveImmediate(move, false);
 
         if (EnableLoggingOnlyMode) {
@@ -2580,6 +2603,15 @@ private void BalanceAndUnstack(String name) {
 
     MoveInfo moveUnstack = null;
 
+    
+    int origUnTeam = player.Team;
+    String origUnName = GetTeamName(player.Team);
+
+    if (lastMoveFrom != 0) {
+        origUnTeam = lastMoveFrom;
+        origUnName = GetTeamName(origUnTeam);
+    }
+
     switch (fUnstackState) {
         case UnstackState.Off:
             // First swap
@@ -2594,7 +2626,7 @@ private void BalanceAndUnstack(String name) {
                     return;
                 }
                 DebugBalance("Sending strong player ^0^b" + player.FullName + "^n^9 to losing team " + GetTeamName(losingTeam));
-                moveUnstack = new MoveInfo(name, player.Tag, player.Team, GetTeamName(player.Team), losingTeam, GetTeamName(losingTeam));
+                moveUnstack = new MoveInfo(name, player.Tag, origUnTeam, origUnName, losingTeam, GetTeamName(losingTeam));
                 toTeam = losingTeam;
                 fUnstackState = UnstackState.SwappedStrong;
             } else {
@@ -2615,7 +2647,7 @@ private void BalanceAndUnstack(String name) {
                     return;
                 }
                 DebugBalance("Sending weak player ^0^b" + player.FullName + "^n^9 to winning team " + GetTeamName(winningTeam));
-                moveUnstack = new MoveInfo(name, player.Tag, player.Team, GetTeamName(player.Team), winningTeam, GetTeamName(winningTeam));
+                moveUnstack = new MoveInfo(name, player.Tag, origUnTeam, origUnName, winningTeam, GetTeamName(winningTeam));
                 toTeam = winningTeam;
                 fUnstackState = UnstackState.SwappedWeak;
                 fFullUnstackSwapTimestamp = now;
@@ -2644,6 +2676,7 @@ private void BalanceAndUnstack(String name) {
 
     DebugWrite("^9" + moveUnstack, 7);
 
+    if (player.LastMoveFrom == 0) player.LastMoveFrom = player.Team;
     StartMoveImmediate(moveUnstack, false);
 
     if (EnableLoggingOnlyMode) {
@@ -2769,7 +2802,7 @@ private void UpdatePlayerModel(String name, int team, int squad, String eaGUID, 
     }
 
     if (!EnableLoggingOnlyMode && unTeam != -2 && !fPendingTeamChange.ContainsKey(name)) {
-        ConsoleDebug("player model for ^b" + name + "^n has team " + unTeam + " but update says " + team + "!");
+        ConsoleDebug("UpdatePlayerModel:^b" + name + "^n has team " + unTeam + " but update says " + team + "!");
     }
 }
 
@@ -2792,6 +2825,8 @@ private void UpdatePlayerTeam(String name, int team) {
     PlayerModel m = GetPlayer(name);
     if (m == null) return;
     
+    m.LastMoveFrom = 0; // reset
+
     if (m.Team != team) {
         if (m.Team == 0) {
             DebugWrite("Assigning ^b" + name + "^n to " + team, 4);
@@ -2842,10 +2877,30 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     // Get model
     PlayerModel player = GetPlayer(name);
     if (player == null) return false;
+    bool bogusMove = false;
+    int lastMoveTo = 0;
+    int lastMoveFrom = player.LastMoveFrom;
 
     // Same team?
     if (toTeam == player.Team) {
-        DebugUnswitch("Player team switch: ^b" + name + "^n, player model already updated to " + GetTeamName(toTeam) + " team");
+        /*
+        This could happen with the following sequence of actions:
+        + Player died and was moved from 1 to 2 for balance immediately, spawn messages set
+        + While still dead, player switches himself back to 1 before respawning
+        + All of this happens before a listPlayers refresh, so the model still thinks he is in team 1
+        We have to detect that the switch is not to the intended team and fix everything up.
+        */
+        if (player.LastMoveTo != 0 && player.LastMoveTo != toTeam) {
+            DebugUnswitch("Player team switch: ^b" + name + "^n trying to switch to " + GetTeamName(toTeam) + " during a plugin move to " + GetTeamName(player.LastMoveTo));
+            bogusMove = true;
+            lastMoveTo = player.LastMoveTo;
+            player.LastMoveTo = 0;
+            DebugUnswitch("Ovewriting previous chat message for ^b" + name + "^n: " + player.SpawnChatMessage);
+            player.SpawnChatMessage = String.Empty;
+            player.SpawnYellMessage = String.Empty;
+        } else {
+            DebugUnswitch("Player team switch: ^b" + name + "^n, player model already updated to " + GetTeamName(toTeam) + " team");
+        }
     } else {
         DebugUnswitch("Player team switch: ^b" + name + "^n from " + GetTeamName(player.Team) + " team to " + GetTeamName(toTeam) + " team");
     }
@@ -3001,11 +3056,23 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     
 
     // Otherwise, do not allow the team switch
+    int origTeam = player.Team;
+    String origName = GetTeamName(player.Team);
+
+    if (lastMoveFrom != 0 && toTeam != lastMoveFrom) {
+        DebugUnswitch("Setting toTeam from " + GetTeamName(toTeam) + " to original LastMoveFrom = " + GetTeamName(lastMoveFrom));
+        toTeam = lastMoveFrom;
+    }
+
+    if (bogusMove) {
+        origTeam = lastMoveTo;
+        origName = GetTeamName(lastMoveTo);
+    }
 
     // TBD: select forbidden message from: moved by autobalance, moved to unstack, dispersal, ...
 
-    // Tried to switch "toTeam" from "player.Team", so moving from "toTeam" back to original team (player.Team)
-    move = new MoveInfo(name, player.Tag, toTeam, GetTeamName(toTeam), player.Team, GetTeamName(player.Team));
+    // Tried to switch toTeam from origTeam, so moving from toTeam back to origTeam
+    move = new MoveInfo(name, player.Tag, toTeam, GetTeamName(toTeam), origTeam, origName);
     move.Reason = ReasonFor.Unswitch;
     move.Format(ChatDetectedBadTeamSwitch, false, true);
     move.Format(YellDetectedBadTeamSwitch, true, true);
@@ -3113,7 +3180,7 @@ private void KillUpdate(String killer, String victim) {
 private void StartMoveImmediate(MoveInfo move, bool sendMessages) {
     // Do an immediate move, also used by the move thread
     if (!fIsEnabled || fPluginState != PluginState.Active) {
-        ConsoleDebug("MoveImmediate called while fIsEnabled is " + fIsEnabled + " or fPluginState is "  + fPluginState);
+        ConsoleDebug("StartMoveImmediate called while fIsEnabled is " + fIsEnabled + " or fPluginState is "  + fPluginState);
         return;
     }
 
@@ -3131,6 +3198,15 @@ private void StartMoveImmediate(MoveInfo move, bool sendMessages) {
         ServerCommand("admin.movePlayer", move.Name, move.Destination.ToString(), "0", "false"); // TBD, assign to squad also
         ScheduleListPlayers(10);
     }
+
+    // Remember move
+    PlayerModel player = GetPlayer(move.Name);
+    if (player != null) {
+        if (player.LastMoveTo != 0) ConsoleDebug("StartMoveImmediate: ^b" + move.Name + "^n player.LastMoveTo != 0, " + player.LastMoveTo);
+        player.LastMoveTo = move.Destination;
+    }
+
+    // Log move
     String r = null;
     switch (move.Reason) {
         case ReasonFor.Balance: r = " for balance"; break;
@@ -3142,7 +3218,7 @@ private void StartMoveImmediate(MoveInfo move, bool sendMessages) {
     DebugWrite(doing + move.Name + "^n from " + move.SourceName + " to " + move.DestinationName + r, 4);
 }
 
-private void FinishMove(String name, int team) {
+private bool FinishMove(String name, int team) {
     // If this is an MB move, handle it
     MoveInfo move = null;
     lock (fMoving) {
@@ -3164,6 +3240,7 @@ private void FinishMove(String name, int team) {
         // MB move for balance/unstacking/unswitching
         SetSpawnMessages(move.Name, move.ChatAfter, move.YellAfter, move.Reason == ReasonFor.Unswitch);
     }
+    return (move != null);
 }
 
 private void KillAndMoveAsync(MoveInfo move) {
@@ -3254,7 +3331,7 @@ private void Reassign(String name, int fromTeam, int toTeam, int diff) {
     if (!EnableLoggingOnlyMode) {
         fReassigned.Add(name);
         ServerCommand("admin.movePlayer", name, toTeam.ToString(), toSquad.ToString(), "false");
-        ScheduleListPlayers(10);
+        ScheduleListPlayers(1);
     } else {
         // Simulate reassignment
         fReassigned.Add(name);
@@ -3362,6 +3439,7 @@ private void GarbageCollectKnownPlayers()
         // collect up garbage
         foreach (String name in fKnownPlayers.Keys) {
             PlayerModel m = fKnownPlayers[name];
+            m.LastMoveTo = 0; // reset this value while we are here
             if (DateTime.Now.Subtract(m.LastSeenTimestamp).TotalMinutes > MODEL_TIMEOUT) {
                 if (IsKnownPlayer(name)) {
                     ConsoleDebug("^b" + name + "^n has timed out and is still on active players list, idling?");
@@ -3944,15 +4022,22 @@ private int MaxDiff() {
 private void UpdateTeams() {
     ClearTeams();
 
+    List<String> names = new List<String>();
+
     lock (fAllPlayers) {
         foreach (String name in fAllPlayers) {
             if (!fKnownPlayers.ContainsKey(name)) {
-                throw new Exception("UpdateTeams: " + name + " not in fKnownPlayers");
+                ConsoleDebug("UpdateTeams: " + name + " not in fKnownPlayers");
+                continue;
             }
-            lock (fKnownPlayers) {
-                List<PlayerModel> t = GetTeam(fKnownPlayers[name].Team);
-                if (t != null) t.Add(fKnownPlayers[name]);
-            }
+            names.Add(name);
+        }
+    }
+    lock (fKnownPlayers) {
+        foreach (String dude in names) {
+            PlayerModel player = fKnownPlayers[dude];
+            List<PlayerModel> t = GetTeam(player.Team);
+            if (t != null) t.Add(player);
         }
     }
 }
@@ -4564,6 +4649,7 @@ private void ListPlayersLoop() {
 
                 request = fListPlayersQ.Dequeue();
 
+                // Wait until event handler updates fListPlayersTimestamp or MaxDelay has elapsed
                 while (request.LastUpdate == fListPlayersTimestamp 
                   && DateTime.Now.Subtract(request.LastUpdate).TotalSeconds < request.MaxDelay) {
                     Monitor.Wait(fListPlayersQ, 1000);
@@ -4896,7 +4982,7 @@ public void CheckForPluginUpdate() {
             //String x = c.DownloadString("http://myrcon.com/procon/plugins/plugin/PROTObalancer");
             //xml.LoadXml(x);
         } catch (System.Security.SecurityException e) {
-            if (DebugLevel >= 7) ConsoleException(e);
+            if (DebugLevel >= 8) ConsoleException(e);
             ConsoleWrite(" ");
             ConsoleWrite("^8^bNOTICE! Unable to check for plugin update!");
             ConsoleWrite("Tools => Options... => Plugins tab: ^bPlugin security^n is set to ^bRun plugins in a sandbox^n.");
@@ -4926,7 +5012,7 @@ public void CheckForPluginUpdate() {
         int usage = 0;
         String myVersion = GetPluginVersion();
         if (!versions.TryGetValue(myVersion, out usage)) {
-            DebugWrite("CheckForPluginUpdate: " + myVersion + " not found!", 7);
+            DebugWrite("CheckForPluginUpdate: " + myVersion + " not found!", 8);
             return;
         }
 
@@ -4947,7 +5033,7 @@ public void CheckForPluginUpdate() {
             if (l > r) return -1;
             return 0;
         });
-        DebugWrite("CheckForPluginUpdate: sorted version list:", 1);
+        DebugWrite("CheckForPluginUpdate: sorted version list:", 7);
         foreach (String u in byNumeric) {
             DebugWrite(u + " (" + String.Format("{0:X8}", VersionToNumeric(u)) + ")", 7);
         }
@@ -4985,7 +5071,7 @@ public void CheckForPluginUpdate() {
             }
         }
 	} catch (Exception e) {
-		ConsoleException(e);
+		if (DebugLevel >= 8) ConsoleException(e);
 	}
 }
 
