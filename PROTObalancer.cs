@@ -884,7 +884,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "0.0.0.15";
+    return "0.0.0.16";
 }
 
 public String GetPluginAuthor() {
@@ -2978,6 +2978,19 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     bool toLosing = false;
     bool toSmallest = false;
     bool isSQDM = IsSQDM();
+    PerModeSettings perMode = GetPerModeSettings();
+    bool isDispersal = IsDispersal(player); // on dispersal list
+    bool forbidden = (isDispersal || player.Rank >= perMode.DisperseEvenlyForRank || (player.MovedByMB && !isSQDM));
+
+    /*
+    A player that was previously moved by the plugin is forbidden from moving to any
+    other team by their own initiative for the rest of the round, unless this is
+    SQDM mode. In SQDM, if a player is moved from A to B and then later decides
+    to move to C, the losing team, that is allowed. Even in SQDM, though, no player
+    is allowed to move to the winning team.
+    
+    All dispersal players are forbidden from moving themselves.
+    */
 
     AnalyzeTeams(out diff, out ascendingSize, out descendingTickets, out biggestTeam, out smallestTeam, out winningTeam, out losingTeam);
 
@@ -2996,7 +3009,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     }
 
     // Trying to switch to losing team?
-    if (toLosing && toTeam != biggestTeam) {
+    if (!forbidden && toLosing && toTeam != biggestTeam) {
         move = new MoveInfo(player.Name, player.Tag, fromTeam, GetTeamName(fromTeam), toTeam, GetTeamName(toTeam));
         move.Format(ChatDetectedGoodTeamSwitch, false, true);
         move.Format(YellDetectedGoodTeamSwitch, true, true);
@@ -3018,7 +3031,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     }
 
     // Trying to switch to smallest team?
-    if (toSmallest && toTeam != winningTeam) {
+    if (!forbidden && toSmallest && toTeam != winningTeam) {
         move = new MoveInfo(player.Name, player.Tag, fromTeam, GetTeamName(fromTeam), toTeam, GetTeamName(toTeam));
         move.Format(ChatDetectedGoodTeamSwitch, false, true);
         move.Format(YellDetectedGoodTeamSwitch, true, true);
@@ -3030,10 +3043,9 @@ private bool CheckTeamSwitch(String name, int toTeam) {
 
     // Adjust for SQDM
     if (isSQDM && fServerInfo != null) {
-        PerModeSettings perMode = GetPerModeSettings();
         if (GetPopulation(perMode, true) == Population.Low) {
             // Allow team switch to any team except biggest and winning
-            if (toTeam != biggestTeam && toTeam != winningTeam) {
+            if (!forbidden && toTeam != biggestTeam && toTeam != winningTeam) {
                 DebugUnswitch("ALLOWED: SQDM Low population and not switching to biggest or winning team: ^b" + name);
                 SetSpawnMessages(name, String.Empty, String.Empty, false);
                 CheckAbortMove(name);
@@ -3053,7 +3065,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
         if (lose == 0) lose = 1;
         margin = ((win > lose) ? win/lose : lose/win);
         // margin is 110%
-        if ((margin * 100) <= 110) {
+        if (!forbidden && (margin * 100) <= 110) {
             DebugUnswitch("ALLOWED: CTF move by ^b" + name + "^n because margin is only " + (margin*100).ToString("F0") + "%");
             SetSpawnMessages(name, String.Empty, String.Empty, false);
             CheckAbortMove(name);
@@ -3066,7 +3078,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
         if (lose == 0) lose = 1;
         margin = ((win > lose) ? win/lose : lose/win);
         // margin is 105%
-        if ((margin * 100) <= 105) {
+        if (!forbidden && (margin * 100) <= 105) {
             DebugUnswitch("ALLOWED: move by ^b" + name + "^n because margin is only " + (margin*100).ToString("F0") + "%");
             SetSpawnMessages(name, String.Empty, String.Empty, false);
             CheckAbortMove(name);
@@ -3090,12 +3102,14 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     }
 
     // TBD: select forbidden message from: moved by autobalance, moved to unstack, dispersal, ...
+    String badChat = (isDispersal) ? ChatDetectedSwitchByDispersalPlayer : ChatDetectedBadTeamSwitch;
+    String badYell = (isDispersal) ? YellDetectedSwitchByDispersalPlayer : YellDetectedBadTeamSwitch;
 
     // Tried to switch toTeam from origTeam, so moving from toTeam back to origTeam
     move = new MoveInfo(name, player.Tag, toTeam, GetTeamName(toTeam), origTeam, origName);
     move.Reason = ReasonFor.Unswitch;
-    move.Format(ChatDetectedBadTeamSwitch, false, true);
-    move.Format(YellDetectedBadTeamSwitch, true, true);
+    move.Format(badChat, false, true);
+    move.Format(badYell, true, true);
     move.Format(ChatAfterUnswitching, false, false);
     move.Format(YellAfterUnswitching, true, false);
     DebugUnswitch("FORBIDDEN: delaying unswitch action until spawn of ^b" + name + "^n from " + move.SourceName + " back to " + move.DestinationName);
@@ -4385,7 +4399,7 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] byI
     bool isDispersalByRank = (player.Rank >= perMode.DisperseEvenlyForRank);
     List<String> dispersalList = null;
     bool isDispersalByList = false;
-    if (perMode.EnableDisperseEvenlyList) {
+    if (perMode.EnableDisperseEvenlyList && DisperseEvenlyList != null && DisperseEvenlyList.Length > 0) {
         String extractedTag = ExtractTag(player);
         dispersalList = new List<String>(DisperseEvenlyList);
         if (dispersalList.Contains(name) 
@@ -5003,6 +5017,22 @@ private void CheckDeativateBalancer(String reason) {
             if (DebugLevel >= 7) DebugBalance("^2^b" + reason + "^n: Was active for " + dur.ToString("F0") + " seconds!");
         }
     }
+}
+
+private bool IsDispersal(PlayerModel player) {
+    PerModeSettings perMode = GetPerModeSettings();
+    List<String> dispersalList = null;
+    bool isDispersalByList = false;
+    if (perMode.EnableDisperseEvenlyList && DisperseEvenlyList != null && DisperseEvenlyList.Length > 0) {
+        String extractedTag = ExtractTag(player);
+        dispersalList = new List<String>(DisperseEvenlyList);
+        if (dispersalList.Contains(player.Name) 
+        || dispersalList.Contains(player.EAGUID) 
+        && (!String.IsNullOrEmpty(extractedTag) && dispersalList.Contains(extractedTag))) {
+            isDispersalByList = true;
+        }
+    }
+    return (isDispersalByList);
 }
 
 
