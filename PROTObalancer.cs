@@ -2874,16 +2874,20 @@ private void ValidateModel(List<CPlayerInfo> players) {
         // no players, so waiting state
         fGameState = GameState.Warmup;
     } else {
+        // cancel moves
         // rebuild the data model
         fPluginState = PluginState.Reconnected;
         DebugWrite("ValidateModel: ^b^3State = " + fPluginState, 6);  
         foreach (CPlayerInfo p in players) {
             try {
                 UpdatePlayerModel(p.SoldierName, p.TeamID, p.SquadID, p.GUID, p.Score, p.Kills, p.Deaths, p.Rank);
+                CheckAbortMove(p.SoldierName);
             } catch (Exception e) {
                 ConsoleException(e);
             }
         }
+        fMoving.Clear();
+        fReassigned.Clear();
         /* Special handling for Reconnected state */
         fGameState = (TotalPlayerCount < 4) ? GameState.Warmup : GameState.Unknown;
         fRoundStartTimestamp = DateTime.Now;
@@ -3141,9 +3145,14 @@ private bool CheckTeamSwitch(String name, int toTeam) {
 private void CheckAbortMove(String name) {
     lock (fMoveQ) {
         if (fMoveQ.Count > 0) {
+            bool foundAbort = false;
             foreach (MoveInfo mi in fMoveQ) {
-                if (mi.Name == name) mi.aborted = true;
+                if (mi.Name == name) {
+                    mi.aborted = true;
+                    foundAbort = true;
+                }
             }
+            if (foundAbort) Monitor.Pulse(fMoveQ);
         }
     }
     
