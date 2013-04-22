@@ -2201,10 +2201,12 @@ private void BalanceAndUnstack(String name) {
     /* Check dispersals */
     
     bool mustMove = false;
+    /*
     bool isDisperseByRank = (player.Rank >= perMode.DisperseEvenlyForRank);
+    if (perMode.DisperseEvenlyForRank == 0) isDisperseByRank = false;
     List<String> dispersalList = null;
     bool isDisperseByList = false;
-    if (perMode.EnableDisperseEvenlyList) {
+    if (perMode.EnableDisperseEvenlyList && DisperseEvenlyList != null && DisperseEvenlyList.Length > 0) {
         dispersalList = new List<String>(DisperseEvenlyList);
         if (dispersalList.Contains(name) || dispersalList.Contains(player.EAGUID)) {
             isDisperseByList = true;
@@ -2212,6 +2214,9 @@ private void BalanceAndUnstack(String name) {
             isDisperseByList = true;
         }
     }
+    */
+    bool isDisperseByRank = IsRankDispersal(player);
+    bool isDisperseByList = IsDispersal(player);
     if (isDisperseByRank) {
         DebugBalance("ON MUST MOVE LIST ^b" + name + "^n T:" + player.Team + ", Rank " + player.Rank + " >= " + perMode.DisperseEvenlyForRank);
         mustMove = true;
@@ -2980,7 +2985,8 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     bool isSQDM = IsSQDM();
     PerModeSettings perMode = GetPerModeSettings();
     bool isDispersal = IsDispersal(player); // on dispersal list
-    bool forbidden = (isDispersal || player.Rank >= perMode.DisperseEvenlyForRank || (player.MovedByMB && !isSQDM));
+    bool isRank = IsRankDispersal(player);
+    bool forbidden = (isDispersal || isRank || (player.MovedByMB && !isSQDM));
 
     /*
     A player that was previously moved by the plugin is forbidden from moving to any
@@ -4396,7 +4402,7 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] byI
 
     bool isSQDM = IsSQDM();
 
-    bool isDispersalByRank = (player.Rank >= perMode.DisperseEvenlyForRank);
+    bool isDispersalByRank = IsRankDispersal(player);
     List<String> dispersalList = null;
     bool isDispersalByList = false;
     if (perMode.EnableDisperseEvenlyList && DisperseEvenlyList != null && DisperseEvenlyList.Length > 0) {
@@ -5033,6 +5039,12 @@ private bool IsDispersal(PlayerModel player) {
         }
     }
     return (isDispersalByList);
+}
+
+private bool IsRankDispersal(PlayerModel player) {
+    PerModeSettings perMode = GetPerModeSettings();
+    if (perMode.DisperseEvenlyForRank == 0) return false;
+    return (player.Rank >= perMode.DisperseEvenlyForRank);
 }
 
 
