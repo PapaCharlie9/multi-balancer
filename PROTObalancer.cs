@@ -2380,8 +2380,8 @@ private void BalanceAndUnstack(String name) {
             if (DebugLevel >= 7) DebugBalance("Exempting ^b" + name + "^n, target team selected is same or zero");
             fExemptRound = fExemptRound + 1;
             IncrementTotal();
+            return;
         }
-        return;
     }
 
     int numTeams = 2; //(isSQDM) ? 4 : 2; // TBD
