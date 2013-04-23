@@ -3521,8 +3521,7 @@ private void GarbageCollectKnownPlayers()
 }
 
 private Phase GetPhase(PerModeSettings perMode, bool verbose) {
-    if (fServerInfo == null || fServerInfo.TeamScores == null || fServerInfo.TeamScores.Count == 0) return Phase.Mid;
-
+    if (perMode == null) return Phase.Mid;
     // earlyTickets relative to max for count down, 0 for count up
     // lateTickets relative to 0 for count down, max for count up
     double earlyTickets = perMode.DefinitionOfEarlyPhaseFromStart;
@@ -3540,7 +3539,8 @@ private Phase GetPhase(PerModeSettings perMode, bool verbose) {
 
         // TBD - assume max round time is 20 minutes
         double maxMinutes = 20;
-        double totalRoundMins = DateTime.Now.Subtract(fRoundStartTimestamp).TotalMinutes;
+        //double totalRoundMins = DateTime.Now.Subtract(fRoundStartTimestamp).TotalMinutes;
+        double totalRoundMins = GetTimeInRoundMinutes();
 
         // Late is higher priority than early - TBD, move this to settings validation
         if (lateMinutes > maxMinutes) {earlyMinutes = 0; lateMinutes = maxMinutes;}
@@ -3554,8 +3554,11 @@ private Phase GetPhase(PerModeSettings perMode, bool verbose) {
             phase = Phase.Mid;
         }
 
-        if (verbose && DebugLevel >= 8) DebugBalance("Phase: " + phase + " (" + totalRoundMins.ToString("F0") + " mins [" + earlyMinutes.ToString("F0") + " - " + (maxMinutes - lateMinutes).ToString("F0") + "])");
+        if (verbose && DebugLevel >= 8) ConsoleDebug("Phase: " + phase + " (" + totalRoundMins.ToString("F0") + " mins [" + earlyMinutes.ToString("F0") + " - " + (maxMinutes - lateMinutes).ToString("F0") + "])");
+        return phase;
     }
+    
+    if (fServerInfo.TeamScores == null || fServerInfo.TeamScores.Count == 0) return Phase.Mid;
 
     double tickets = -1;
     double goal = 0;
@@ -3612,7 +3615,7 @@ private Phase GetPhase(PerModeSettings perMode, bool verbose) {
         }
     }
 
-    if (verbose && DebugLevel >= 8) DebugBalance("Phase: " + phase + " (" + tickets + " of " + fMaxTickets + " to " + goal + ", " + RemainingTicketPercent(tickets, goal).ToString("F0") + "%)");
+    if (verbose && DebugLevel >= 8) ConsoleDebug("Phase: " + phase + " (" + tickets + " of " + fMaxTickets + " to " + goal + ", " + RemainingTicketPercent(tickets, goal).ToString("F0") + "%)");
 
     return phase;
 }
