@@ -466,6 +466,7 @@ private DateTime fLastBalancedTimestamp = DateTime.MinValue;
 private DateTime fEnabledTimestamp = DateTime.MinValue;
 private String fLastMsg = null;
 private DateTime fLastVersionCheckTimestamp = DateTime.MinValue;
+private double fTimeOutOfJoint = 0;
 
 // Data model
 private List<String> fAllPlayers = null;
@@ -664,6 +665,7 @@ public PROTObalancer() {
     fRushAttackerTickets = 0;
     fMoveStash = new List<MoveInfo>();
     fLastVersionCheckTimestamp = DateTime.MinValue;
+    fTimeOutOfJoint = 0;
     
     /* Settings */
 
@@ -1801,7 +1803,17 @@ public override void OnPlayerKilled(Kill kKillerVictimDetails) {
         if (!isAdminKill) {
             KillUpdate(killer, victim);
     
-            if (fPluginState == PluginState.Active && fGameState == GameState.Playing && IsModelInSync()) {
+            if (fPluginState == PluginState.Active && fGameState == GameState.Playing) {
+                if (!IsModelInSync()) {
+                    double toj = (fTimeOutOfJoint == 0) ? 0 : GetTimeInRoundMinutes() - fTimeOutOfJoint;
+                    if (DebugLevel >= 7) ConsoleDebug("Model not in sync for " + toj + " mins: fMoving = " + fMoving.Count + ", fReassigned = " + fReassigned.Count);
+                    if (fTimeOutOfJoint == 0) {
+                        // If a move or reassign takes too long abort it, checked in OnListPlayers
+                        fTimeOutOfJoint = GetTimeInRoundMinutes();
+                    }
+                } else {
+                    fTimeOutOfJoint = 0;
+                }
                 BalanceAndUnstack(victim);
             }
         }
@@ -1824,19 +1836,24 @@ public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subs
         }
 
         /*
-        Check if server crashed or Blaze dumped players.
+        Check if server crashed or Blaze dumped players or model invalid for too long.
         Detected by: last recorded server uptime is greater than zero and less than new uptime,
         or a player model timed out while still being on the all players list,
         or got a version command response, which is used in connection initialization for Procon,
         or the current list of players is more than CRASH_COUNT_HEURISTIC players less than the last
-        recorded count,
-        or the last known player count is greater than the maximum server size.
+        recorded count, or the last known player count is greater than the maximum server size,
+        or more than 3 minutes have elapsed since a move/reassign was started.
         Since these detections are not completely reliable, do a minimal  amount of recovery,
         don't do a full reset
         */
-        if (fServerCrashed || fGotVersion || (players.Count + CRASH_COUNT_HEURISTIC) <  TotalPlayerCount || TotalPlayerCount > MaximumServerSize)  {
+        if (fServerCrashed 
+        || fGotVersion 
+        || (players.Count + CRASH_COUNT_HEURISTIC) <  TotalPlayerCount 
+        || TotalPlayerCount > MaximumServerSize
+        || GetTimeInRoundMinutes() - fTimeOutOfJoint > 3.0)  {
             fServerCrashed = false;
             fGotVersion = false;
+            fTimeOutOfJoint = 0;
             ValidateModel(players);
         } else {
             fUnassigned.Clear();
@@ -4016,15 +4033,20 @@ private void ResetRound() {
 
     lock (fAllPlayers) {
         foreach (String name in fAllPlayers) {
-            if (!fKnownPlayers.ContainsKey(name)) {
-                throw new Exception("ResetRound: " + name + " not in fKnownPlayers");
-            }
-            PlayerModel m = null;
-            lock (fKnownPlayers) {
-                m = fKnownPlayers[name];
-            }
+            try {
+                if (!fKnownPlayers.ContainsKey(name)) {
+                    ConsoleDebug("ResetRound: " + name + " not in fKnownPlayers");
+                    continue;
+                }
+                PlayerModel m = null;
+                lock (fKnownPlayers) {
+                    m = fKnownPlayers[name];
+                }
 
-            m.ResetRound();
+                m.ResetRound();
+            } catch (Exception e) {
+                ConsoleException(e);
+            }
         }
     }
 
@@ -4039,6 +4061,7 @@ private void ResetRound() {
     fUnstackState = UnstackState.Off;
     fRushStage = 0;
     fRushAttackerTickets = 0;
+    fTimeOutOfJoint = 0;
 
     fLastBalancedTimestamp = DateTime.MinValue;
 }
