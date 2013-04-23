@@ -1813,8 +1813,8 @@ public override void OnPlayerKilled(Kill kKillerVictimDetails) {
                     }
                 } else {
                     fTimeOutOfJoint = 0;
+                    BalanceAndUnstack(victim);
                 }
-                BalanceAndUnstack(victim);
             }
         }
     } catch (Exception e) {
