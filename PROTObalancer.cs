@@ -1805,10 +1805,8 @@ public override void OnPlayerKilled(Kill kKillerVictimDetails) {
     
             if (fPluginState == PluginState.Active && fGameState == GameState.Playing) {
                 if (!IsModelInSync()) {
-                    double toj = (fTimeOutOfJoint == 0) ? 0 : GetTimeInRoundMinutes() - fTimeOutOfJoint;
-                    if (DebugLevel >= 7) ConsoleDebug("Model not in sync for " + toj + " mins: fMoving = " + fMoving.Count + ", fReassigned = " + fReassigned.Count);
                     if (fTimeOutOfJoint == 0) {
-                        // If a move or reassign takes too long abort it, checked in OnListPlayers
+                        // If a move or reassign takes too long, abort it, checked in OnListPlayers
                         fTimeOutOfJoint = GetTimeInRoundMinutes();
                     }
                 } else {
@@ -5257,7 +5255,10 @@ private void LogStatus() {
             DebugWrite("^bStatus^n: Autobalance is " + activeTime + ", phase = " + GetPhase(perMode, false) + ", population = " + GetPopulation(perMode, false) + ", speed = " + balanceSpeed + ", unstack when ticket ratio >= " + (unstackRatio * 100).ToString("F0") + "%", 3);
         }
     }
-    if (!IsModelInSync()) DebugWrite("^bStatus^n: fMoving = " + fMoving.Count + ", fReassigned = " + fReassigned.Count, 5);
+    if (!IsModelInSync()) {
+        double toj = (fTimeOutOfJoint == 0) ? 0 : GetTimeInRoundMinutes() - fTimeOutOfJoint;
+        DebugWrite("^bStatus^n: Model not in sync for " + toj.ToString("F1") + " mins: fMoving = " + fMoving.Count + ", fReassigned = " + fReassigned.Count, 5);
+    }
 
     DebugWrite("^bStatus^n: " + fReassignedRound + " reassigned, " + fBalancedRound + " balanced, " + fUnstackedRound + " unstacked, " + fUnswitchedRound + " unswitched, " + fExcludedRound + " excluded, " + fExemptRound + " exempted, " + fFailedRound + " failed; of " + fTotalRound + " TOTAL", 5);
     
