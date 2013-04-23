@@ -1850,7 +1850,7 @@ public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subs
         || fGotVersion 
         || (players.Count + CRASH_COUNT_HEURISTIC) <  TotalPlayerCount 
         || TotalPlayerCount > MaximumServerSize
-        || GetTimeInRoundMinutes() - fTimeOutOfJoint > 3.0)  {
+        || (fTimeOutOfJoint > 0 && GetTimeInRoundMinutes() - fTimeOutOfJoint > 3.0))  {
             fServerCrashed = false;
             fGotVersion = false;
             fTimeOutOfJoint = 0;
