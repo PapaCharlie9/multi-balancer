@@ -2286,7 +2286,7 @@ private void BalanceAndUnstack(String name) {
     /* Exclusions */
 
     // Exclude if on Whitelist or Reserved Slots if enabled
-    if (needsBalancing && balanceSpeed != Speed.Fast && (OnWhitelist || balanceSpeed == Speed.Slow)) {
+    if (OnWhitelist || (needsBalancing && balanceSpeed == Speed.Slow)) {
         List<String> vip = new List<String>(Whitelist);
         if (EnableWhitelistingOfReservedSlotsList) vip.AddRange(fReservedSlots);
         /*
@@ -4325,16 +4325,16 @@ private int ToTeam(String name, int fromTeam, bool isReassign, out int diff, ref
     if (mustMove) {
         int disTeam = ToTeamByDispersal(name, fromTeam, byId);
         if (disTeam != 0) {
-            DebugWrite("^9ToTeam: dispersal returned team " + disTeam, 7);
+            DebugWrite("^9ToTeam for ^b" + name + "^n: dispersal returned team " + disTeam, 7);
             return disTeam;
         }
         // fall thru if dispersal doesn't find a suitable team
         mustMove = false;
     }
 
-    DebugWrite("^9ToTeam: winning/losing = " + winningTeam + "/" + losingTeam, 8);
+    DebugWrite("^9ToTeam for ^b" + name + "^n: winning/losing = " + winningTeam + "/" + losingTeam, 8);
     if (DebugLevel >= 8 && descendingTickets != null) {
-        String ds = "^9ToTeam: descendingTickets = [";
+        String ds = "^9ToTeam for ^b" + name + "^n: descendingTickets = [";
         for (int k = 0; k < descendingTickets.Length; ++k) {
             ds = ds + descendingTickets[k] + " ";
         }
@@ -4382,20 +4382,20 @@ private int ToTeam(String name, int fromTeam, bool isReassign, out int diff, ref
                     szs = szs + ", ";
                 }
             }
-            DebugBalance("SQDM adjusted target from " + GetTeamName(orig) + " team to " + GetTeamName(targetTeam) + " team: " + szs);
+            DebugBalance("ToTeam  for ^b" + name + "^n: SQDM adjusted target from " + GetTeamName(orig) + " team to " + GetTeamName(targetTeam) + " team: " + szs);
         }
     }
 
     // recompute diff to be difference between fromTeam and target team
     diff = GetTeamDifference(ref fromTeam, ref targetTeam);
     if (diff < 0) {
-        ConsoleDebug("ToTeam, GetTeamDifference returned negative diff = " + diff);
+        ConsoleDebug("ToTeam for ^b" + name + "^n: GetTeamDifference returned negative diff = " + diff);
         diff = Math.Abs(diff);
     }
 
     // Fake out difference due to adjustment
     if (isSQDM && diff < MaxDiff() && diff != 0) {
-        DebugBalance("SQDM fake out diff due to adjustment, was " + diff + ", will be reported as " + superDiff);
+        DebugBalance("ToTeam  for ^b" + name + "^n: SQDM fake out diff due to adjustment, was " + diff + ", will be reported as " + superDiff);
         diff = superDiff;
     }
 
@@ -4407,7 +4407,7 @@ private int ToTeam(String name, int fromTeam, bool isReassign, out int diff, ref
         if (j != 4) tm = tm + "/";
     }
     tm = tm + ")";
-    DebugWrite("ToTeam: analyze returned " + tm + ", " + fromTeam + " ==> " + targetTeam, 5);
+    DebugWrite("ToTeam for ^b" + name + "^n: analyze returned " + tm + ", " + fromTeam + " ==> " + targetTeam, 5);
 
     // TBD, for SQDM, based on name, might need to take into account dispersal by Rank, etc.
     // mustMove set to True if dispersal policy (etc) must override other policies
