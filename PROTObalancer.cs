@@ -1,4 +1,4 @@
-﻿/* PROTObalancer.cs
+/* PROTObalancer.cs
 
 by PapaCharlie9
 
@@ -397,6 +397,9 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
 
             if (String.IsNullOrEmpty(expanded)) return;
 
+            String reason = String.Empty; // TBD
+
+            if (expanded.Contains("%reason%")) expanded = expanded.Replace("%reason%", reason);
             if (expanded.Contains("%name%")) expanded = expanded.Replace("%name%", Name);
             if (expanded.Contains("%tag%")) expanded = expanded.Replace("%tag%", Tag);
             if (expanded.Contains("%fromTeam%")) expanded = expanded.Replace("%fromTeam%", SourceName);
@@ -549,6 +552,11 @@ public Speed[] LatePhaseBalanceSpeed;
 
 public bool QuietMode;
 public double YellDurationSeconds;
+public String ReasonMovedByBalancer;
+public String ReasonWinningTeam;
+public String ReasonBiggestTeam;
+public String ReasonRank;
+public String ReasonDispersalList;
 public String ChatMovedForBalance;
 public String YellMovedForBalance;
 public String ChatMovedToUnstack;
@@ -559,10 +567,10 @@ public String ChatDetectedGoodTeamSwitch;
 public String YellDetectedGoodTeamSwitch;
 public String ChatAfterUnswitching;
 public String YellAfterUnswitching;
-public String ChatDetectedSwitchByDispersalPlayer;
-public String YellDetectedSwitchByDispersalPlayer;
-public String ChatAfterUnswitchingDispersalPlayer;
-public String YellAfterUnswitchingDispersalPlayer;
+//DEL public String ChatDetectedSwitchByDispersalPlayer;
+//DEL public String YellDetectedSwitchByDispersalPlayer;
+//DEL public String ChatAfterUnswitchingDispersalPlayer;
+//DEL public String YellAfterUnswitchingDispersalPlayer;
 public String ShowInLog; // command line to show info in plugin.log
 public bool LogChat;
 public bool EnableLoggingOnlyMode;
@@ -713,20 +721,25 @@ public PROTObalancer() {
     
     QuietMode = false; // false: chat is global, true: chat is private. Yells are always private
     YellDurationSeconds = 10;
+    ReasonMovedByBalancer = "autobalance moved you to the %toTeam% team";
+    ReasonWinningTeam = "switching to the winning team is not allowed";
+    ReasonBiggestTeam = "switching to the biggest team is not allowed";
+    ReasonRank = "this server splits Colonel 100's between teams";
+    ReasonDispersalList = "you're on the list of players to split between teams";
     ChatMovedForBalance = "*** MOVED %name% for balance ...";
     YellMovedForBalance = "Moved %name% for balance ...";
     ChatMovedToUnstack = "*** MOVED %name% to unstack teams ...";
     YellMovedToUnstack = "Moved %name% to unstack teams ...";
-    ChatDetectedBadTeamSwitch = "%name%, the %toTeam% team needs your help, sending you back ...";
-    YellDetectedBadTeamSwitch = "The %toTeam% team needs your help, sending you back!";
+    ChatDetectedBadTeamSwitch = "%name%, you can't switch to team %fromTeam%: %reason%, sending you back ...";
+    YellDetectedBadTeamSwitch = "You can't switch to the %fromTeam% team: %reason%, sending you back!";
     ChatDetectedGoodTeamSwitch = "%name%, thanks for helping out the %toTeam% team!";
     YellDetectedGoodTeamSwitch = "Thanks for helping out the %toTeam% team!";
     ChatAfterUnswitching = "%name%, please stay on the %toTeam% team for the rest of this round";
     YellAfterUnswitching = "Please stay on the %toTeam% team for the rest of this round";
-    ChatDetectedSwitchByDispersalPlayer = "%name% is on the list of players to split between teams";
-    YellDetectedSwitchByDispersalPlayer = "You're on the list of players to split between teams";
-    ChatAfterUnswitchingDispersalPlayer = "%name%, stay on the team you are assigned to";
-    YellAfterUnswitchingDispersalPlayer = "Stay on the team you are assigned to";
+    //DEL ChatDetectedSwitchByDispersalPlayer = "%name% is on the list of players to split between teams";
+    //DEL YellDetectedSwitchByDispersalPlayer = "You're on the list of players to split between teams";
+    //DEL ChatAfterUnswitchingDispersalPlayer = "%name%, stay on the team you are assigned to";
+    //DEL YellAfterUnswitchingDispersalPlayer = "Stay on the team you are assigned to";
     
     /* ===== SECTION 6 - TBD ===== */
 
@@ -1009,6 +1022,16 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         lstReturn.Add(new CPluginVariable("5 - Messages|Quiet Mode", QuietMode.GetType(), QuietMode));
 
         lstReturn.Add(new CPluginVariable("5 - Messages|Yell Duration Seconds", YellDurationSeconds.GetType(), YellDurationSeconds));
+
+        lstReturn.Add(new CPluginVariable("5 - Messages|Reason: Moved By Balancer", ReasonMovedByBalancer.GetType(), ReasonMovedByBalancer));
+
+        lstReturn.Add(new CPluginVariable("5 - Messages|Reason: Winning Team", ReasonWinningTeam.GetType(), ReasonWinningTeam));
+
+        lstReturn.Add(new CPluginVariable("5 - Messages|Reason: Biggest Team", ReasonBiggestTeam.GetType(), ReasonBiggestTeam));
+
+        lstReturn.Add(new CPluginVariable("5 - Messages|Reason: Rank", ReasonRank.GetType(), ReasonRank));
+
+        lstReturn.Add(new CPluginVariable("5 - Messages|Reason: Dispersal List", ReasonDispersalList.GetType(), ReasonDispersalList));
         
         lstReturn.Add(new CPluginVariable("5 - Messages|Chat: Moved For Balance", ChatMovedForBalance.GetType(), ChatMovedForBalance));
         
@@ -1030,13 +1053,6 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         
         lstReturn.Add(new CPluginVariable("5 - Messages|Yell: After Unswitching", YellAfterUnswitching.GetType(), YellAfterUnswitching));
 
-        lstReturn.Add(new CPluginVariable("5 - Messages|Chat: Detected Switch By Dispersal Player", ChatDetectedSwitchByDispersalPlayer.GetType(), ChatDetectedSwitchByDispersalPlayer));
-        
-        lstReturn.Add(new CPluginVariable("5 - Messages|Yell: Detected Switch By Dispersal Player", YellDetectedSwitchByDispersalPlayer.GetType(), YellDetectedSwitchByDispersalPlayer));
-        
-        lstReturn.Add(new CPluginVariable("5 - Messages|Chat: After Unswitching Dispersal Player", ChatAfterUnswitchingDispersalPlayer.GetType(), ChatAfterUnswitchingDispersalPlayer));
-        
-        lstReturn.Add(new CPluginVariable("5 - Messages|Yell: After Unswitching Dispersal Player", YellAfterUnswitchingDispersalPlayer.GetType(), YellAfterUnswitchingDispersalPlayer));
 
         /* ===== SECTION 6 - TBD ===== */
 
@@ -1348,6 +1364,11 @@ private void ResetSettings() {
     
     QuietMode =  rhs.QuietMode;
     YellDurationSeconds = rhs.YellDurationSeconds;
+    ReasonMovedByBalancer = rhs.ReasonWinningTeam;
+    ReasonWinningTeam = rhs.ReasonWinningTeam;
+    ReasonBiggestTeam = rhs.ReasonBiggestTeam;
+    ReasonRank = rhs.ReasonRank;
+    ReasonDispersalList = rhs.ReasonDispersalList;
     ChatMovedForBalance = rhs.ChatMovedForBalance;
     YellMovedForBalance = rhs.YellMovedForBalance;
     ChatMovedToUnstack = rhs.ChatMovedToUnstack;
@@ -1358,10 +1379,6 @@ private void ResetSettings() {
     YellDetectedGoodTeamSwitch = rhs.YellDetectedGoodTeamSwitch;
     ChatAfterUnswitching = rhs.ChatAfterUnswitching;
     YellAfterUnswitching = rhs.YellAfterUnswitching;
-    ChatDetectedSwitchByDispersalPlayer = rhs.ChatDetectedSwitchByDispersalPlayer;
-    YellDetectedSwitchByDispersalPlayer = rhs.YellDetectedSwitchByDispersalPlayer;
-    ChatAfterUnswitchingDispersalPlayer = rhs.ChatAfterUnswitchingDispersalPlayer;
-    YellAfterUnswitchingDispersalPlayer = rhs.YellAfterUnswitchingDispersalPlayer;
     
     /* ===== SECTION 6 - TBD ===== */
 
@@ -3127,8 +3144,10 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     }
 
     // TBD: select forbidden message from: moved by autobalance, moved to unstack, dispersal, ...
-    String badChat = (isDispersal) ? ChatDetectedSwitchByDispersalPlayer : ChatDetectedBadTeamSwitch;
-    String badYell = (isDispersal) ? YellDetectedSwitchByDispersalPlayer : YellDetectedBadTeamSwitch;
+    // DEL String badChat = (isDispersal) ? ChatDetectedSwitchByDispersalPlayer : ChatDetectedBadTeamSwitch;
+    // DEL String badYell = (isDispersal) ? YellDetectedSwitchByDispersalPlayer : YellDetectedBadTeamSwitch;
+    String badChat = ChatDetectedBadTeamSwitch;
+    String badYell = YellDetectedBadTeamSwitch;
 
     // Tried to switch toTeam from origTeam, so moving from toTeam back to origTeam
     move = new MoveInfo(name, player.Tag, toTeam, GetTeamName(toTeam), origTeam, origName);
