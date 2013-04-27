@@ -1,4 +1,4 @@
-/* PROTObalancer.cs
+﻿/* PROTObalancer.cs
 
 by PapaCharlie9
 
@@ -62,15 +62,17 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
     
     public enum PresetItems { Standard, Aggressive, Passive, Intensify, Retain, BalanceOnly, UnstackOnly, None };
 
-    public enum Speed { Click_Here_For_Speed_Names, Stop, Slow, Adaptive, Fast };
+    public enum Speed { Click_Here_For_Speed_Names, Stop, Slow, Adaptive, Fast, Unstack };
 
-    public enum DefineStrong { RoundScore, RoundKDR, RoundKills, PlayerRank };
+    public enum DefineStrong { RoundScore, RoundSPM, RoundKills, RoundKDR, PlayerRank };
     
     public enum PluginState { Disabled, JustEnabled, Active, Error, Reconnected };
     
     public enum GameState { RoundEnding, RoundStarting, Playing, Warmup, Unknown };
 
-    public enum ReasonFor { Balance, Unstack, Unswitch };
+    public enum MoveType { Balance, Unstack, Unswitch };
+
+    public enum ForbidBecause { None, MovedByBalancer, ToWinning, ToBiggest, DisperseByRank, DisperseByList };
 
     public enum Phase {Early, Mid, Late};
 
@@ -80,7 +82,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     /* Constants & Statics */
 
-    public const double SWAP_TIMEOUT = 60; // in seconds
+    public const double SWAP_TIMEOUT = 300; // in seconds
 
     public const double MODEL_TIMEOUT = 24*60; // in minutes
 
@@ -108,6 +110,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         
         public PerModeSettings(String simplifiedModeName) {
             DetermineStrongPlayersBy = DefineStrong.RoundScore;
+            PercentOfTopOfTeamIsStrong = 50;
             DisperseEvenlyForRank = 145;
             EnableDisperseEvenlyList = false;
             isDefault = false;
@@ -122,7 +125,8 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxPlayers = 32;
                     CheckTeamStackingAfterFirstMinutes = 10;
                     MaxUnstackingSwapsPerRound = 6;
-                    DelaySecondsBetweenSwaps = SWAP_TIMEOUT;
+                    NumberOfSwapsPerGroup = 3;
+                    DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
                     DefinitionOfHighPopulationForPlayers = 28;
                     DefinitionOfLowPopulationForPlayers = 8;
                     DefinitionOfEarlyPhaseFromStart = 50; // assuming 200 tickets typical
@@ -132,7 +136,8 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxPlayers = 64;
                     CheckTeamStackingAfterFirstMinutes = 10;
                     MaxUnstackingSwapsPerRound = 12;
-                    DelaySecondsBetweenSwaps = SWAP_TIMEOUT;
+                    NumberOfSwapsPerGroup = 3;
+                    DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
                     DefinitionOfHighPopulationForPlayers = 48;
                     DefinitionOfLowPopulationForPlayers = 16;
                     DefinitionOfEarlyPhaseFromStart = 100; // assuming 300 tickets typical
@@ -142,7 +147,8 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxPlayers = 64;
                     CheckTeamStackingAfterFirstMinutes = 5;
                     MaxUnstackingSwapsPerRound = 12;
-                    DelaySecondsBetweenSwaps = SWAP_TIMEOUT;
+                    NumberOfSwapsPerGroup = 3;
+                    DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
                     DefinitionOfHighPopulationForPlayers = 48;
                     DefinitionOfLowPopulationForPlayers = 16;
                     DefinitionOfEarlyPhaseFromStart = 5; // minutes
@@ -152,7 +158,8 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxPlayers = 32;
                     CheckTeamStackingAfterFirstMinutes = 5;
                     MaxUnstackingSwapsPerRound = 6;
-                    DelaySecondsBetweenSwaps = 120;
+                    NumberOfSwapsPerGroup = 1;
+                    DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
                     DefinitionOfHighPopulationForPlayers = 24;
                     DefinitionOfLowPopulationForPlayers = 8;
                     DefinitionOfEarlyPhaseFromStart = 25; // assuming 75 tickets typical
@@ -167,7 +174,8 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxPlayers = 16;
                     CheckTeamStackingAfterFirstMinutes = 0;
                     MaxUnstackingSwapsPerRound = 0;
-                    DelaySecondsBetweenSwaps = 0;
+                    NumberOfSwapsPerGroup = 0;
+                    DelaySecondsBetweenSwapGroups = 0;
                     DefinitionOfHighPopulationForPlayers = 14;
                     DefinitionOfLowPopulationForPlayers = 8;
                     DefinitionOfEarlyPhaseFromStart = 10; // assuming 50 tickets typical
@@ -177,7 +185,8 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxPlayers = 24;
                     CheckTeamStackingAfterFirstMinutes = 15;
                     MaxUnstackingSwapsPerRound = 6;
-                    DelaySecondsBetweenSwaps = SWAP_TIMEOUT;
+                    NumberOfSwapsPerGroup = 3;
+                    DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
                     DefinitionOfHighPopulationForPlayers = 48;
                     DefinitionOfLowPopulationForPlayers = 16;
                     DefinitionOfEarlyPhaseFromStart = 50; // assuming 250 tickets typical
@@ -187,7 +196,8 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxPlayers = 64;
                     CheckTeamStackingAfterFirstMinutes = 5;
                     MaxUnstackingSwapsPerRound = 12;
-                    DelaySecondsBetweenSwaps = SWAP_TIMEOUT;
+                    NumberOfSwapsPerGroup = 2;
+                    DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
                     DefinitionOfHighPopulationForPlayers = 48;
                     DefinitionOfLowPopulationForPlayers = 16;
                     DefinitionOfEarlyPhaseFromStart = 20; // assuming 100 tickets typical
@@ -197,7 +207,8 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxPlayers = 8;
                     CheckTeamStackingAfterFirstMinutes = 2;
                     MaxUnstackingSwapsPerRound = 1;
-                    DelaySecondsBetweenSwaps = 120;
+                    NumberOfSwapsPerGroup = 1;
+                    DelaySecondsBetweenSwapGroups = 1;
                     DefinitionOfHighPopulationForPlayers = 6;
                     DefinitionOfLowPopulationForPlayers = 4;
                     DefinitionOfEarlyPhaseFromStart = 5; // assuming 20 tickets typical
@@ -212,7 +223,8 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxPlayers = 16;
                     CheckTeamStackingAfterFirstMinutes = 2;
                     MaxUnstackingSwapsPerRound = 6;
-                    DelaySecondsBetweenSwaps = SWAP_TIMEOUT;
+                    NumberOfSwapsPerGroup = 1;
+                    DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
                     DefinitionOfHighPopulationForPlayers = 12;
                     DefinitionOfLowPopulationForPlayers = 6;
                     DefinitionOfEarlyPhaseFromStart = 0;
@@ -223,7 +235,8 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxPlayers = 32;
                     CheckTeamStackingAfterFirstMinutes = 10;
                     MaxUnstackingSwapsPerRound = 6;
-                    DelaySecondsBetweenSwaps = SWAP_TIMEOUT;
+                    NumberOfSwapsPerGroup = 3;
+                    DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
                     DefinitionOfHighPopulationForPlayers = 28;
                     DefinitionOfLowPopulationForPlayers = 8;
                     DefinitionOfEarlyPhaseFromStart = 50;
@@ -235,14 +248,16 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         public int MaxPlayers = 64; // will be corrected later
         public double CheckTeamStackingAfterFirstMinutes = 10;
         public int MaxUnstackingSwapsPerRound = 6;
-        public double DelaySecondsBetweenSwaps = SWAP_TIMEOUT;
+        public double DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
         public DefineStrong DetermineStrongPlayersBy = DefineStrong.RoundScore;
-        public double DefinitionOfHighPopulationForPlayers = 48;
-        public double DefinitionOfLowPopulationForPlayers = 16;
-        public double DefinitionOfEarlyPhaseFromStart = 50;
-        public double DefinitionOfLatePhaseFromEnd = 50;
+        public int DefinitionOfHighPopulationForPlayers = 48;
+        public int DefinitionOfLowPopulationForPlayers = 16;
+        public int DefinitionOfEarlyPhaseFromStart = 50;
+        public int DefinitionOfLatePhaseFromEnd = 50;
         public int DisperseEvenlyForRank = 145;
         public bool EnableDisperseEvenlyList = false;
+        public double PercentOfTopOfTeamIsStrong = 50;
+        public int NumberOfSwapsPerGroup = 3;
 
         // Rush only
         public double Stage1TicketPercentageToUnstackAdjustment = 0;
@@ -368,7 +383,8 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
     } // end TeamList
 
     public class MoveInfo {
-        public ReasonFor Reason = ReasonFor.Balance;
+        public MoveType For = MoveType.Balance;
+        public ForbidBecause Because = ForbidBecause.None;
         public String Name = String.Empty;
         public String Tag = String.Empty;
         public int Source = -1;
@@ -392,14 +408,39 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
             DestinationName = (String.IsNullOrEmpty(toName)) ? toTeam.ToString() : toName;
         }
 
-        public void Format(String fmt, bool isYell, bool isBefore) {
+        public void Format(PROTObalancer plugin, String fmt, bool isYell, bool isBefore) {
             String expanded = fmt;
 
             if (String.IsNullOrEmpty(expanded)) return;
 
-            String reason = String.Empty; // TBD
+            String reason = String.Empty;
 
-            if (expanded.Contains("%reason%")) expanded = expanded.Replace("%reason%", reason);
+            if (For == MoveType.Unswitch) {
+                switch (this.Because) {
+                    case ForbidBecause.MovedByBalancer:
+                        reason = plugin.BadBecauseMovedByBalancer;
+                        break;
+                    case ForbidBecause.DisperseByList:
+                        reason = plugin.BadBecauseDispersalList;
+                        break;
+                    case ForbidBecause.DisperseByRank:
+                        reason = plugin.BadBecauseRank;
+                        break;
+                    case ForbidBecause.ToBiggest:
+                        reason = plugin.BadBecauseBiggestTeam;
+                        break;
+                    case ForbidBecause.ToWinning:
+                        reason = plugin.BadBecauseWinningTeam;
+                        break;
+                    case ForbidBecause.None:
+                    default:
+                        reason = "(no reason)";
+                        break;
+                }
+
+                if (expanded.Contains("%reason%")) expanded = expanded.Replace("%reason%", reason);
+            }
+
             if (expanded.Contains("%name%")) expanded = expanded.Replace("%name%", Name);
             if (expanded.Contains("%tag%")) expanded = expanded.Replace("%tag%", Tag);
             if (expanded.Contains("%fromTeam%")) expanded = expanded.Replace("%fromTeam%", SourceName);
@@ -423,7 +464,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         public override String ToString() {
             String s = "Move(";
             s += "[" + Tag + "]" + Name + ",";
-            s += Reason + ",";
+            s += For + ",";
             s += Source + "(" + SourceName + "),";
             s += Destination + "(" + DestinationName + "),";
             s += "CB'" + ChatBefore + "',";
@@ -500,6 +541,7 @@ private DateTime fFullUnstackSwapTimestamp;
 private int fRushStage = 0;
 private double fRushAttackerTickets = 0;
 private List<MoveInfo> fMoveStash = null;
+private int fUnstackGroupCount = 0;
 
 // Operational statistics
 private int fReassignedRound = 0;
@@ -552,11 +594,11 @@ public Speed[] LatePhaseBalanceSpeed;
 
 public bool QuietMode;
 public double YellDurationSeconds;
-public String ReasonMovedByBalancer;
-public String ReasonWinningTeam;
-public String ReasonBiggestTeam;
-public String ReasonRank;
-public String ReasonDispersalList;
+public String BadBecauseMovedByBalancer;
+public String BadBecauseWinningTeam;
+public String BadBecauseBiggestTeam;
+public String BadBecauseRank;
+public String BadBecauseDispersalList;
 public String ChatMovedForBalance;
 public String YellMovedForBalance;
 public String ChatMovedToUnstack;
@@ -567,10 +609,6 @@ public String ChatDetectedGoodTeamSwitch;
 public String YellDetectedGoodTeamSwitch;
 public String ChatAfterUnswitching;
 public String YellAfterUnswitching;
-//DEL public String ChatDetectedSwitchByDispersalPlayer;
-//DEL public String YellDetectedSwitchByDispersalPlayer;
-//DEL public String ChatAfterUnswitchingDispersalPlayer;
-//DEL public String YellAfterUnswitchingDispersalPlayer;
 public String ShowInLog; // command line to show info in plugin.log
 public bool LogChat;
 public bool EnableLoggingOnlyMode;
@@ -674,6 +712,7 @@ public PROTObalancer() {
     fMoveStash = new List<MoveInfo>();
     fLastVersionCheckTimestamp = DateTime.MinValue;
     fTimeOutOfJoint = 0;
+    fUnstackGroupCount = 0;
     
     /* Settings */
 
@@ -713,19 +752,19 @@ public PROTObalancer() {
     
     SpellingOfSpeedNamesReminder = Speed.Click_Here_For_Speed_Names;
 
-    EarlyPhaseBalanceSpeed = new Speed[3]           { Speed.Adaptive, Speed.Adaptive, Speed.Adaptive};
-    MidPhaseBalanceSpeed = new Speed[3]             { Speed.Adaptive, Speed.Adaptive, Speed.Adaptive};
+    EarlyPhaseBalanceSpeed = new Speed[3]           {     Speed.Fast, Speed.Adaptive, Speed.Adaptive};
+    MidPhaseBalanceSpeed = new Speed[3]             {     Speed.Fast, Speed.Adaptive, Speed.Adaptive};
     LatePhaseBalanceSpeed = new Speed[3]            {     Speed.Stop,     Speed.Stop,     Speed.Stop};
 
     /* ===== SECTION 5 - Messages ===== */
     
     QuietMode = false; // false: chat is global, true: chat is private. Yells are always private
     YellDurationSeconds = 10;
-    ReasonMovedByBalancer = "autobalance moved you to the %toTeam% team";
-    ReasonWinningTeam = "switching to the winning team is not allowed";
-    ReasonBiggestTeam = "switching to the biggest team is not allowed";
-    ReasonRank = "this server splits Colonel 100's between teams";
-    ReasonDispersalList = "you're on the list of players to split between teams";
+    BadBecauseMovedByBalancer = "autobalance moved you to the %toTeam% team";
+    BadBecauseWinningTeam = "switching to the winning team is not allowed";
+    BadBecauseBiggestTeam = "switching to the biggest team is not allowed";
+    BadBecauseRank = "this server splits Colonel 100's between teams";
+    BadBecauseDispersalList = "you're on the list of players to split between teams";
     ChatMovedForBalance = "*** MOVED %name% for balance ...";
     YellMovedForBalance = "Moved %name% for balance ...";
     ChatMovedToUnstack = "*** MOVED %name% to unstack teams ...";
@@ -736,10 +775,6 @@ public PROTObalancer() {
     YellDetectedGoodTeamSwitch = "Thanks for helping out the %toTeam% team!";
     ChatAfterUnswitching = "%name%, please stay on the %toTeam% team for the rest of this round";
     YellAfterUnswitching = "Please stay on the %toTeam% team for the rest of this round";
-    //DEL ChatDetectedSwitchByDispersalPlayer = "%name% is on the list of players to split between teams";
-    //DEL YellDetectedSwitchByDispersalPlayer = "You're on the list of players to split between teams";
-    //DEL ChatAfterUnswitchingDispersalPlayer = "%name%, stay on the team you are assigned to";
-    //DEL YellAfterUnswitchingDispersalPlayer = "Stay on the team you are assigned to";
     
     /* ===== SECTION 6 - TBD ===== */
 
@@ -760,9 +795,12 @@ public PROTObalancer(PresetItems preset) : this() {
          // EarlyPhaseTicketPercentageToUnstack = new double[3]     {  0,120,120};
          // MidPhaseTicketPercentageToUnstack = new double[3]       {  0,120,120};
          // LatePhaseTicketPercentageToUnstack = new double[3]      {  0,  0,  0};
-         // EarlyPhaseBalanceSpeed = new Speed[3]   { Speed.Adaptive, Speed.Adaptive, Speed.Adaptive};
-         // MidPhaseBalanceSpeed = new Speed[3]     { Speed.Adaptive, Speed.Adaptive, Speed.Adaptive};
+         // EarlyPhaseBalanceSpeed = new Speed[3]   {     Speed.Fast, Speed.Adaptive, Speed.Adaptive};
+         // MidPhaseBalanceSpeed = new Speed[3]     {     Speed.Fast, Speed.Adaptive, Speed.Adaptive};
          // LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Stop,     Speed.Stop,     Speed.Stop};
+         // foreach (String mode in fPerMode.Keys) {
+         //      fPerMode[mode].PercentOfTopOfTeamIsStrong = 50;
+         // }
             break;
 
         case PresetItems.Aggressive:
@@ -782,6 +820,11 @@ public PROTObalancer(PresetItems preset) : this() {
             EarlyPhaseBalanceSpeed = new Speed[3]   {     Speed.Fast,     Speed.Fast,     Speed.Fast};
             MidPhaseBalanceSpeed = new Speed[3]     {     Speed.Fast,     Speed.Fast,     Speed.Fast};
             LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Fast,     Speed.Fast,     Speed.Fast};
+
+            // Does not count for automatic detection of preset
+            foreach (String mode in fPerMode.Keys) {
+                fPerMode[mode].PercentOfTopOfTeamIsStrong = 50;
+            }
             
             break;
 
@@ -802,6 +845,11 @@ public PROTObalancer(PresetItems preset) : this() {
             EarlyPhaseBalanceSpeed = new Speed[3]   {     Speed.Slow,     Speed.Slow,     Speed.Slow};
             MidPhaseBalanceSpeed = new Speed[3]     {     Speed.Slow,     Speed.Slow,     Speed.Slow};
             LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Stop,     Speed.Stop,     Speed.Stop};
+
+            // Does not count for automatic detection of preset
+            foreach (String mode in fPerMode.Keys) {
+                fPerMode[mode].PercentOfTopOfTeamIsStrong = 50;
+            }
             
             break;
 
@@ -823,6 +871,10 @@ public PROTObalancer(PresetItems preset) : this() {
             EarlyPhaseBalanceSpeed = new Speed[3]   { Speed.Adaptive, Speed.Adaptive, Speed.Adaptive};
             MidPhaseBalanceSpeed = new Speed[3]     { Speed.Adaptive, Speed.Adaptive, Speed.Adaptive};
             LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Stop,     Speed.Stop,     Speed.Stop};
+
+            foreach (String mode in fPerMode.Keys) {
+                fPerMode[mode].PercentOfTopOfTeamIsStrong = 25;
+            }
             
             break;
 
@@ -843,6 +895,10 @@ public PROTObalancer(PresetItems preset) : this() {
             EarlyPhaseBalanceSpeed = new Speed[3]   {     Speed.Slow, Speed.Adaptive,     Speed.Slow};
             MidPhaseBalanceSpeed = new Speed[3]     {     Speed.Slow, Speed.Adaptive,     Speed.Slow};
             LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Stop,     Speed.Stop,     Speed.Stop};
+
+            foreach (String mode in fPerMode.Keys) {
+                fPerMode[mode].PercentOfTopOfTeamIsStrong = 5;
+            }
             
             break;
 
@@ -863,6 +919,10 @@ public PROTObalancer(PresetItems preset) : this() {
             EarlyPhaseBalanceSpeed = new Speed[3]   { Speed.Adaptive, Speed.Adaptive, Speed.Adaptive};
             MidPhaseBalanceSpeed = new Speed[3]     { Speed.Adaptive, Speed.Adaptive, Speed.Adaptive};
             LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Stop,     Speed.Stop,     Speed.Stop};
+
+            foreach (String mode in fPerMode.Keys) {
+                fPerMode[mode].PercentOfTopOfTeamIsStrong = 0;
+            }
             
             break;
 
@@ -880,9 +940,14 @@ public PROTObalancer(PresetItems preset) : this() {
             MidPhaseTicketPercentageToUnstack = new double[3]       {120,120,120};
             LatePhaseTicketPercentageToUnstack = new double[3]      {  0,  0,  0};
 
-            EarlyPhaseBalanceSpeed = new Speed[3]   {     Speed.Stop,     Speed.Stop,     Speed.Stop};
-            MidPhaseBalanceSpeed = new Speed[3]     {     Speed.Stop,     Speed.Stop,     Speed.Stop};
-            LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Stop,     Speed.Stop,     Speed.Stop};
+            EarlyPhaseBalanceSpeed = new Speed[3]   {     Speed.Unstack,     Speed.Unstack,     Speed.Unstack};
+            MidPhaseBalanceSpeed = new Speed[3]     {     Speed.Unstack,     Speed.Unstack,     Speed.Unstack};
+            LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Unstack,     Speed.Unstack,     Speed.Unstack};
+
+            // Does not count for automatic detection of preset
+            foreach (String mode in fPerMode.Keys) {
+                fPerMode[mode].PercentOfTopOfTeamIsStrong = 50;
+            }
             
             break;
 
@@ -1022,16 +1087,6 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         lstReturn.Add(new CPluginVariable("5 - Messages|Quiet Mode", QuietMode.GetType(), QuietMode));
 
         lstReturn.Add(new CPluginVariable("5 - Messages|Yell Duration Seconds", YellDurationSeconds.GetType(), YellDurationSeconds));
-
-        lstReturn.Add(new CPluginVariable("5 - Messages|Reason: Moved By Balancer", ReasonMovedByBalancer.GetType(), ReasonMovedByBalancer));
-
-        lstReturn.Add(new CPluginVariable("5 - Messages|Reason: Winning Team", ReasonWinningTeam.GetType(), ReasonWinningTeam));
-
-        lstReturn.Add(new CPluginVariable("5 - Messages|Reason: Biggest Team", ReasonBiggestTeam.GetType(), ReasonBiggestTeam));
-
-        lstReturn.Add(new CPluginVariable("5 - Messages|Reason: Rank", ReasonRank.GetType(), ReasonRank));
-
-        lstReturn.Add(new CPluginVariable("5 - Messages|Reason: Dispersal List", ReasonDispersalList.GetType(), ReasonDispersalList));
         
         lstReturn.Add(new CPluginVariable("5 - Messages|Chat: Moved For Balance", ChatMovedForBalance.GetType(), ChatMovedForBalance));
         
@@ -1044,6 +1099,16 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         lstReturn.Add(new CPluginVariable("5 - Messages|Chat: Detected Bad Team Switch", ChatDetectedBadTeamSwitch.GetType(), ChatDetectedBadTeamSwitch));
         
         lstReturn.Add(new CPluginVariable("5 - Messages|Yell: Detected Bad Team Switch", YellDetectedBadTeamSwitch.GetType(), YellDetectedBadTeamSwitch));
+
+        lstReturn.Add(new CPluginVariable("5 - Messages|Bad Because: Moved By Balancer", BadBecauseMovedByBalancer.GetType(), BadBecauseMovedByBalancer));
+
+        lstReturn.Add(new CPluginVariable("5 - Messages|Bad Because: Winning Team", BadBecauseWinningTeam.GetType(), BadBecauseWinningTeam));
+
+        lstReturn.Add(new CPluginVariable("5 - Messages|Bad Because: Biggest Team", BadBecauseBiggestTeam.GetType(), BadBecauseBiggestTeam));
+
+        lstReturn.Add(new CPluginVariable("5 - Messages|Bad Because: Rank", BadBecauseRank.GetType(), BadBecauseRank));
+
+        lstReturn.Add(new CPluginVariable("5 - Messages|Bad Because: Dispersal List", BadBecauseDispersalList.GetType(), BadBecauseDispersalList));
         
         lstReturn.Add(new CPluginVariable("5 - Messages|Chat: Detected Good Team Switch", ChatDetectedGoodTeamSwitch.GetType(), ChatDetectedGoodTeamSwitch));
         
@@ -1082,12 +1147,17 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Max Unstacking Swaps Per Round", oneSet.MaxUnstackingSwapsPerRound.GetType(), oneSet.MaxUnstackingSwapsPerRound));
 
-                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Delay Seconds Between Swaps", oneSet.DelaySecondsBetweenSwaps.GetType(), oneSet.DelaySecondsBetweenSwaps));
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Number Of Swaps Per Group", oneSet.NumberOfSwapsPerGroup.GetType(), oneSet.NumberOfSwapsPerGroup));
+
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Delay Seconds Between Swap Groups", oneSet.DelaySecondsBetweenSwapGroups.GetType(), oneSet.DelaySecondsBetweenSwapGroups));
 
                 var_name = "8 - Settings for " + sm + "|" + sm + ": " + "Determine Strong Players By";
                 var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(DefineStrong))) + ")";
 
                 lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(DefineStrong), oneSet.DetermineStrongPlayersBy)));
+
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Percent Of Top Of Team Is Strong", oneSet.PercentOfTopOfTeamIsStrong.GetType(), oneSet.PercentOfTopOfTeamIsStrong));
+
             }
 
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Disperse Evenly For Rank >=", oneSet.DisperseEvenlyForRank.GetType(), oneSet.DisperseEvenlyForRank));
@@ -1145,7 +1215,7 @@ public void SetPluginVariable(String strVariable, String strValue) {
     bool isPresetVar = false;
     bool isReminderVar = false;
 
-    DebugWrite(strVariable + " <- " + strValue, 6);
+    if (fIsEnabled) DebugWrite(strVariable + " <- " + strValue, 6);
 
     try {
         String tmp = strVariable;
@@ -1219,7 +1289,7 @@ public void SetPluginVariable(String strVariable, String strValue) {
                     ConsoleDebug(l);
                 }
             } else if (fBoolDict.ContainsValue(fieldType)) {
-                DebugWrite(propertyName + " strValue = " + strValue, 6);
+                if (fIsEnabled) DebugWrite(propertyName + " strValue = " + strValue, 6);
                 if (Regex.Match(strValue, "true", RegexOptions.IgnoreCase).Success) {
                     field.SetValue(this, true);
                 } else {
@@ -1245,7 +1315,7 @@ public void SetPluginVariable(String strVariable, String strValue) {
                 
                 field = pms.GetType().GetField(perModeSetting, flags);
                 
-                DebugWrite("Mode: " + mode + ", Field: " + perModeSetting + ", Value: " + strValue, 6);
+                if (fIsEnabled) DebugWrite("Mode: " + mode + ", Field: " + perModeSetting + ", Value: " + strValue, 6);
                 
                 if (field != null) {
                     fieldType = field.GetValue(pms).GetType();
@@ -1259,7 +1329,7 @@ public void SetPluginVariable(String strVariable, String strValue) {
                         } else {
                             field.SetValue(pms, false);
                         }
-                    } else if (strVariable.Contains("Strong")) {
+                    } else if (strVariable.Contains("Determine Strong")) {
                         fieldType = typeof(DefineStrong);
                         try {
                             field.SetValue(pms, (DefineStrong)Enum.Parse(fieldType, strValue));
@@ -1268,7 +1338,7 @@ public void SetPluginVariable(String strVariable, String strValue) {
                         }
                     }
                 } else {
-                    DebugWrite("field is null", 6);
+                    if (fIsEnabled) DebugWrite("field is null", 6);
                 }
             }
         }
@@ -1333,8 +1403,8 @@ private void ResetSettings() {
     Enable2SlotReserve = rhs.Enable2SlotReserve;
     EnablerecruitCommand = rhs.EnablerecruitCommand;
     EnableWhitelistingOfReservedSlotsList = rhs.EnableWhitelistingOfReservedSlotsList;
-    Whitelist = rhs.Whitelist;
-    DisperseEvenlyList = rhs.DisperseEvenlyList;
+    // Whitelist = rhs.Whitelist; // don't reset the whitelist
+    // DisperseEvenlyList = rhs.DisperseEvenlyList; // don't reset the dispersal list
     Preset = rhs.Preset;
     
     /* ===== SECTION 2 - Exclusions ===== */
@@ -1364,11 +1434,11 @@ private void ResetSettings() {
     
     QuietMode =  rhs.QuietMode;
     YellDurationSeconds = rhs.YellDurationSeconds;
-    ReasonMovedByBalancer = rhs.ReasonWinningTeam;
-    ReasonWinningTeam = rhs.ReasonWinningTeam;
-    ReasonBiggestTeam = rhs.ReasonBiggestTeam;
-    ReasonRank = rhs.ReasonRank;
-    ReasonDispersalList = rhs.ReasonDispersalList;
+    BadBecauseMovedByBalancer = rhs.BadBecauseMovedByBalancer;
+    BadBecauseWinningTeam = rhs.BadBecauseWinningTeam;
+    BadBecauseBiggestTeam = rhs.BadBecauseBiggestTeam;
+    BadBecauseRank = rhs.BadBecauseRank;
+    BadBecauseDispersalList = rhs.BadBecauseDispersalList;
     ChatMovedForBalance = rhs.ChatMovedForBalance;
     YellMovedForBalance = rhs.YellMovedForBalance;
     ChatMovedToUnstack = rhs.ChatMovedToUnstack;
@@ -1412,8 +1482,8 @@ private void CommandToLog(string cmd) {
 
         if (Regex.Match(cmd, @"help", RegexOptions.IgnoreCase).Success) {
             ConsoleDump("^1^bmodes^n^0: List the known game modes");
-            ConsoleDump("^1^breset settings^n^0: Reset all plugin settings to default");
-            ConsoleDump("^1^bsort^n ^iteam^n ^itype^n^0: Sort ^iteam^n (1-4) by ^itype^n (one of: score, kills, kdr, rank)");
+            ConsoleDump("^1^breset settings^n^0: Reset all plugin settings to default, except for ^bWhitelist^n and ^bDisperse Evenly List^n");
+            ConsoleDump("^1^bsort^n ^iteam^n ^itype^n^0: List sorted ^iteam^n (1-4) by ^itype^n (one of: score, spm, kills, kdr, rank)");
             return;
         }
 
@@ -1427,12 +1497,12 @@ private void CommandToLog(string cmd) {
         }
         
         if (Regex.Match(cmd, @"reset settings", RegexOptions.IgnoreCase).Success) {
-            ConsoleDump("^8^bRESETTING ALL PLUGIN SETTINGS TO DEFAULT!");
+            ConsoleDump("^8^bRESETTING ALL PLUGIN SETTINGS (except Whitelist and Dispersal list) TO DEFAULT!");
             ResetSettings();
             return;
         }
 
-        m = Regex.Match(cmd, @"^sort\s+([1-4])\s+(score|kills|kdr|rank)", RegexOptions.IgnoreCase);
+        m = Regex.Match(cmd, @"^sort\s+([1-4])\s+(score|spm|kills|kdr|rank)", RegexOptions.IgnoreCase);
         if (m.Success) {
             String teamID = m.Groups[1].Value;
             String propID = m.Groups[2].Value;
@@ -1451,6 +1521,9 @@ private void CommandToLog(string cmd) {
                 case "score":
                     fromList.Sort(DescendingRoundScore);
                     break;
+                case "spm":
+                    fromList.Sort(DescendingRoundSPM);
+                    break;
                 case "kills":
                     fromList.Sort(DescendingRoundKills);
                    break;
@@ -1468,19 +1541,22 @@ private void CommandToLog(string cmd) {
             foreach (PlayerModel p in fromList) {
                 switch (propID.ToLower()) {
                     case "score":
-                        ConsoleDump("#" + String.Format("{0,2}", n) + ") Score: " + String.Format("{0,6}", p.ScoreRound) + ", ^b" + p.FullName);
+                        ConsoleDump("#" + String.Format("{0,2}", n) + ") Score: " + String.Format("{0:F0,6}", p.ScoreRound) + ", ^b" + p.FullName);
+                        break;
+                    case "spm":
+                        ConsoleDump("#" + String.Format("{0,2}", n) + ") SPM: " + String.Format("{0:F0,6}", p.SPMRound) + ", ^b" + p.FullName);
                         break;
                     case "kills":
-                        ConsoleDump("#" + String.Format("{0,2}", n) + ") Kills: " + String.Format("{0,6}", p.KillsRound) + ", ^b" + p.FullName);
+                        ConsoleDump("#" + String.Format("{0,2}", n) + ") Kills: " + String.Format("{0:F0,6}", p.KillsRound) + ", ^b" + p.FullName);
                        break;
                     case "kdr":
-                        ConsoleDump("#" + String.Format("{0,2}", n) + ") KDR: " + String.Format("{0,6}", p.KDRRound) + ", ^b" + p.FullName);
+                        ConsoleDump("#" + String.Format("{0,2}", n) + ") KDR: " + String.Format("{0:F1,6}", p.KDRRound) + ", ^b" + p.FullName);
                         break;
                     case "rank":
-                        ConsoleDump("#" + String.Format("{0,2}", n) + ") Rank: " + String.Format("{0,6}", p.Rank) + ", ^b" + p.FullName);
+                        ConsoleDump("#" + String.Format("{0,2}", n) + ") Rank: " + String.Format("{0:F0,6}", p.Rank) + ", ^b" + p.FullName);
                         break;
                     default:
-                        ConsoleDump("#" + String.Format("{0,2}", n) + ") Score: " + String.Format("{0,6}", p.ScoreRound) + ", ^b" + p.FullName);
+                        ConsoleDump("#" + String.Format("{0,2}", n) + ") Score: " + String.Format("{0:F0,6}", p.ScoreRound) + ", ^b" + p.FullName);
                         break;
                 }
                 n = n + 1;
@@ -2273,7 +2349,12 @@ private void BalanceAndUnstack(String name) {
             return;
         }
 
-        needsBalancing = true;
+        needsBalancing = true; // needs balancing set to true, unless speed is Unstack only
+
+        if (balanceSpeed == Speed.Unstack) {
+            DebugBalance("Needs balancing, but balance speed is set to Unstack, so no balancing will be done");
+            needsBalancing = false;
+        }
     }
 
     /* Per-mode settings */
@@ -2332,6 +2413,10 @@ private void BalanceAndUnstack(String name) {
             fromList.Sort(DescendingRoundScore);
             strongMsg = "Determing strong by: Round Score";
             break;
+        case DefineStrong.RoundSPM:
+            fromList.Sort(DescendingRoundSPM);
+            strongMsg = "Determing strong by: Round SPM";
+            break;
         case DefineStrong.RoundKills:
             fromList.Sort(DescendingRoundKills);
             strongMsg = "Determing strong by: Round Kills";
@@ -2349,20 +2434,35 @@ private void BalanceAndUnstack(String name) {
             strongMsg = "Determing strong by: Round Score";
             break;
     }
-    int median = Math.Max(0, (fromList.Count / 2) - 1);
+
+    double above = ((fromList.Count * perMode.PercentOfTopOfTeamIsStrong) / 100.0) + 0.5;
+    int strongest = Math.Max(0, Convert.ToInt32(above));
     int playerIndex = 0;
     int minPlayers = (isSQDM) ? 5 : fromList.Count; // for SQDM, apply top/strong/weak only if team has 5 or more players
 
     // Exclude if TopScorers enabled and a top scorer on the team
     int topPlayersPerTeam = 0;
     if (balanceSpeed != Speed.Fast && (TopScorers || balanceSpeed == Speed.Slow)) {
-        if (totalPlayerCount < 22) {
-            topPlayersPerTeam = 1;
-        } else if (totalPlayerCount > 42) {
-            topPlayersPerTeam = Math.Min(3, fromList.Count);
+        if (isSQDM) {
+            int maxCount = fromList.Count;
+            if (maxCount < 5) {
+                topPlayersPerTeam = 0;
+            } else if (maxCount < 8) {
+                topPlayersPerTeam = 1;
+            } else if (totalPlayerCount < 16) {
+                topPlayersPerTeam = 2;
+            } else {
+                topPlayersPerTeam = 3;
+            }
         } else {
-            topPlayersPerTeam = Math.Min(2, fromList.Count);
-        } 
+            if (totalPlayerCount < 22) {
+                topPlayersPerTeam = 1;
+            } else if (totalPlayerCount > 42) {
+                topPlayersPerTeam = 3;
+            } else {
+                topPlayersPerTeam = 2;
+            }
+        }
     }
     for (int i = 0; i < fromList.Count; ++i) {
         if (fromList[i].Name == player.Name) {
@@ -2387,7 +2487,7 @@ private void BalanceAndUnstack(String name) {
             }
         }
     }
-    isStrong = (playerIndex < median);
+    isStrong = (playerIndex < strongest);
 
     // Exclude if player joined less than MinutesAfterJoining
     double joinedMinutesAgo = GetPlayerJoinedTimeSpan(player).TotalMinutes;
@@ -2497,7 +2597,7 @@ private void BalanceAndUnstack(String name) {
             if (DebugLevel > 5) DebugBalance(strongMsg);
             // don't move weak player to losing team
             if (!isStrong  && toTeam == losingTeam) {
-                DebugBalance("Exempting ^b" + name + "^n, don't move weak player to losing team (#" + (playerIndex+1) + " of " + fromList.Count + ", median " + (median+1) + ")");
+                DebugBalance("Exempting ^b" + name + "^n, don't move weak player to losing team (#" + (playerIndex+1) + " of " + fromList.Count + ", top " + (strongest) + ")");
                 fExemptRound = fExemptRound + 1;
                 IncrementTotal();
                 return;
@@ -2505,7 +2605,7 @@ private void BalanceAndUnstack(String name) {
 
             // don't move strong player to winning team
             if (isStrong && toTeam == winningTeam) {
-                DebugBalance("Exempting ^b" + name + "^n, don't move strong player to winning team (#" + (playerIndex+1) + " of " + fromList.Count + ", median " + (median+1) + ")");
+                DebugBalance("Exempting ^b" + name + "^n, don't move strong player to winning team (#" + (playerIndex+1) + " of " + fromList.Count + ", median " + (strongest) + ")");
                 fExemptRound = fExemptRound + 1;
                 IncrementTotal();
                 return;
@@ -2532,9 +2632,9 @@ private void BalanceAndUnstack(String name) {
         }
         
         MoveInfo move = new MoveInfo(name, player.Tag, origTeam, origName, toTeam, GetTeamName(toTeam));
-        move.Reason = ReasonFor.Balance;
-        move.Format(ChatMovedForBalance, false, false);
-        move.Format(YellMovedForBalance, true, false);
+        move.For = MoveType.Balance;
+        move.Format(this, ChatMovedForBalance, false, false);
+        move.Format(this, YellMovedForBalance, true, false);
         log = "^4^bBALANCE^n^0 moving ^b" + name + "^n from " + move.SourceName + " team to " + move.DestinationName + " team because difference is " + diff;
         log = (EnableLoggingOnlyMode) ? "^9(SIMULATING)^0 " + log : log;
         DebugWrite(log, 3);
@@ -2561,7 +2661,7 @@ private void BalanceAndUnstack(String name) {
     /* Unstack */
 
     if (winningTeam <= 0 || winningTeam >= fTickets.Length || losingTeam <= 0 || losingTeam >= fTickets.Length || balanceSpeed == Speed.Stop) {
-        if (DebugLevel >= 5) DebugBalance("Skipping unstack: winning = " + winningTeam + ", losingTeam = " + losingTeam + ", speed = " + balanceSpeed);
+        if (DebugLevel >= 5) DebugBalance("Skipping unstack for ^b" + name +"^n: winning = " + winningTeam + ", losingTeam = " + losingTeam + ", speed = " + balanceSpeed);
         IncrementTotal(); // no matching stat, reflect total deaths handled
         return;
     }
@@ -2590,6 +2690,7 @@ private void BalanceAndUnstack(String name) {
 
     if ((fUnstackedRound/2) >= perMode.MaxUnstackingSwapsPerRound) {
         if (DebugLevel >= 7) DebugBalance("Maximum swaps have already occurred this round (" + (fUnstackedRound/2) + ")");
+        fUnstackState = UnstackState.Off;
         IncrementTotal(); // no matching stat, reflect total deaths handled
         return;
     }
@@ -2627,11 +2728,21 @@ private void BalanceAndUnstack(String name) {
         return;
     }
 
-    double nsis = NextSwapInSeconds(perMode);
-    if (nsis > 0 && fUnstackState == UnstackState.SwappedWeak) {
-        if (DebugLevel >= 7) DebugBalance("Too soon to do another unstack swap, wait another " + nsis.ToString("F1") + " seconds!");
+    /*
+    Cases:
+    1) Never unstacked before, timer is 0 and group count is 0
+    2) Within a group, timer is 0 and group count is > 0 but < max
+    3) Between groups, timer is > 0 and group count is 0
+    */
+
+    double nsis = NextSwapGroupInSeconds(perMode); // returns 0 for case 1 and case 2
+
+    if (nsis > 0) {
+        if (DebugLevel >= 7) DebugBalance("Too soon to do another unstack swap group, wait another " + nsis.ToString("F1") + " seconds!");
         IncrementTotal(); // no matching stat, reflect total deaths handled
         return;
+    } else {
+        fFullUnstackSwapTimestamp = DateTime.MinValue; // turn off timer
     }
 
     // Are the minimum number of players present to decide strong vs weak?
@@ -2653,6 +2764,14 @@ private void BalanceAndUnstack(String name) {
     // Otherwise, unstack!
     DebugBalance("^6Unstacking!^0 " + um);
 
+    if (DebugLevel >= 6) {
+        if (isStrong) {
+            DebugBalance("Player ^b" + player.Name + "^n is strong: #" + (playerIndex+1) + " of " + fromList.Count + ", above #" + strongest + " at " + perMode.PercentOfTopOfTeamIsStrong.ToString("F0") + "%");
+        } else {
+            DebugBalance("Player ^b" + player.Name + "^n is weak: #" + (playerIndex+1) + " of " + fromList.Count + ", equal or below #" + strongest + " at " + perMode.PercentOfTopOfTeamIsStrong.ToString("F0") + "%");
+        }
+    }
+
     if (!loggedStats) {
         DebugBalance(GetPlayerStatsString(name));
         loggedStats = true;
@@ -2669,9 +2788,13 @@ private void BalanceAndUnstack(String name) {
         origUnName = GetTeamName(origUnTeam);
     }
 
+    if (fUnstackState == UnstackState.Off) {
+        // First swap
+        DebugBalance("For ^b" + name + "^n, first swap of " + perMode.NumberOfSwapsPerGroup);
+        fUnstackState = UnstackState.SwappedWeak;
+    }
+
     switch (fUnstackState) {
-        case UnstackState.Off:
-            // First swap
         case UnstackState.SwappedWeak:
             // Swap strong to losing team
             if (isStrong) {
@@ -2687,7 +2810,7 @@ private void BalanceAndUnstack(String name) {
                 toTeam = losingTeam;
                 fUnstackState = UnstackState.SwappedStrong;
             } else {
-                DebugBalance("Skipping ^b" + name + "^n, don't move weak player to losing team (#" + (playerIndex+1) + " of " + fromList.Count + ", median " + (median+1) + ")");
+                DebugBalance("Skipping ^b" + name + "^n, don't move weak player to losing team (#" + (playerIndex+1) + " of " + fromList.Count + ", median " + (strongest) + ")");
                 fExemptRound = fExemptRound + 1;
                 IncrementTotal();
                 return;
@@ -2707,18 +2830,16 @@ private void BalanceAndUnstack(String name) {
                 moveUnstack = new MoveInfo(name, player.Tag, origUnTeam, origUnName, winningTeam, GetTeamName(winningTeam));
                 toTeam = winningTeam;
                 fUnstackState = UnstackState.SwappedWeak;
-                fFullUnstackSwapTimestamp = now;
-                if ((fUnstackedRound/2) >= perMode.MaxUnstackingSwapsPerRound) {
-                    DebugBalance("^1Maximum unstacking swaps has been reached for this round, no more unstacking will occur!");
-                    fUnstackState = UnstackState.Off;
-                }
+                FinishedFullSwap(name, perMode); // updates group count
             } else {
-                DebugBalance("Skipping ^b" + name + "^n, don't move strong player to winning team (#" + (playerIndex+1) + " of " + fromList.Count + ", median " + (median+1) + ")");
+                DebugBalance("Skipping ^b" + name + "^n, don't move strong player to winning team (#" + (playerIndex+1) + " of " + fromList.Count + ", median " + (strongest) + ")");
                 fExemptRound = fExemptRound + 1;
                 IncrementTotal();
                 return;
             }
             break;
+        case UnstackState.Off:
+            // fall thru
         default: return;
     }
 
@@ -2727,9 +2848,9 @@ private void BalanceAndUnstack(String name) {
     log = "^4^bUNSTACK^n^0 moving ^b" + name + "^n from " + moveUnstack.SourceName + " to " + moveUnstack.DestinationName + " because: " + um;
     log = (EnableLoggingOnlyMode) ? "^9(SIMULATING)^0 " + log : log;
     DebugWrite(log, 3);
-    moveUnstack.Reason = ReasonFor.Unstack;
-    moveUnstack.Format(ChatMovedToUnstack, false, false);
-    moveUnstack.Format(YellMovedToUnstack, true, false);
+    moveUnstack.For = MoveType.Unstack;
+    moveUnstack.Format(this, ChatMovedToUnstack, false, false);
+    moveUnstack.Format(this, YellMovedToUnstack, true, false);
 
     DebugWrite("^9" + moveUnstack, 7);
 
@@ -3053,8 +3174,8 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     // Trying to switch to losing team?
     if (!forbidden && toLosing && toTeam != biggestTeam) {
         move = new MoveInfo(player.Name, player.Tag, fromTeam, GetTeamName(fromTeam), toTeam, GetTeamName(toTeam));
-        move.Format(ChatDetectedGoodTeamSwitch, false, true);
-        move.Format(YellDetectedGoodTeamSwitch, true, true);
+        move.Format(this, ChatDetectedGoodTeamSwitch, false, true);
+        move.Format(this, YellDetectedGoodTeamSwitch, true, true);
         DebugUnswitch("ALLOWED: Team switch to losing team ^b: " + name);
         SetSpawnMessages(name, move.ChatBefore, move.YellBefore, false);
         CheckAbortMove(name);
@@ -3075,8 +3196,8 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     // Trying to switch to smallest team?
     if (!forbidden && toSmallest && toTeam != winningTeam) {
         move = new MoveInfo(player.Name, player.Tag, fromTeam, GetTeamName(fromTeam), toTeam, GetTeamName(toTeam));
-        move.Format(ChatDetectedGoodTeamSwitch, false, true);
-        move.Format(YellDetectedGoodTeamSwitch, true, true);
+        move.Format(this, ChatDetectedGoodTeamSwitch, false, true);
+        move.Format(this, YellDetectedGoodTeamSwitch, true, true);
         DebugUnswitch("ALLOWED: Team switch to smallest team ^b: " + name);
         SetSpawnMessages(name, move.ChatBefore, move.YellBefore, false);
         CheckAbortMove(name);
@@ -3143,19 +3264,32 @@ private bool CheckTeamSwitch(String name, int toTeam) {
         origName = GetTeamName(lastMoveTo);
     }
 
-    // TBD: select forbidden message from: moved by autobalance, moved to unstack, dispersal, ...
-    // DEL String badChat = (isDispersal) ? ChatDetectedSwitchByDispersalPlayer : ChatDetectedBadTeamSwitch;
-    // DEL String badYell = (isDispersal) ? YellDetectedSwitchByDispersalPlayer : YellDetectedBadTeamSwitch;
+    // select forbidden message from: moved by autobalance, moved to unstack, dispersal, ...
     String badChat = ChatDetectedBadTeamSwitch;
     String badYell = YellDetectedBadTeamSwitch;
 
+    ForbidBecause why = ForbidBecause.None;
+
+    if (player.MovedByMB && !isSQDM) {
+        why = ForbidBecause.MovedByBalancer;
+    } else if (toTeam == winningTeam) {
+        why = ForbidBecause.ToWinning;
+    } else if (toTeam == biggestTeam) {
+        why = ForbidBecause.ToBiggest;
+    } else if (isDispersal) {
+        why = ForbidBecause.DisperseByList;
+    } else if (isRank) {
+        why = ForbidBecause.DisperseByRank;
+    }
+
     // Tried to switch toTeam from origTeam, so moving from toTeam back to origTeam
     move = new MoveInfo(name, player.Tag, toTeam, GetTeamName(toTeam), origTeam, origName);
-    move.Reason = ReasonFor.Unswitch;
-    move.Format(badChat, false, true);
-    move.Format(badYell, true, true);
-    move.Format(ChatAfterUnswitching, false, false);
-    move.Format(YellAfterUnswitching, true, false);
+    move.For = MoveType.Unswitch;
+    move.Because = why;
+    move.Format(this, badChat, false, true);
+    move.Format(this, badYell, true, true);
+    move.Format(this, ChatAfterUnswitching, false, false);
+    move.Format(this, YellAfterUnswitching, true, false);
     DebugUnswitch("FORBIDDEN: delaying unswitch action until spawn of ^b" + name + "^n from " + move.SourceName + " back to " + move.DestinationName);
 
     if (DebugLevel >= 8) DebugUnswitch(move.ToString());
@@ -3270,7 +3404,7 @@ private void StartMoveImmediate(MoveInfo move, bool sendMessages) {
     // Send before messages?
     if (sendMessages) {
         Yell(move.Name, move.YellBefore);
-        Chat(move.Name, move.ChatBefore, move.Reason == ReasonFor.Unswitch); // player only if unswitch
+        Chat(move.Name, move.ChatBefore, move.For == MoveType.Unswitch); // player only if unswitch
     }
 
     lock (fMoving) {
@@ -3292,10 +3426,10 @@ private void StartMoveImmediate(MoveInfo move, bool sendMessages) {
 
     // Log move
     String r = null;
-    switch (move.Reason) {
-        case ReasonFor.Balance: r = " for balance"; break;
-        case ReasonFor.Unstack: r = " to unstack teams"; break;
-        case ReasonFor.Unswitch: r = " to unswitch player"; break;
+    switch (move.For) {
+        case MoveType.Balance: r = " for balance"; break;
+        case MoveType.Unstack: r = " to unstack teams"; break;
+        case MoveType.Unswitch: r = " to unswitch player"; break;
         default: r = " for ???"; break;
     }
     String doing = (EnableLoggingOnlyMode) ? "^9(SIMULATING) ^b^1MOVING^0 " : "^b^1MOVING^0 ";
@@ -3312,9 +3446,9 @@ private bool FinishMove(String name, int team) {
             try {
                 UpdatePlayerTeam(name, team);
                 UpdateTeams();
-                if (move.Reason == ReasonFor.Balance) {fBalancedRound = fBalancedRound + 1; IncrementMoves(name);}
-                else if (move.Reason == ReasonFor.Unstack) {fUnstackedRound = fUnstackedRound + 1; IncrementMoves(name);}
-                else if (move.Reason == ReasonFor.Unswitch) {fUnswitchedRound = fUnswitchedRound + 1; IncrementTotal();}
+                if (move.For == MoveType.Balance) {fBalancedRound = fBalancedRound + 1; IncrementMoves(name);}
+                else if (move.For == MoveType.Unstack) {fUnstackedRound = fUnstackedRound + 1; IncrementMoves(name);}
+                else if (move.For == MoveType.Unswitch) {fUnswitchedRound = fUnswitchedRound + 1; IncrementTotal();}
             } catch (Exception e) {
                 ConsoleException(e);
             }
@@ -3322,7 +3456,7 @@ private bool FinishMove(String name, int team) {
     }
     if (move != null) {
         // MB move for balance/unstacking/unswitching
-        SetSpawnMessages(move.Name, move.ChatAfter, move.YellAfter, move.Reason == ReasonFor.Unswitch);
+        SetSpawnMessages(move.Name, move.ChatAfter, move.YellAfter, move.For == MoveType.Unswitch);
     }
     return (move != null);
 }
@@ -3354,7 +3488,7 @@ public void MoveLoop() {
 
             // Sending before messages
             Yell(move.Name, move.YellBefore);
-            Chat(move.Name, move.ChatBefore, move.Reason == ReasonFor.Unswitch); // player only if unswitching
+            Chat(move.Name, move.ChatBefore, move.For == MoveType.Unswitch); // player only if unswitching
 
             // Stash for check later
             lock (fMoveStash) {
@@ -3657,8 +3791,8 @@ private Phase GetPhase(PerModeSettings perMode, bool verbose) {
 private Population GetPopulation(PerModeSettings perMode, bool verbose) {
     if (fServerInfo == null) return Population.Medium;
 
-    double highPop = perMode.DefinitionOfHighPopulationForPlayers;
-    double lowPop = perMode.DefinitionOfLowPopulationForPlayers;
+    int highPop = perMode.DefinitionOfHighPopulationForPlayers;
+    int lowPop = perMode.DefinitionOfLowPopulationForPlayers;
     Population pop = Population.Low;
 
     int totalPop = TotalPlayerCount;
@@ -4565,6 +4699,8 @@ private int ToSquad(String name, int team) {
     try {
         List<PlayerModel> teamList = null;
 
+        if (IsSQDM()) return team; // SQDM, team and squad should always be the same
+
         teamList = GetTeam(team);
         if (teamList == null) return 0;
 
@@ -4817,6 +4953,19 @@ public static int DescendingRoundScore(PlayerModel lhs, PlayerModel rhs) {
 
 
 // Sort delegate
+public static int DescendingRoundSPM(PlayerModel lhs, PlayerModel rhs) {
+    if (lhs == null) {
+        return ((rhs == null) ? 0 : -1);
+    } else if (rhs == null) {
+        return ((lhs == null) ? 0 : 1);
+    }
+    if (lhs.SPMRound < rhs.SPMRound) return 1;
+    if (lhs.SPMRound > rhs.SPMRound) return -1;
+    return 0;
+}
+
+
+// Sort delegate
 public static int DescendingRoundKills(PlayerModel lhs, PlayerModel rhs) {
     if (lhs == null) {
         return ((rhs == null) ? 0 : -1);
@@ -4935,11 +5084,12 @@ private void DebugUnswitch(String msg) {
     DebugWrite("^5(SWITCH)^9 " + msg, 5);
 }
 
-private double NextSwapInSeconds(PerModeSettings perMode) {
+private double NextSwapGroupInSeconds(PerModeSettings perMode) {
     if (fFullUnstackSwapTimestamp == DateTime.MinValue) return 0;
+    if (fUnstackGroupCount > 0 && fUnstackGroupCount <= perMode.NumberOfSwapsPerGroup) return 0;
     double since = DateTime.Now.Subtract(fFullUnstackSwapTimestamp).TotalSeconds;
-    if (since > perMode.DelaySecondsBetweenSwaps) return 0;
-    return (perMode.DelaySecondsBetweenSwaps - since);
+    if (since > perMode.DelaySecondsBetweenSwapGroups) return 0;
+    return (perMode.DelaySecondsBetweenSwapGroups - since);
 }
 
 
@@ -5097,6 +5247,18 @@ private bool IsRankDispersal(PlayerModel player) {
     PerModeSettings perMode = GetPerModeSettings();
     if (perMode.DisperseEvenlyForRank == 0) return false;
     return (player.Rank >= perMode.DisperseEvenlyForRank);
+}
+
+private void FinishedFullSwap(String name, PerModeSettings perMode) {
+    fUnstackGroupCount = fUnstackGroupCount + 1;
+    if (fUnstackGroupCount >= perMode.NumberOfSwapsPerGroup) {
+        fFullUnstackSwapTimestamp = DateTime.Now; // start the timer
+        DebugBalance("For ^b" + name + "^n, finished group of " + perMode.NumberOfSwapsPerGroup + ", delay timer set");
+        fUnstackGroupCount = 0;
+    } else {
+        DebugBalance("For ^b" + name + "^n, did swap " + fUnstackGroupCount + " of " + perMode.NumberOfSwapsPerGroup);
+        fFullUnstackSwapTimestamp = DateTime.MinValue;
+    }
 }
 
 
@@ -5430,10 +5592,16 @@ static class PROTObalancerUtils {
             PROTObalancer.Speed.Adaptive,
             PROTObalancer.Speed.Adaptive
         };
-        if (String.IsNullOrEmpty(s)) return speeds;
-        if (!s.Contains(",")) return speeds;
+        if (String.IsNullOrEmpty(s) || !s.Contains(",")) {
+            if (s == null) s = "(null)";
+            plugin.ConsoleWarn("Bad balance speed setting: " + s);
+            return speeds;
+        }
         String[] strs = s.Split(new Char[] {','});
-        if (strs.Length != 3) return speeds;
+        if (strs.Length != 3) {
+            plugin.ConsoleWarn("Wrong number of speeds, should be 3, separated by commas: " + s);
+            return speeds;
+        }
         for (int i = 0; i < speeds.Length; ++i) {
             try {
                 speeds[i] = (PROTObalancer.Speed)Enum.Parse(typeof(PROTObalancer.Speed), strs[i]);
@@ -5454,7 +5622,7 @@ static class PROTObalancerUtils {
 
 <p>For BF3, this plugin does live round team balancing and unstacking for all game modes, including Squad Deathmatch (SQDM).</p>
 
-<h2>THIS IS JUST A PROTOTYPE FOR FEEDBACK!</h2>
+<h2>THIS IS A PROTOTYPE FOR TESTING AND FEEDBACK!</h2>
 <p>This version of the plugin is 90% functional. <font color=#FF0000>Set PROTObalancer's <b>Enable Logging Only Mode</b> to false</font> to test the plugin live.</p>
 
 <p><font color=#0000FF>The purpose of this prototype is to get feedback about usage and behavior.</font></p>
@@ -5462,7 +5630,6 @@ static class PROTObalancerUtils {
 <p>Since logging to plugin.log is an important part of this phase of testing, it would be best if you could reduce or eliminate logging of other plugins so that most or all of the log is from PROTObalancer. If you are planning to leave the plugin unattended to collect logs, set <b>Debug Level</b> to 5. If you are going to watch the log interactively for a while, you can experiment with higher or lower <b>Debug Level</b> settings. It would also be useful to set the console.log to enable Event logging, but be advised that the console.log might get quite large. Do <b>not</b> enable Debug on your console.log.</p>
 
 <h3>KNOWN ISSUES</h3>
-<p>SQDM unstacking is not working.</p>
 <p>The following settings are not hooked up, they don't do anything:
 <ul>
 <li>Enable Battlelog Requests</li>
@@ -5538,19 +5705,21 @@ static class PROTObalancerUtils {
 
 <h3>Balance Speed</h3>
 <p>The aggressiveness with which the balancer selects players to move is controled by the speed names:
-<ul>
-<li>Stop: no balancing, no players are selected to move</li>
-<li>Slow: few players are selected to move, all exclusions are applied, whether they are enabled by you or not</li>
-<li>Fast: many players are selected to move, no exclusions are applied, whether they are enabled by you or not</li>
-<li>Adaptive: starts out slow; if teams remain unbalanced, gradually selects more players to move; if teams are still unbalanced after <b>Seconds Until Adaptive Speed Becomes Fast</b>, many players are selected, etc.</li>
-</ul></p>
+<table border='0'>
+<tr><td>Stop</td><td>No balancing, no players are selected to move</td></tr>
+<tr><td>Slow</td><td>Few players are selected to move, all exclusions are applied, whether they are enabled by you or not</td></tr>
+<tr><td>Fast</td><td>Many players are selected to move, no exclusions are applied, whether they are enabled by you or not</td></tr>
+<tr><td>Adaptive</td><td>Starts out slow; if teams remain unbalanced, gradually selects more players to move; if teams are still unbalanced after <b>Seconds Until Adaptive Speed Becomes Fast</b>, many players are selected, etc.</td></tr>
+<tr><td>Unstack</td><td>Do unstacking only, no balancing. May swap players when teams are not in balance.</td></tr>
+</table></p>
 
 <h3>Definition of Strong</h3>
 <p>To configure the selection of strong players and weak players, you choose a definition for strong determined from:
 <ul>
 <li>Round Score</li>
-<li>Round KDR</li>
+<li>Round SPM</li>
 <li>Round Kills</li>
+<li>Round KDR</li>
 <li>Player Rank</li>
 </ul></p>
 
@@ -5641,6 +5810,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 <tr><td>%tag%</td><td>player clan tag</td></tr>
 <tr><td>%fromTeam%</td><td>team the player is currently on, as 'US' or 'RU', or 'Alpha', 'Bravo', 'Charlie', or 'Delta' for SQDM</td></tr>
 <tr><td>%toTeam%</td><td>team the plugin will move the player to, same team name substitutions as for %fromTeam%</td></tr>
+<tr><td>%reason%</td><td>ONLY APPLIES TO BAD TEAM SWITCH: reason for switching the player back, may contain other replacements</td></tr>
 </table></p>
 
 <p><b>Quiet Mode</b>: True or False, default False. If False, chat messages are sent to all players and yells are sent to the player being moved. If True, chat and yell messages are only sent to the player being moved.</p>
@@ -5652,6 +5822,16 @@ For each phase, there are three unstacking settings for server population: Low, 
 <p><b>Moved To Unstack</b>: Message sent after a player is moved to unstack teams.</p>
 
 <p><b>Detected Bad Team Switch</b>: Message sent after a player switches from the losing team to the winning team, or from the smallest team to the biggest team, or after being moved by the plugin for balance or unstacking. The message is sent before player is sent back to his original team.</p>
+
+<p><b>Bad Because: Moved By Balancer</b>: Replacement for %reason% if the player tried to move to a different team from the one the plugin have moved them to for balance or unstacking.</p>
+
+<p><b>Bad Because: Winning Team</b>: Replacement for %reason% if the player tried to move to the winning team.</p>
+
+<p><b>Bad Because: Biggest Team</b>: Replacement for %reason% if the player tried to move to the biggest team.</p>
+
+<p><b>Bad Because: Rank</b>: Replacement for %reason% if the player has Rank greater than or equal to the per-mode <b>Disperse Evenly For Rank</b> setting.</p>
+
+<p><b>Bad Because: Rank</b>: Replacement for %reason% if the player is a member of the <b>Disperse Evenly List</b>.</p>
 
 <p><b>Detected Good Team Switch</b>: Message sent after a player switches from the winning team to the losing team, or from the biggest team to the smallest team. There is no follow-up message, this is the only one sent.</p>
 
@@ -5690,9 +5870,13 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Max Unstacking Swaps Per Round</b>: Number greater than or equal to 0. To prevent the plugin from swapping every player on every team for unstacking, a maximum per round is set here. If set to 0, no unstacking will occur for this mode.</p>
 
-<p><b>Delay Seconds Between Swaps</b>: Number greater than or equal to 60. After an unstacking swap, wait this number of seconds before doing another unstacking swap.</p>
+<p><b>Number Of Swaps Per Group</b>: Number greater than or equal to 0 and less than or equal to <b>Max Unstacking Swaps Per Round</b>, ideally an integral factor, e.g., if <b>Max Unstacking Swaps Per Round</b> is 12, <b>Number Of Swaps Per Group</b> may be 1, 2, 3, 4, 6 or 12. During unstacking, swaps are done as quickly as possible, up to this number. Once this number of swaps is reached, the <b>Delay Seconds Between Swap Groups</b> delay is applied before further swaps are attempted.</p>
 
-<p><b>Determine Strong Players By</b>: The setting defines how strong players are determined. Any player that is not a strong player is a weak player. See the <b>Definition of Strong</b> section above for the list of settings. All players in a single team are sorted by the specified definition. Any player above the median position after sorting is considered strong. For example, suppose there are 31 players on a team and this setting is set to <i>RoundScore</i> and after sorting, the median is position #16. If this player is position #7, he is considered strong. If his position is #16 or #17, he is considered weak.</p>
+<p><b>Delay Seconds Between Swap Groups</b>: Number greater than or equal to 60. After a group of unstacking swaps, wait this number of seconds before doing another group of unstacking swaps.</p>
+
+<p><b>Determine Strong Players By</b>: Choice based on method. The setting defines how strong players are determined. Any player that is not a strong player is a weak player. See the <b>Definition of Strong</b> section above for the list of settings. All players in a single team are sorted by the specified definition. Any player above the median position after sorting is considered strong. For example, suppose there are 31 players on a team and this setting is set to <i>RoundScore</i> and after sorting, the median is position #16. If this player is position #7, he is considered strong. If his position is #16 or #17, he is considered weak.</p>
+
+<p><b>Percent Of Top Of Team Is Strong</b>: Number greater than or equal to 5 and less than or equal to 50, or 0. After sorting a team with the <b>Determine Strong Players By</b> choice, this percentage determines the portion of the top players to define as strong. Default is 50 so that any player above the median counts as strong. CAUTION: This setting is changed when the <b>Preset</b> is changed, previous values are overwritten for all modes.</p>
 
 <p><b>Disperse Evenly For Rank >=</b>: Number greater than or equal to 0 and less than or equal to 145, default 145. Any players with this absolute rank (Colonel 100 is 145) or higher will be dispersed evenly across teams. This is useful to insure that Colonel 100 ranked players don't all stack on one team. Set to 0 to disable.</p>
 
