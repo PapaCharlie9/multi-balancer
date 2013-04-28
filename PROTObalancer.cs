@@ -92,6 +92,8 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     public const double CHECK_FOR_UPDATES_MINS = 12*60; // 12 hours
 
+    public const double MIN_ADAPT_FAST = 120.0;
+
     public static String[] TEAM_NAMES = new String[] { "None", "US", "RU" };
 
     public static String[] RUSH_NAMES = new String[] { "None", "Attacking", "Defending" };
@@ -175,7 +177,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     CheckTeamStackingAfterFirstMinutes = 0;
                     MaxUnstackingSwapsPerRound = 0;
                     NumberOfSwapsPerGroup = 0;
-                    DelaySecondsBetweenSwapGroups = 0;
+                    DelaySecondsBetweenSwapGroups = 60;
                     DefinitionOfHighPopulationForPlayers = 14;
                     DefinitionOfLowPopulationForPlayers = 8;
                     DefinitionOfEarlyPhaseFromStart = 10; // assuming 50 tickets typical
@@ -187,8 +189,8 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxUnstackingSwapsPerRound = 6;
                     NumberOfSwapsPerGroup = 3;
                     DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
-                    DefinitionOfHighPopulationForPlayers = 48;
-                    DefinitionOfLowPopulationForPlayers = 16;
+                    DefinitionOfHighPopulationForPlayers = 20;
+                    DefinitionOfLowPopulationForPlayers = 8;
                     DefinitionOfEarlyPhaseFromStart = 50; // assuming 250 tickets typical
                     DefinitionOfLatePhaseFromEnd = 50; // assuming 250 tickets typical
                     break;
@@ -208,7 +210,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
                     CheckTeamStackingAfterFirstMinutes = 2;
                     MaxUnstackingSwapsPerRound = 1;
                     NumberOfSwapsPerGroup = 1;
-                    DelaySecondsBetweenSwapGroups = 1;
+                    DelaySecondsBetweenSwapGroups = 60;
                     DefinitionOfHighPopulationForPlayers = 6;
                     DefinitionOfLowPopulationForPlayers = 4;
                     DefinitionOfEarlyPhaseFromStart = 5; // assuming 20 tickets typical
@@ -1345,33 +1347,6 @@ public void SetPluginVariable(String strVariable, String strValue) {
     } catch (System.Exception e) {
         ConsoleException(e);
     } finally {
-        // TBD: Validate() function needed here!
-        // Validate all values and correct if needed
-        
-        if (!String.IsNullOrEmpty(ShowInLog)) {
-            CommandToLog(ShowInLog);
-            ShowInLog = String.Empty;
-        }
-
-        if (SecondsUntilAdaptiveSpeedBecomesFast < 120) {
-            ConsoleWarn("Seconds Until Adaptive Speed Becomes Fast must be 120 or greater!");
-            SecondsUntilAdaptiveSpeedBecomesFast = 120;
-        }
-                
-        /*
-        switch (perModeSetting) {
-            case "Min Tickets":
-                if (!Double.TryParse(strValue, out pms.MinTicketsPercentage)) {
-                    ConsoleError("Bogus setting for " + strVariable + " ? " + strValue);
-                }
-                break;
-            case "Go Aggressive":
-                if (!Int32.TryParse(strValue, out pms.GoAggressive)) {
-                    ConsoleError("Bogus setting for " + strVariable + " ? " + strValue);
-                }
-                break;
-        }
-        */
         
         if (!isReminderVar) {
             // Reset to show hint
@@ -1385,7 +1360,98 @@ public void SetPluginVariable(String strVariable, String strValue) {
             // Update Preset value based on current settings
             UpdatePresetValue();
         }
+        
+        // Validate all values and correct if needed
+        ValidateSettings(strVariable,  strValue);
+
+        // Handle show in log commands
+        if (!String.IsNullOrEmpty(ShowInLog)) {
+            CommandToLog(ShowInLog);
+            ShowInLog = String.Empty;
+        }
     }
+}
+
+private bool ValidateSettings(String strVariable, String strValue) {
+    try {
+                
+        /* ===== SECTION 1 - Settings ===== */
+
+        ValidateIntRange(ref DebugLevel, "Debug Level", 0, 9, 2, false);
+        ValidateIntRange(ref MaximumServerSize, "Maximum Server Size", 8, 64, 64, false);
+        ValidateIntRange(ref MaximumRequestRate, "Maximum Request Rate", 1, 15, 2, true); // in 20 seconds
+        ValidateDouble(ref UnlimitedTeamSwitchingDuringFirstMinutesOfRound, "Unlimited Team Switching During First Minutes Of Round", 5.0);
+        ValidateDoubleRange(ref SecondsUntilAdaptiveSpeedBecomesFast, "Seconds Until Adaptive Speed Becomes Fast", MIN_ADAPT_FAST, 999999, 3*60, true); // 3 minutes default
+    
+        /* ===== SECTION 2 - Exclusions ===== */
+    
+        ValidateDouble(ref MinutesAfterJoining, "Minutes After Joining", 5);
+
+        /* ===== SECTION 3 - Round Phase & Population Settings ===== */
+    
+        for (int i = 0; i < EarlyPhaseTicketPercentageToUnstack.Length; ++i) {
+            ValidateDoubleRange(ref EarlyPhaseTicketPercentageToUnstack[i], "Early Phase Ticket Percentage To Unstack", 100.0, 1000.0, 120.0, true);
+        }
+        for (int i = 0; i < MidPhaseTicketPercentageToUnstack.Length; ++i) {
+            ValidateDoubleRange(ref MidPhaseTicketPercentageToUnstack[i], "Mid Phase Ticket Percentage To Unstack", 100.0, 1000.0, 120.0, true);
+        }
+        for (int i = 0; i < LatePhaseTicketPercentageToUnstack.Length; ++i) {
+            ValidateDoubleRange(ref LatePhaseTicketPercentageToUnstack[i], "Late Phase Ticket Percentage ToUnstack", 100.0, 1000.0, 120.0, true);
+        }
+
+        /* ===== SECTION 5 - Messages ===== */
+    
+        ValidateDoubleRange(ref YellDurationSeconds, "Yell Duration Seconds", 1, 20, 10, true);
+
+        if (ChatMovedForBalance.Contains("%reason%")) {
+            ConsoleWarn(strVariable + ": contains %reason%, which is only recognized in ^bDetected Bad Team Switch^n");
+        }
+        if (YellMovedForBalance.Contains("%reason%")) {
+            ConsoleWarn(strVariable + ": contains %reason%, which is only recognized in ^bDetected Bad Team Switch^n");
+        }
+        if (ChatMovedToUnstack.Contains("%reason%")) {
+            ConsoleWarn(strVariable + ": contains %reason%, which is only recognized in ^bDetected Bad Team Switch^n");
+        }
+        if (YellMovedToUnstack.Contains("%reason%")) {
+            ConsoleWarn(strVariable + ": contains %reason%, which is only recognized in ^bDetected Bad Team Switch^n");
+        }
+        if (ChatDetectedGoodTeamSwitch.Contains("%reason%")) {
+            ConsoleWarn(strVariable + ": contains %reason%, which is only recognized in ^bDetected Bad Team Switch^n");
+        }
+        if (YellDetectedGoodTeamSwitch.Contains("%reason%")) {
+            ConsoleWarn(strVariable + ": contains %reason%, which is only recognized in ^bDetected Bad Team Switch^n");
+        }
+    
+        /* ===== SECTION 6 - TBD ===== */
+
+        /* ===== SECTION 7 - TBD ===== */
+
+        /* ===== SECTION 8 - Per-Mode Settings ===== */
+
+        foreach (String mode in fPerMode.Keys) {
+            PerModeSettings perMode = fPerMode[mode];
+            PerModeSettings def = new PerModeSettings(mode); // defaults for this mode
+
+            ValidateIntRange(ref perMode.MaxPlayers, mode + ":" + "Max Players", 8, MaximumServerSize, def.MaxPlayers, false);
+            ValidateDouble(ref perMode.CheckTeamStackingAfterFirstMinutes, mode + ":" + "Check Team Stacking After First Minutes", def.CheckTeamStackingAfterFirstMinutes);
+            ValidateInt(ref perMode.MaxUnstackingSwapsPerRound, mode + ":" + "Max Unstacking Swaps Per Round", def.MaxUnstackingSwapsPerRound);
+            ValidateIntRange(ref perMode.NumberOfSwapsPerGroup, mode + ":" + "Number Of Swaps Per Group", 0, perMode.MaxUnstackingSwapsPerRound, def.NumberOfSwapsPerGroup, false);
+            ValidateDoubleRange(ref perMode.DelaySecondsBetweenSwapGroups, mode + ":" + "Delay Seconds Between Swap Groups", 60, 24*60*60, def.DelaySecondsBetweenSwapGroups, false);
+            ValidateDoubleRange(ref perMode.PercentOfTopOfTeamIsStrong, mode + ":" + "Percent Of Top Of Team Is Strong", 5, 50, def.PercentOfTopOfTeamIsStrong, false);
+            ValidateInt(ref perMode.DisperseEvenlyForRank, mode + ":" + "Disperse Evenly For Rank", def.DisperseEvenlyForRank);
+            ValidateIntRange(ref perMode.DefinitionOfHighPopulationForPlayers, mode + ":" + "Definition Of High Population For Players", 0, perMode.MaxPlayers, def.DefinitionOfHighPopulationForPlayers, false); 
+            ValidateIntRange(ref perMode.DefinitionOfLowPopulationForPlayers, mode + ":" + "Definition Of Low Population For Players", 0, perMode.MaxPlayers, def.DefinitionOfLowPopulationForPlayers, false);
+            ValidateInt(ref perMode.DefinitionOfEarlyPhaseFromStart, mode + ":" + "Definition Of Early Phase From Start", def.DefinitionOfEarlyPhaseFromStart);
+            ValidateInt(ref perMode.DefinitionOfLatePhaseFromEnd, mode + ":" + "Definition Of Late Phase From End", def.DefinitionOfLatePhaseFromEnd);
+        }
+
+        /* ===== SECTION 9 - Debug Settings ===== */
+
+
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+    return true;
 }
 
 private void ResetSettings() {
@@ -4083,46 +4149,51 @@ public bool CheckForEquality(PROTObalancer rhs) {
 private void UpdatePresetValue() {
     Preset = PresetItems.None;  // backstop value
 
-    // Check for Standard
-    if (PROTObalancerUtils.IsEqual(this, PresetItems.Standard)) {
-        Preset = PresetItems.Standard;
-        return;
-    }
+    try {
+
+        // Check for Standard
+        if (PROTObalancerUtils.IsEqual(this, PresetItems.Standard)) {
+            Preset = PresetItems.Standard;
+            return;
+        }
     
-    // Check for Aggressive
-    if (PROTObalancerUtils.IsEqual(this, PresetItems.Aggressive)) {
-        Preset = PresetItems.Aggressive;
-        return;
-    }
+        // Check for Aggressive
+        if (PROTObalancerUtils.IsEqual(this, PresetItems.Aggressive)) {
+            Preset = PresetItems.Aggressive;
+            return;
+        }
     
-    // Check for Passive
-    if (PROTObalancerUtils.IsEqual(this, PresetItems.Passive)) {
-        Preset = PresetItems.Passive;
-        return;
-    }
+        // Check for Passive
+        if (PROTObalancerUtils.IsEqual(this, PresetItems.Passive)) {
+            Preset = PresetItems.Passive;
+            return;
+        }
     
-    // Check for Intensify
-    if (PROTObalancerUtils.IsEqual(this, PresetItems.Intensify)) {
-        Preset = PresetItems.Intensify;
-        return;
-    }
+        // Check for Intensify
+        if (PROTObalancerUtils.IsEqual(this, PresetItems.Intensify)) {
+            Preset = PresetItems.Intensify;
+            return;
+        }
     
-    // Check for Retain
-    if (PROTObalancerUtils.IsEqual(this, PresetItems.Retain)) {
-        Preset = PresetItems.Retain;
-        return;
-    }
+        // Check for Retain
+        if (PROTObalancerUtils.IsEqual(this, PresetItems.Retain)) {
+            Preset = PresetItems.Retain;
+            return;
+        }
     
-    // Check for BalanceOnly
-    if (PROTObalancerUtils.IsEqual(this, PresetItems.BalanceOnly)) {
-        Preset = PresetItems.BalanceOnly;
-        return;
-    }
+        // Check for BalanceOnly
+        if (PROTObalancerUtils.IsEqual(this, PresetItems.BalanceOnly)) {
+            Preset = PresetItems.BalanceOnly;
+            return;
+        }
     
-    // Check for UnstackOnly
-    if (PROTObalancerUtils.IsEqual(this, PresetItems.UnstackOnly)) {
-        Preset = PresetItems.UnstackOnly;
-        return;
+        // Check for UnstackOnly
+        if (PROTObalancerUtils.IsEqual(this, PresetItems.UnstackOnly)) {
+            Preset = PresetItems.UnstackOnly;
+            return;
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
     }
 }
 
@@ -5261,6 +5332,45 @@ private void FinishedFullSwap(String name, PerModeSettings perMode) {
     }
 }
 
+private void ValidateInt(ref int val, String propName, int def) {
+    if (val < 0) {
+        ConsoleError("^b" + propName + "^n must be greater than or equal to 0, was set to " + val + ", corrected to " + def);
+        val = def;
+        return;
+    }
+}
+
+
+private void ValidateIntRange(ref int val, String propName, int min, int max, int def, bool zeroOK) {
+    if (zeroOK && val == 0) return;
+    if (val < min || val > max) {
+        String zero = (zeroOK) ? " or equal to 0" : String.Empty;
+        ConsoleError("^b" + propName + "^n must be greater than or equal to " + min + " and less than or equal to " + max + zero + ", was set to " + val + ", corrected to " + def);
+        val = def;
+    }
+}
+
+
+private void ValidateDouble(ref double val, String propName, double def) {
+    if (val < 0) {
+        ConsoleError("^b" + propName + "^n must be greater than or equal to 0, was set to " + val + ", corrected to " + def);
+        val = def;
+        return;
+    }
+}
+
+
+private void ValidateDoubleRange(ref double val, String propName, double min, double max, double def, bool zeroOK) {
+    if (zeroOK && val == 0.0) return;
+    if (val < min || val > max) {
+        String zero = (zeroOK) ? " or equal to 0" : String.Empty;
+        ConsoleError("^b" + propName + "^n must be greater than or equal to " + min + " and less than or equal to " + max + zero + ", was set to " + val + ", corrected to " + def);
+        val = def;
+        return;
+    }
+}
+
+
 
 public void CheckForPluginUpdate() {
 	try {
@@ -5497,25 +5607,27 @@ static class PROTObalancerUtils {
     }
     
     public static void UpdateSettingsForPreset(PROTObalancer lhs, PROTObalancer.PresetItems preset) {
-        PROTObalancer rhs = new PROTObalancer(preset);
+        try {
+            PROTObalancer rhs = new PROTObalancer(preset);
         
-        lhs.DebugWrite("UpdateSettingsForPreset to " + preset, 6);
+            lhs.DebugWrite("UpdateSettingsForPreset to " + preset, 6);
 
-        lhs.OnWhitelist = rhs.OnWhitelist;
-        lhs.TopScorers = rhs.TopScorers;
-        lhs.SameClanTagsInSquad = rhs.SameClanTagsInSquad;
-        lhs.MinutesAfterJoining = rhs.MinutesAfterJoining;
-        lhs.JoinedEarlyPhase = rhs.JoinedEarlyPhase;
-        lhs.JoinedMidPhase = rhs.JoinedMidPhase;
-        lhs.JoinedLatePhase = rhs.JoinedLatePhase;
+            lhs.OnWhitelist = rhs.OnWhitelist;
+            lhs.TopScorers = rhs.TopScorers;
+            lhs.SameClanTagsInSquad = rhs.SameClanTagsInSquad;
+            lhs.MinutesAfterJoining = rhs.MinutesAfterJoining;
+            lhs.JoinedEarlyPhase = rhs.JoinedEarlyPhase;
+            lhs.JoinedMidPhase = rhs.JoinedMidPhase;
+            lhs.JoinedLatePhase = rhs.JoinedLatePhase;
 
-        lhs.EarlyPhaseTicketPercentageToUnstack = rhs.EarlyPhaseTicketPercentageToUnstack;
-        lhs.MidPhaseTicketPercentageToUnstack = rhs.MidPhaseTicketPercentageToUnstack;
-        lhs.LatePhaseTicketPercentageToUnstack = rhs.LatePhaseTicketPercentageToUnstack;
+            lhs.EarlyPhaseTicketPercentageToUnstack = rhs.EarlyPhaseTicketPercentageToUnstack;
+            lhs.MidPhaseTicketPercentageToUnstack = rhs.MidPhaseTicketPercentageToUnstack;
+            lhs.LatePhaseTicketPercentageToUnstack = rhs.LatePhaseTicketPercentageToUnstack;
 
-        lhs.EarlyPhaseBalanceSpeed = rhs.EarlyPhaseBalanceSpeed;
-        lhs.MidPhaseBalanceSpeed = rhs.MidPhaseBalanceSpeed;
-        lhs.LatePhaseBalanceSpeed = rhs.LatePhaseBalanceSpeed;
+            lhs.EarlyPhaseBalanceSpeed = rhs.EarlyPhaseBalanceSpeed;
+            lhs.MidPhaseBalanceSpeed = rhs.MidPhaseBalanceSpeed;
+            lhs.LatePhaseBalanceSpeed = rhs.LatePhaseBalanceSpeed;
+        } catch (Exception) { }
     }
     
     public static bool EqualArrays(double[] lhs, double[] rhs) {
