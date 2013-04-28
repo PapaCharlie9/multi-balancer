@@ -966,7 +966,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "0.0.0.16";
+    return "0.0.0.17";
 }
 
 public String GetPluginAuthor() {
@@ -974,11 +974,10 @@ public String GetPluginAuthor() {
 }
 
 public String GetPluginWebsite() {
-    return "TBD";
+    return "https://github.com/PapaCharlie9/multi-balancer";
 }
 
 public String GetPluginDescription() {
-    //ConsoleWrite("length = " + PROTObalancerUtils.HTML_DOC.Length);
     return PROTObalancerUtils.HTML_DOC;
 }
 
@@ -1549,6 +1548,7 @@ private void CommandToLog(string cmd) {
         if (Regex.Match(cmd, @"help", RegexOptions.IgnoreCase).Success) {
             ConsoleDump("^1^bmodes^n^0: List the known game modes");
             ConsoleDump("^1^breset settings^n^0: Reset all plugin settings to default, except for ^bWhitelist^n and ^bDisperse Evenly List^n");
+            ConsoleDump("^1^bsizes^n^0: List the sizes of various data structures");
             ConsoleDump("^1^bsort^n ^iteam^n ^itype^n^0: List sorted ^iteam^n (1-4) by ^itype^n (one of: score, spm, kills, kdr, rank)");
             return;
         }
@@ -1566,6 +1566,25 @@ private void CommandToLog(string cmd) {
             ConsoleDump("^8^bRESETTING ALL PLUGIN SETTINGS (except Whitelist and Dispersal list) TO DEFAULT!");
             ResetSettings();
             return;
+        }
+
+        if (Regex.Match(cmd, @"size[s]?", RegexOptions.IgnoreCase).Success) {
+            int kp = fKnownPlayers.Count;
+            int ap = fAllPlayers.Count;
+            int old = 0;
+            lock (fKnownPlayers) {
+                // count player records more than 12 hours old
+                foreach (String name in fKnownPlayers.Keys) {
+                    PlayerModel p = fKnownPlayers[name];
+                    if (DateTime.Now.Subtract(p.LastSeenTimestamp).TotalMinutes > 12*60) {
+                        if (!IsKnownPlayer(name)) {
+                            ++old;
+                        } 
+                    }
+                }
+            }
+            ConsoleDump("fKnownPlayers.Count = " + kp + ", not playing = " + (kp-ap) + ", more than 12 hours old = " + old);
+            ConsoleDump("PROTObalancerUtils.HTML_DOC.Length = " + PROTObalancerUtils.HTML_DOC.Length);
         }
 
         m = Regex.Match(cmd, @"^sort\s+([1-4])\s+(score|spm|kills|kdr|rank)", RegexOptions.IgnoreCase);
