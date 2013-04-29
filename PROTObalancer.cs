@@ -2727,6 +2727,7 @@ private void BalanceAndUnstack(String name) {
             }
         }
 
+        // Strong/Weak exemptions
         if (!mustMove && balanceSpeed != Speed.Fast && fromList.Count >= minPlayers) { // TBD
             if (DebugLevel > 5) DebugBalance(strongMsg);
             // don't move weak player to losing team
@@ -2751,12 +2752,21 @@ private void BalanceAndUnstack(String name) {
                 IncrementTotal(); // no matching stat, reflect total deaths handled
                 return;
             }
+
+            // Don't move if in squad with same tags
+            if (SameClanTagsInSquad) {
+                int cmt =  CountMatchingTags(player);
+                if (cmt >= 2) {
+                    String et = ExtractTag(player);
+                    DebugBalance("Exempting ^b" + name + "^n, " + cmt + " players in squad with tag [" + et + "]");
+                    fExemptRound = fExemptRound + 1;
+                    IncrementTotal();
+                }
+            }
         }
 
-
-        // TBD
-
         /* Move for balance */
+
         int origTeam = player.Team;
         String origName = GetTeamName(player.Team);
 
@@ -5486,7 +5496,7 @@ private String ExtractTag(PlayerModel m) {
     if (m == null) return String.Empty;
 
     String tag = m.Tag;
-    if (String.IsNullOrEmpty(tag)) {
+    if (m.TagVerified && String.IsNullOrEmpty(tag)) {
         // Maybe they are using [_-=]XXX[=-_]PlayerName[_-=]XXX[=-_] format
         Match tm = Regex.Match(m.Name, @"^[=_\-]*([^=_\-]{2,4})[=_\-]");
         if (tm.Success) {
@@ -5807,7 +5817,7 @@ private bool IsDispersal(PlayerModel player) {
         dispersalList = new List<String>(DisperseEvenlyList);
         if (dispersalList.Contains(player.Name) 
         || dispersalList.Contains(player.EAGUID) 
-        && (!String.IsNullOrEmpty(extractedTag) && dispersalList.Contains(extractedTag))) {
+        || (!String.IsNullOrEmpty(extractedTag) && dispersalList.Contains(extractedTag))) {
             isDispersalByList = true;
         }
     }
@@ -5885,6 +5895,37 @@ private void CheckRageQuit(String name) {
         ++fRageQuits;
         DebugWrite("Looks like ^b" + name + "^n rage quit: " + fRageQuits + " so far this round, out of " + fTotalQuits, 4);
     }
+}
+
+
+private int CountMatchingTags(PlayerModel player) {
+    if (player == null) return 0;
+    if (player.Team == 0 || player.Squad == 0) return 0;
+    int team = player.Team;
+    int squad = player.Squad;
+
+    List<PlayerModel> teamList = GetTeam(team);
+    if (teamList == null) return 0;
+
+    String tag = ExtractTag(player);
+    int same = 0;
+    int verified = 0;
+    int total = 0;
+
+    foreach (PlayerModel mate in teamList) {
+        if (mate.Squad != squad) continue;
+        ++total;
+        if (mate.TagVerified) ++verified;
+        if (ExtractTag(mate) == tag) ++same;
+    }
+
+    if (verified < 2) {
+        if (DebugLevel >= 6) DebugBalance("For ^b" + player.Name + "^n in " + GetSquadName(squad) + ", not enough verified tags to find matches");
+        return 0;
+    } else {
+        if (DebugLevel >= 6) DebugBalance("For ^b" + player.Name + "^n in " + GetSquadName(squad) + ", found " + same + " matching tags");
+    }
+    return same;
 }
 
 
@@ -6559,3 +6600,5 @@ For each phase, there are three unstacking settings for server population: Low, 
 #endregion
 
 } // end namespace PRoConEvents
+
+
