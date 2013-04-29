@@ -80,6 +80,8 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     public enum UnstackState {Off, SwappedStrong, SwappedWeak};
 
+    public enum FetchState {New, InQueue, Requesting, Aborted, Succeeded, Failed};
+
     /* Constants & Statics */
 
     public const double SWAP_TIMEOUT = 300; // in seconds
@@ -273,6 +275,17 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         public bool isDefault = true; // not a setting
     } // end PerModeSettings
 
+    public class FetchInfo {
+        public FetchState State;
+        public DateTime Since;
+        public String RequestType;
+
+        public FetchInfo() {
+            State = FetchState.New;
+            Since = DateTime.Now;
+            RequestType = String.Empty;
+        }
+    }
 
     public class PlayerModel {
         // Permanent
@@ -300,7 +313,9 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         
         // Battlelog
         public String Tag;
+        public bool TagVerified;
         public String FullName { get {return (String.IsNullOrEmpty(Tag) ? Name : "[" + Tag + "]" + Name);}}
+        public FetchInfo FetchStatus;
         
         // Computed
         public double KDRRound;
@@ -324,6 +339,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
             FirstSpawnTimestamp = DateTime.MinValue;
             LastSeenTimestamp = DateTime.MinValue;
             Tag = String.Empty;
+            TagVerified = false;
             ScoreRound = -1;
             KillsRound = -1;
             DeathsRound = -1;
@@ -343,6 +359,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
             DelayedMove = null;
             LastMoveTo = 0;
             LastMoveFrom = 0;
+            FetchStatus = new FetchInfo();
         }
         
         public PlayerModel(String name, int team) : this() {
@@ -503,6 +520,7 @@ private bool fFinalizerActive = false;
 private Dictionary<String,String> fModeToSimple = null;
 private Dictionary<String,int> fPendingTeamChange = null;
 private Thread fMoveThread = null;
+private Thread fFetchThread = null;
 private Thread fListPlayersThread = null;
 private List<String> fReservedSlots = null;
 private bool fGotVersion = false;
@@ -544,6 +562,8 @@ private int fRushStage = 0;
 private double fRushAttackerTickets = 0;
 private List<MoveInfo> fMoveStash = null;
 private int fUnstackGroupCount = 0;
+private Queue<String> fFetchQ = null; // of player names waiting for stats fetching
+private bool fIsCacheEnabled = false;
 
 // Operational statistics
 private int fReassignedRound = 0;
@@ -567,14 +587,15 @@ public int DebugLevel;
 public int MaximumServerSize;
 public bool EnableBattlelogRequests; // TBD
 public int MaximumRequestRate; // TBD
+public double WaitTimeout; // TBD
 public int MaxTeamSwitchesByStrongPlayers; // disabled
 public int MaxTeamSwitchesByWeakPlayers; // disabled
-public double UnlimitedTeamSwitchingDuringFirstMinutesOfRound; // TBD
+public double UnlimitedTeamSwitchingDuringFirstMinutesOfRound;
 public bool Enable2SlotReserve; // disabled
 public bool EnablerecruitCommand; // disabled
 public bool EnableWhitelistingOfReservedSlotsList;
 public String[] Whitelist;
-public String[] DisperseEvenlyList; // TBD
+public String[] DisperseEvenlyList;
 public PresetItems Preset;
 public double SecondsUntilAdaptiveSpeedBecomesFast;
 
@@ -657,6 +678,7 @@ public PROTObalancer() {
     fBalanceIsActive = false;
 
     fMoveThread = null;
+    fFetchThread = null;
     fListPlayersThread = null;
     
     fModeToSimple = new Dictionary<String,String>();
@@ -715,6 +737,8 @@ public PROTObalancer() {
     fLastVersionCheckTimestamp = DateTime.MinValue;
     fTimeOutOfJoint = 0;
     fUnstackGroupCount = 0;
+    fFetchQ = new Queue<String>();
+    fIsCacheEnabled = false;
     
     /* Settings */
 
@@ -724,6 +748,7 @@ public PROTObalancer() {
     MaximumServerSize = 64;
     EnableBattlelogRequests = true;
     MaximumRequestRate = 2; // in 20 seconds
+    WaitTimeout = 30; // seconds
     MaxTeamSwitchesByStrongPlayers = 1;
     MaxTeamSwitchesByWeakPlayers = 2;
     UnlimitedTeamSwitchingDuringFirstMinutesOfRound = 5.0;
@@ -1022,7 +1047,11 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
         lstReturn.Add(new CPluginVariable("1 - Settings|Enable Battlelog Requests", EnableBattlelogRequests.GetType(), EnableBattlelogRequests));
 
-        if (EnableBattlelogRequests) lstReturn.Add(new CPluginVariable("1 - Settings|Maximum Request Rate", MaximumRequestRate.GetType(), MaximumRequestRate));
+        if (EnableBattlelogRequests) {
+            lstReturn.Add(new CPluginVariable("1 - Settings|Maximum Request Rate", MaximumRequestRate.GetType(), MaximumRequestRate));
+
+            lstReturn.Add(new CPluginVariable("1 - Settings|Wait Timeout", WaitTimeout.GetType(), WaitTimeout));
+        }
 
 /*
         lstReturn.Add(new CPluginVariable("1 - Settings|Max Team Switches By Strong Players", MaxTeamSwitchesByStrongPlayers.GetType(), MaxTeamSwitchesByStrongPlayers));
@@ -1379,6 +1408,7 @@ private bool ValidateSettings(String strVariable, String strValue) {
         ValidateIntRange(ref DebugLevel, "Debug Level", 0, 9, 2, false);
         ValidateIntRange(ref MaximumServerSize, "Maximum Server Size", 8, 64, 64, false);
         ValidateIntRange(ref MaximumRequestRate, "Maximum Request Rate", 1, 15, 2, true); // in 20 seconds
+        ValidateDoubleRange(ref WaitTimeout, "Wait Timeout", 15, 90, 30, false);
         ValidateDouble(ref UnlimitedTeamSwitchingDuringFirstMinutesOfRound, "Unlimited Team Switching During First Minutes Of Round", 5.0);
         ValidateDoubleRange(ref SecondsUntilAdaptiveSpeedBecomesFast, "Seconds Until Adaptive Speed Becomes Fast", MIN_ADAPT_FAST, 999999, 3*60, true); // 3 minutes default
     
@@ -1572,6 +1602,7 @@ private void CommandToLog(string cmd) {
             int kp = fKnownPlayers.Count;
             int ap = fAllPlayers.Count;
             int old = 0;
+            int validTags = 0;
             lock (fKnownPlayers) {
                 // count player records more than 12 hours old
                 foreach (String name in fKnownPlayers.Keys) {
@@ -1581,9 +1612,11 @@ private void CommandToLog(string cmd) {
                             ++old;
                         } 
                     }
+                    if (p.TagVerified) ++validTags;
                 }
             }
             ConsoleDump("fKnownPlayers.Count = " + kp + ", not playing = " + (kp-ap) + ", more than 12 hours old = " + old);
+            ConsoleDump("fFetchQ.Count = " + fFetchQ.Count + ", verified tags = " + validTags);
             ConsoleDump("PROTObalancerUtils.HTML_DOC.Length = " + PROTObalancerUtils.HTML_DOC.Length);
         }
 
@@ -1727,6 +1760,8 @@ public void OnPluginEnable() {
     ServerCommand("admin.listPlayers", "all");
 
     CheckForPluginUpdate();
+
+    fIsCacheEnabled = IsCacheEnabled(true);
 }
 
 
@@ -2972,19 +3007,25 @@ private bool AddNewPlayer(String name, int team) {
     lock (fAllPlayers) {
         if (!fAllPlayers.Contains(name)) fAllPlayers.Add(name);
     }
+    if (!known) {
+        AddPlayerFetch(name);
+    }
     return known;
 }
 
 private void RemovePlayer(String name) {
     bool gameChange = false;
+    bool removeFetch = false;
     lock (fKnownPlayers) {
         if (fKnownPlayers.ContainsKey(name)) {
             // Keep around for MODEL_TIMEOUT minutes, in case player rejoins
             PlayerModel m = fKnownPlayers[name];
             m.ResetRound();
             m.LastSeenTimestamp = DateTime.Now;
+            removeFetch = true;
         }
     }
+    if (removeFetch) RemovePlayerFetch(name);
     lock (fAllPlayers) {
         if (fAllPlayers.Contains(name)) fAllPlayers.Remove(name);
     
@@ -3983,6 +4024,395 @@ private Speed GetBalanceSpeed(PerModeSettings perMode) {
     return speed;
 }
 
+private void SetTag(PlayerModel player, Hashtable data) {
+    if (data == null) {
+        ConsoleDebug("SetTag ^b" + player.Name + "^n data = null");
+        return;
+    }
+
+    if (!data.ContainsKey("clanTag") || ((String)data["clanTag"] == null)) {
+        DebugFetch("Request clanTag(^b" + player.Name + "^n), no clanTag key in data");
+        return;
+    }
+
+    player.Tag = (String)data["clanTag"];
+    player.TagVerified = true;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* ======================== BATTLELOG ============================= */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+private void AddPlayerFetch(String name) {
+    if (!EnableBattlelogRequests) return;
+    if (String.IsNullOrEmpty(name)) return;
+    PlayerModel player = GetPlayer(name);
+    if (player == null) return;
+    player.FetchStatus.State = FetchState.InQueue;
+    lock (fFetchQ) {
+        if (!fFetchQ.Contains(name)) {
+            fFetchQ.Enqueue(name);
+            Monitor.Pulse(fFetchQ);
+        }
+    }
+}
+
+private void RemovePlayerFetch(String name) {
+    if (String.IsNullOrEmpty(name)) return;
+    PlayerModel player = GetPlayer(name);
+    if (player == null) return;
+    lock (fFetchQ) {
+        if (fFetchQ.Contains(name)) {
+            player.FetchStatus.State = FetchState.Aborted;
+        }
+    }
+}
+
+public void FetchLoop() {
+    try {
+        DateTime since = DateTime.MinValue;
+        int requests = 1;
+
+        while (fIsEnabled) {
+            String name = null;
+            int n = 0;
+            lock (fFetchQ) {
+                while (fFetchQ.Count == 0) {
+                    Monitor.Wait(fFetchQ);
+                    if (!fIsEnabled) return;
+                }
+                name = fFetchQ.Dequeue();
+                n = fFetchQ.Count;
+            }
+
+            if (since == DateTime.MinValue) since = DateTime.Now;
+
+            String msg = n.ToString() + " player" + ((n > 1) ? "s" : "") + " in clan tag fetch queue";
+            if (n == 0) msg = "no more players in clan tag fetch queue";
+            DebugFetch("^0" + msg);
+
+            PlayerModel player = GetPlayer(name);
+            if (player == null) continue;
+            if (player.FetchStatus.State == FetchState.Aborted) {
+                if (DebugLevel >= 8) ConsoleDebug("FetchLoop: fetch for ^b" + name + "^n was aborted!");
+                continue;
+            }
+
+            if (++requests > MaximumRequestRate) {
+                // Wait remainder of 20 seconds before continuing
+                int delay = 20 - Convert.ToInt32(DateTime.Now.Subtract(since).TotalSeconds);
+                if (delay > 0) {
+                    DebugFetch("Sleeping remaining " + delay + " seconds before sending next request");
+                    while (delay > 0) {
+                        Thread.Sleep(1000);
+                        if (!fIsEnabled) return;
+                        --delay;
+                    }
+                }
+                requests = 1; // reset
+                since = DateTime.Now;
+            }
+
+            if (fIsCacheEnabled) {
+                SendCacheRequest(name, "clanTag"); // only getting clan tag for now
+            } else {
+                SendBattlelogRequest(name, "clanTag");
+            }
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
+    } finally {
+        ConsoleWrite("^bFetchLoop^n thread stopped");
+    }
+}
+
+private void SendBattlelogRequest(String name, String requestType) {
+    try {
+        String result = String.Empty;
+        String personaId = String.Empty;
+
+        PlayerModel player = GetPlayer(name);
+        if (player == null) return;
+        FetchInfo status = player.FetchStatus;
+        status.State = FetchState.Requesting;
+        status.Since = DateTime.Now;
+        status.RequestType = requestType;
+        DebugFetch("Fetching from Battlelog " + requestType + "(^b" + name + "^n)");
+
+        // Get the main page
+        if (!fIsEnabled) return;
+        bool ok = FetchWebPage(ref result, "http://battlelog.battlefield.com/bf3/user/" + name);
+        if (!fIsEnabled) return;
+
+        if (!ok) {
+            status.State = FetchState.Failed;
+            return;
+        }
+
+        /*
+        // Extract the personaId
+        MatchCollection pid = Regex.Matches(result, @"bf3/soldier/" + name + @"/stats/(\d+)(['""]|/\s*['""]|/[^/'""]+)", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+        foreach (Match match in pid) {
+            if (match.Success && !Regex.Match(match.Groups[2].Value.Trim(), @"(ps3|xbox)", RegexOptions.IgnoreCase).Success) {
+                personaId = match.Groups[1].Value.Trim();
+                break;
+            }
+        }
+
+        if (String.IsNullOrEmpty(personaId)) {
+            DebugFetch("Request for ^b" + name +"^n failed, could not find persona-id!");
+            return;
+        }
+        */
+
+        // Extract the player tag
+        Match tag = Regex.Match(result, @"\[\s*([a-zA-Z0-9]+)\s*\]\s*" + name, RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        if (tag.Success) {
+            Hashtable data = new Hashtable();
+            data["clanTag"] = tag.Groups[1].Value;
+            player.FetchStatus.State = FetchState.Succeeded;
+            SetTag(player, data);
+            DebugFetch("Player tag updated: ^b" + player.FullName);
+        } else {
+            // No tag
+            player.TagVerified = true;
+            player.FetchStatus.State = FetchState.Succeeded;
+            DebugFetch("Battlelog says ^b" + player.Name + "^n has no tag");
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+}
+
+
+public bool IsCacheEnabled(bool verbose) {
+    List<MatchCommand> registered = this.GetRegisteredCommands();
+    foreach (MatchCommand command in registered) {
+        if (command.RegisteredClassname.CompareTo("CBattlelogCache") == 0 && command.RegisteredMethodName.CompareTo("PlayerLookup") == 0) {
+            if (verbose) DebugFetch("^bBattlelog Cache^n plugin will be used for stats fetching!");
+            return true;
+        } else {
+            DebugFetch("Registered P: " + command.RegisteredClassname + ", M: " + command.RegisteredMethodName);
+        }
+    }
+    if (verbose) DebugWrite("^1^bBattlelog Cache^n plugin is disabled; installing/updating and enabling the plugin is recommended for use with " + GetPluginName() + "!", 3);
+    return false;
+}
+
+private void SendCacheRequest(String name, String requestType) {
+    try {
+        /* 
+        Called in the FetchLoop thread
+        */
+        Hashtable request = new Hashtable();
+        request["playerName"] = name;
+        request["pluginName"] = GetPluginName();
+        request["pluginMethod"] = "CacheResponse";
+        request["requestType"] = requestType;
+
+        // Set up response entry
+        PlayerModel player = GetPlayer(name);
+        if (player == null) return;
+        FetchInfo status = player.FetchStatus;
+        status.State = FetchState.Requesting;
+        status.Since = DateTime.Now;
+        status.RequestType = requestType;
+        DebugFetch("Sending cache request " + requestType + "(^b" + name + "^n)");
+
+        // Send request
+        if (!fIsEnabled) return;
+        this.ExecuteCommand("procon.protected.plugins.call", "CBattlelogCache", "PlayerLookup", JSON.JsonEncode(request));
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+}
+
+public void CacheResponse(params String[] response) {
+    try {
+        /*
+        Called from the Battlelog Cache plugin Response thread
+        */
+        String val = null;
+        if (DebugLevel >= 8) {
+            DebugFetch("CacheResponse called with " + response.Length + " parameters");
+            for (int i = 0; i < response.Length; ++i) {
+                DebugFetch("#" + i + ") Length: " + response[i].Length);
+                val = response[i];
+                if (val.Length > 100) val = val.Substring(0, 100) + " ... ";
+                if (val.Contains("{")) val = val.Replace('{', '<').Replace('}', '>'); // ConsoleWrite doesn't like messages with "{" in it
+                DebugFetch("#" + i + ") Value: " + val);
+            }
+        }
+
+        String name = response[0]; // Player's name
+        val = response[1]; // JSON string
+
+        Hashtable header = (Hashtable)JSON.JsonDecode(val);
+
+        if (header == null) {
+            DebugFetch("Request for ^b" + name +"^n failed!");
+            return;
+        }
+
+        String result = (String)header["type"];
+        double fetchTime = -1;
+        Double.TryParse((String)header["fetchTime"], out fetchTime);
+        double age = -1;
+        Double.TryParse((String)header["age"], out age);
+
+        PlayerModel player = GetPlayer(name);
+        FetchInfo status = player.FetchStatus;
+        String err = String.Empty;
+
+        if (CheckSuccess(header, out err)) {
+            player.FetchStatus.State = FetchState.Succeeded;
+            if (fetchTime > 0) {
+                DebugFetch("Request " + status.RequestType + "(^b" + name + "^n) succeeded, cache refreshed from Battlelog, took ^2" + fetchTime.ToString("F1") + " seconds");
+            } else if (age > 0) {
+                TimeSpan a = TimeSpan.FromSeconds(age);
+                DebugFetch("Request " + status.RequestType + "(^b" + name + "^n) succeeded, cached stats used, age is " + a.ToString().Substring(0, 8));
+            }
+        
+            Hashtable d = null;
+            if (!header.ContainsKey("data") || (d = (Hashtable)header["data"]) == null) {
+                ConsoleDebug("CacheResponse header does not contain data field!");
+                player.FetchStatus.State = FetchState.Failed;
+                return;
+            }
+
+            // Apply the result to the player
+            switch (status.RequestType) {
+                case "clanTag":
+                    SetTag(player, d);
+                    if (String.IsNullOrEmpty(player.Tag)) {
+                        DebugFetch("Battlelog Cache says ^b" + player.Name + "^n has no tag");
+                    } else {
+                        DebugFetch("Player tag updated: ^b" + player.FullName);
+                    }
+                    break;
+                default:
+                    break;
+            }
+        } else {
+            player.FetchStatus.State = FetchState.Failed;
+            DebugFetch("Request " + status.RequestType + "(^b" + name + "^n): " + err);
+        }
+        DebugFetch("^2^bTIME^n took " + DateTime.Now.Subtract(status.Since).TotalSeconds.ToString("F2") + " secs, cache lookup for ^b" + name);
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+}
+
+
+private bool CheckSuccess(Hashtable json, out String err) {
+    String m;
+
+    if (json == null) {
+        err = "JSON response is null!";
+        return false;
+    }
+
+    if (!json.ContainsKey("type")) {
+        err = "JSON response malformed: does not contain 'type'!";
+        return false;
+    }
+
+    String type = (String)json["type"];
+
+    if (type == null) {
+        err = "JSON response malformed: 'type' is null!";
+        return false;
+    }
+
+    if (Regex.Match(type, @"success", RegexOptions.IgnoreCase).Success) {
+        err = null;
+        return true;
+    }
+
+    if (!json.ContainsKey("message")) {
+        err = "JSON response malformed: does not contain 'message'!";
+        return false;
+    }
+
+    String message = (String)json["message"];
+
+    if (message == null) {
+        err = "JSON response malformed: 'message' is null!";
+        return false;
+    }
+
+    err = "Cache fetch failed (type: " + type + ", message: " + message + ")!";
+    return false;
+}
+
+private bool FetchWebPage(ref String result, String url) {
+    bool ret = false;
+    try {
+
+        WebClient client = new WebClient();
+        String ua = "Mozilla/5.0 (compatible; PRoCon 1; MULTIbalancer)";
+        // XXX String ua = "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64; Trident/5.0; .NET CLR 3.5.30729)";
+        if (DebugLevel >= 8) DebugFetch("Using user-agent: " + ua);
+        client.Headers.Add("user-agent", ua);
+
+        DateTime since = DateTime.Now;
+
+        result = client.DownloadString(url);
+
+        /* TESTS
+        String testUrl = "http://status.savanttools.com/?code=";
+        html_data = client.DownloadString(testUrl + "429%20Too%20Many%20Requests");
+        //html_data = client.DownloadString(testUrl + "509%20Bandwidth%20Limit%20Exceeded");
+        //html_data = client.DownloadString(testUrl + "408%20Request%20Timeout");
+        //html_data = client.DownloadString(testUrl + "404%20Not%20Found");
+        */
+
+        DebugFetch("^2^bTIME^n took " + DateTime.Now.Subtract(since).TotalSeconds.ToString("F2") + " secs, url: " + url);
+
+        if (Regex.Match(result, @"that\s+page\s+doesn't\s+exist", RegexOptions.IgnoreCase | RegexOptions.Singleline).Success) {
+            DebugFetch("^b" + url + "^n does not exist");
+            result = String.Empty;
+            return false;
+        }
+
+        ret = true;
+    } catch (WebException e) {
+        if (e.Status.Equals(WebExceptionStatus.Timeout)) {
+            if (DebugLevel >= 5) DebugFetch("EXCEPTION: HTTP request timed-out");
+        } else {
+            if (DebugLevel >= 5) DebugFetch("EXCEPTION: " + e.Message);
+        }
+        ret = false;
+    } catch (Exception ae) {
+        if (DebugLevel >= 5) DebugFetch("EXCEPTION: " + ae.Message);
+        ret = false;
+    }
+    return ret;
+}
 
 
 
@@ -4218,6 +4648,11 @@ private void UpdatePresetValue() {
 
 private void Reset() {
     ResetRound();
+    
+    lock (fFetchQ) {
+        fFetchQ.Clear();
+        Monitor.Pulse(fFetchQ);
+    }
 
     lock (fMoveQ) {
         fMoveQ.Clear();
@@ -4848,13 +5283,18 @@ private int ToSquad(String name, int team) {
 private void StartThreads() {
     fMoveThread = new Thread(new ThreadStart(MoveLoop));
     fMoveThread.IsBackground = true;
-    fMoveThread.Name = "MoveLoop";
+    fMoveThread.Name = "unswitcher";
     fMoveThread.Start();
 
     fListPlayersThread = new Thread(new ThreadStart(ListPlayersLoop));
     fListPlayersThread.IsBackground = true;
-    fListPlayersThread.Name = "ListPlayersLoops";
+    fListPlayersThread.Name = "lister";
     fListPlayersThread.Start();
+
+    fFetchThread = new Thread(new ThreadStart(FetchLoop));
+    fFetchThread.IsBackground = true;
+    fFetchThread.Name = "fetcher";
+    fFetchThread.Start();
 }
 
 private void JoinWith(Thread thread, int secs)
@@ -4884,13 +5324,11 @@ private void StopThreads() {
                     fMoveThread = null;
                     JoinWith(fListPlayersThread, 3);
                     fListPlayersThread = null;
-
-                    //this.blog.CleanUp();
-                    /*
-                    lock (this.cacheResponseTable) {
-                        this.cacheResponseTable.Clear();
+                    lock (fFetchQ) {
+                        Monitor.Pulse(fFetchQ);
                     }
-                    */
+                    JoinWith(fFetchThread, 3);
+                    fFetchThread = null;
                 }
                 catch (Exception e)
                 {
@@ -5173,6 +5611,12 @@ private void DebugBalance(String msg) {
 private void DebugUnswitch(String msg) {
     DebugWrite("^5(SWITCH)^9 " + msg, 5);
 }
+
+
+private void DebugFetch(String msg) {
+    DebugWrite("^5(FETCH)^9 " + msg, 6);
+}
+
 
 private double NextSwapGroupInSeconds(PerModeSettings perMode) {
     if (fFullUnstackSwapTimestamp == DateTime.MinValue) return 0;
@@ -5876,6 +6320,8 @@ static class PROTObalancerUtils {
 <p><b>Enable Battlelog Requests</b>: True or False, default True. Enables making requests to Battlelog (uses BattlelogCache if available). Used to obtain clan tag for players.</p>
 
 <p><b>Maximum Request Rate</b>: Number from 1 to 15, default 2. If <b>Enable Battlelog Requests</b> is set to True, defines the maximum number of Battlelog requests that are sent every 20 seconds.</p>
+
+<p><b>Wait Timeout</b>: Number from 15 to 90, default 30. If <b>Enable Battlelog Requests</b> is set to True, defines the maximum number of seconds to wait for a reply from Battlelog or BattlelogCache before giving up.</p>
 
 <p><b>Unlimited Team Switching During First Minutes Of Round</b>: Number greater than or equal to 0, default 5. Starting from the beginning of the round, this is the number of minutes that players are allowed to switch teams without restriction. After this time is expired, the plugin will prevent team switching that unbalances or stacks teams. The idea is to enable friends who were split up during the previous round due to autobalancing or unstacking to regroup so that they can play together this round. However, players who switch teams during this period are not excluded from being moved for autobalance or unstacking later in the round, unless some other exclusion applies them.</p>
 
