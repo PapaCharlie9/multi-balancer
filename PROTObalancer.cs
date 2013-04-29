@@ -329,6 +329,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         //  Per-round state
         public int MovesRound;
         public bool MovedByMB;
+        public DateTime MovedTimestamp;
         
         public PlayerModel() {
             Name = null;
@@ -353,6 +354,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
             IsDeployed = false;
             MovesRound = 0;
             MovedByMB = false;
+            MovedTimestamp = DateTime.MinValue;
             SpawnChatMessage = String.Empty;
             SpawnYellMessage = String.Empty;
             QuietMessage = false;
@@ -388,6 +390,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
 
             MovesRound = 0;
             MovedByMB = false;
+            MovedTimestamp = DateTime.MinValue;
         }
     } // end PlayerModel
 
@@ -576,6 +579,10 @@ private int fFailedRound = 0;
 private int fTotalRound = 0;
 private bool fBalanceIsActive = false;
 private int fRoundsEnabled = 0;
+private int fGrandTotalQuits = 0;
+private int fGrandRageQuits = 0;
+private int fTotalQuits = 0;
+private int fRageQuits = 0;
 
 // Settings support
 private Dictionary<int, Type> fEasyTypeDict = null;
@@ -678,6 +685,10 @@ public PROTObalancer() {
     fTotalRound = 0;
     fBalanceIsActive = false;
     fRoundsEnabled = 0;
+    fGrandTotalQuits = 0;
+    fGrandRageQuits = 0;
+    fTotalQuits = 0;
+    fRageQuits = 0;
 
     fMoveThread = null;
     fFetchThread = null;
@@ -1407,49 +1418,49 @@ private bool ValidateSettings(String strVariable, String strValue) {
                 
         /* ===== SECTION 1 - Settings ===== */
 
-        ValidateIntRange(ref DebugLevel, "Debug Level", 0, 9, 2, false);
-        ValidateIntRange(ref MaximumServerSize, "Maximum Server Size", 8, 64, 64, false);
-        ValidateIntRange(ref MaximumRequestRate, "Maximum Request Rate", 1, 15, 2, true); // in 20 seconds
-        ValidateDoubleRange(ref WaitTimeout, "Wait Timeout", 15, 90, 30, false);
-        ValidateDouble(ref UnlimitedTeamSwitchingDuringFirstMinutesOfRound, "Unlimited Team Switching During First Minutes Of Round", 5.0);
-        ValidateDoubleRange(ref SecondsUntilAdaptiveSpeedBecomesFast, "Seconds Until Adaptive Speed Becomes Fast", MIN_ADAPT_FAST, 999999, 3*60, true); // 3 minutes default
+        if (strVariable.Contains("Debug Level")) ValidateIntRange(ref DebugLevel, "Debug Level", 0, 9, 2, false);
+        if (strVariable.Contains("Maximum Server Size")) ValidateIntRange(ref MaximumServerSize, "Maximum Server Size", 8, 64, 64, false);
+        if (strVariable.Contains("Maximum Request Rate")) ValidateIntRange(ref MaximumRequestRate, "Maximum Request Rate", 1, 15, 2, true); // in 20 seconds
+        if (strVariable.Contains("Wait Timeout")) ValidateDoubleRange(ref WaitTimeout, "Wait Timeout", 15, 90, 30, false);
+        if (strVariable.Contains("Unlimited Team Switching During First Minutes Of Round")) ValidateDouble(ref UnlimitedTeamSwitchingDuringFirstMinutesOfRound, "Unlimited Team Switching During First Minutes Of Round", 5.0);
+        if (strVariable.Contains("Seconds Until Adaptive Speed Becomes Fast")) ValidateDoubleRange(ref SecondsUntilAdaptiveSpeedBecomesFast, "Seconds Until Adaptive Speed Becomes Fast", MIN_ADAPT_FAST, 999999, 3*60, true); // 3 minutes default
     
         /* ===== SECTION 2 - Exclusions ===== */
     
-        ValidateDouble(ref MinutesAfterJoining, "Minutes After Joining", 5);
+        if (strVariable.Contains("Minutes After Joining")) ValidateDouble(ref MinutesAfterJoining, "Minutes After Joining", 5);
 
         /* ===== SECTION 3 - Round Phase & Population Settings ===== */
     
         for (int i = 0; i < EarlyPhaseTicketPercentageToUnstack.Length; ++i) {
-            ValidateDoubleRange(ref EarlyPhaseTicketPercentageToUnstack[i], "Early Phase Ticket Percentage To Unstack", 100.0, 1000.0, 120.0, true);
+            if (strVariable.Contains("Early Phase: Ticket Percentage To Unstack")) ValidateDoubleRange(ref EarlyPhaseTicketPercentageToUnstack[i], "Early Phase Ticket Percentage To Unstack", 100.0, 1000.0, 120.0, true);
         }
         for (int i = 0; i < MidPhaseTicketPercentageToUnstack.Length; ++i) {
-            ValidateDoubleRange(ref MidPhaseTicketPercentageToUnstack[i], "Mid Phase Ticket Percentage To Unstack", 100.0, 1000.0, 120.0, true);
+            if (strVariable.Contains("Mid Phase: Ticket Percentage To Unstack")) ValidateDoubleRange(ref MidPhaseTicketPercentageToUnstack[i], "Mid Phase Ticket Percentage To Unstack", 100.0, 1000.0, 120.0, true);
         }
         for (int i = 0; i < LatePhaseTicketPercentageToUnstack.Length; ++i) {
-            ValidateDoubleRange(ref LatePhaseTicketPercentageToUnstack[i], "Late Phase Ticket Percentage ToUnstack", 100.0, 1000.0, 120.0, true);
+            if (strVariable.Contains("Late Phase: Ticket Percentage To Unstack")) ValidateDoubleRange(ref LatePhaseTicketPercentageToUnstack[i], "Late Phase Ticket Percentage To Unstack", 100.0, 1000.0, 120.0, true);
         }
 
         /* ===== SECTION 5 - Messages ===== */
     
-        ValidateDoubleRange(ref YellDurationSeconds, "Yell Duration Seconds", 1, 20, 10, true);
+        if (strVariable.Contains("Yell Duration Seconds")) ValidateDoubleRange(ref YellDurationSeconds, "Yell Duration Seconds", 1, 20, 10, true);
 
-        if (ChatMovedForBalance.Contains("%reason%")) {
+        if (strVariable.Contains("Chat: Moved For Balance") && ChatMovedForBalance.Contains("%reason%")) {
             ConsoleWarn(strVariable + ": contains %reason%, which is only recognized in ^bDetected Bad Team Switch^n");
         }
-        if (YellMovedForBalance.Contains("%reason%")) {
+        if (strVariable.Contains("Yell: Moved For Balance") && YellMovedForBalance.Contains("%reason%")) {
             ConsoleWarn(strVariable + ": contains %reason%, which is only recognized in ^bDetected Bad Team Switch^n");
         }
-        if (ChatMovedToUnstack.Contains("%reason%")) {
+        if (strVariable.Contains("Chat: Moved To Unstack") && ChatMovedToUnstack.Contains("%reason%")) {
             ConsoleWarn(strVariable + ": contains %reason%, which is only recognized in ^bDetected Bad Team Switch^n");
         }
-        if (YellMovedToUnstack.Contains("%reason%")) {
+        if (strVariable.Contains("Yell: Moved To Unstack") && YellMovedToUnstack.Contains("%reason%")) {
             ConsoleWarn(strVariable + ": contains %reason%, which is only recognized in ^bDetected Bad Team Switch^n");
         }
-        if (ChatDetectedGoodTeamSwitch.Contains("%reason%")) {
+        if (strVariable.Contains("Chat: Detected Good Team Switch") && ChatDetectedGoodTeamSwitch.Contains("%reason%")) {
             ConsoleWarn(strVariable + ": contains %reason%, which is only recognized in ^bDetected Bad Team Switch^n");
         }
-        if (YellDetectedGoodTeamSwitch.Contains("%reason%")) {
+        if (strVariable.Contains("Yell: Detected Good Team Switch") && YellDetectedGoodTeamSwitch.Contains("%reason%")) {
             ConsoleWarn(strVariable + ": contains %reason%, which is only recognized in ^bDetected Bad Team Switch^n");
         }
     
@@ -1463,17 +1474,21 @@ private bool ValidateSettings(String strVariable, String strValue) {
             PerModeSettings perMode = fPerMode[mode];
             PerModeSettings def = new PerModeSettings(mode); // defaults for this mode
 
-            ValidateIntRange(ref perMode.MaxPlayers, mode + ":" + "Max Players", 8, MaximumServerSize, def.MaxPlayers, false);
-            ValidateDouble(ref perMode.CheckTeamStackingAfterFirstMinutes, mode + ":" + "Check Team Stacking After First Minutes", def.CheckTeamStackingAfterFirstMinutes);
-            ValidateInt(ref perMode.MaxUnstackingSwapsPerRound, mode + ":" + "Max Unstacking Swaps Per Round", def.MaxUnstackingSwapsPerRound);
-            ValidateIntRange(ref perMode.NumberOfSwapsPerGroup, mode + ":" + "Number Of Swaps Per Group", 0, perMode.MaxUnstackingSwapsPerRound, def.NumberOfSwapsPerGroup, false);
-            ValidateDoubleRange(ref perMode.DelaySecondsBetweenSwapGroups, mode + ":" + "Delay Seconds Between Swap Groups", 60, 24*60*60, def.DelaySecondsBetweenSwapGroups, false);
-            ValidateDoubleRange(ref perMode.PercentOfTopOfTeamIsStrong, mode + ":" + "Percent Of Top Of Team Is Strong", 5, 50, def.PercentOfTopOfTeamIsStrong, false);
-            ValidateInt(ref perMode.DisperseEvenlyForRank, mode + ":" + "Disperse Evenly For Rank", def.DisperseEvenlyForRank);
-            ValidateIntRange(ref perMode.DefinitionOfHighPopulationForPlayers, mode + ":" + "Definition Of High Population For Players", 0, perMode.MaxPlayers, def.DefinitionOfHighPopulationForPlayers, false); 
-            ValidateIntRange(ref perMode.DefinitionOfLowPopulationForPlayers, mode + ":" + "Definition Of Low Population For Players", 0, perMode.MaxPlayers, def.DefinitionOfLowPopulationForPlayers, false);
-            ValidateInt(ref perMode.DefinitionOfEarlyPhaseFromStart, mode + ":" + "Definition Of Early Phase From Start", def.DefinitionOfEarlyPhaseFromStart);
-            ValidateInt(ref perMode.DefinitionOfLatePhaseFromEnd, mode + ":" + "Definition Of Late Phase From End", def.DefinitionOfLatePhaseFromEnd);
+            def.MaxPlayers = Math.Min(def.MaxPlayers, MaximumServerSize);
+            if (strVariable.Contains("Max Players")) ValidateIntRange(ref perMode.MaxPlayers, mode + ":" + "Max Players", 8, MaximumServerSize, def.MaxPlayers, false);
+            if (strVariable.Contains("Check Team Stacking After First Minutes")) ValidateDouble(ref perMode.CheckTeamStackingAfterFirstMinutes, mode + ":" + "Check Team Stacking After First Minutes", def.CheckTeamStackingAfterFirstMinutes);
+            if (strVariable.Contains("Max Unstacking Swaps Per Round")) ValidateInt(ref perMode.MaxUnstackingSwapsPerRound, mode + ":" + "Max Unstacking Swaps Per Round", def.MaxUnstackingSwapsPerRound);
+            def.NumberOfSwapsPerGroup = Math.Min(def.NumberOfSwapsPerGroup, perMode.MaxUnstackingSwapsPerRound);
+            if (strVariable.Contains("Number Of Swaps Per Group")) ValidateIntRange(ref perMode.NumberOfSwapsPerGroup, mode + ":" + "Number Of Swaps Per Group", 0, perMode.MaxUnstackingSwapsPerRound, def.NumberOfSwapsPerGroup, false);
+            if (strVariable.Contains("Delay Seconds Between Swap Groups")) ValidateDoubleRange(ref perMode.DelaySecondsBetweenSwapGroups, mode + ":" + "Delay Seconds Between Swap Groups", 60, 24*60*60, def.DelaySecondsBetweenSwapGroups, false);
+            if (strVariable.Contains("Percent Of Top Of Team Is Strong")) ValidateDoubleRange(ref perMode.PercentOfTopOfTeamIsStrong, mode + ":" + "Percent Of Top Of Team Is Strong", 5, 50, def.PercentOfTopOfTeamIsStrong, false);
+            if (strVariable.Contains("Disperse Evenly For Rank")) ValidateInt(ref perMode.DisperseEvenlyForRank, mode + ":" + "Disperse Evenly For Rank", def.DisperseEvenlyForRank);
+            def.DefinitionOfHighPopulationForPlayers = Math.Min(def.DefinitionOfHighPopulationForPlayers, perMode.MaxPlayers);
+            def.DefinitionOfLowPopulationForPlayers = Math.Min(def.DefinitionOfLowPopulationForPlayers, perMode.MaxPlayers);
+            if (strVariable.Contains("Definition Of High Population For Players")) ValidateIntRange(ref perMode.DefinitionOfHighPopulationForPlayers, mode + ":" + "Definition Of High Population For Players", 0, perMode.MaxPlayers, def.DefinitionOfHighPopulationForPlayers, false); 
+            if (strVariable.Contains("Definition Of Low Population For Players")) ValidateIntRange(ref perMode.DefinitionOfLowPopulationForPlayers, mode + ":" + "Definition Of Low Population For Players", 0, perMode.MaxPlayers, def.DefinitionOfLowPopulationForPlayers, false);
+            if (strVariable.Contains("Definition Of Early Phase")) ValidateInt(ref perMode.DefinitionOfEarlyPhaseFromStart, mode + ":" + "Definition Of Early Phase From Start", def.DefinitionOfEarlyPhaseFromStart);
+            if (strVariable.Contains("Definition Of Late Phase")) ValidateInt(ref perMode.DefinitionOfLatePhaseFromEnd, mode + ":" + "Definition Of Late Phase From End", def.DefinitionOfLatePhaseFromEnd);
         }
 
         /* ===== SECTION 9 - Debug Settings ===== */
@@ -1591,6 +1606,11 @@ private void CommandToLog(string cmd) {
             foreach (String mode in modeList) {
                 ConsoleDump(mode);
             }
+            return;
+        }
+
+        if (Regex.Match(cmd, @"rage", RegexOptions.IgnoreCase).Success) {
+            ConsoleDump("Rage stats: " + fGrandRageQuits + " rage of " + fGrandTotalQuits + " total, this round " + fRageQuits + " rage of " + fTotalQuits + " total"); 
             return;
         }
         
@@ -1809,6 +1829,7 @@ public override void OnPlayerLeft(CPlayerInfo playerInfo) {
 
     try {
         if (IsKnownPlayer(playerInfo.SoldierName)) {
+            CheckRageQuit(playerInfo.SoldierName);
             ValidateMove(playerInfo.SoldierName);
             RemovePlayer(playerInfo.SoldierName);
         }
@@ -2989,19 +3010,25 @@ private bool IsKnownPlayer(String name) {
 
 private bool AddNewPlayer(String name, int team) {
     bool known = false;
+    bool needsFetch = false;
     lock (fKnownPlayers) {
+        PlayerModel player = null;
         if (!fKnownPlayers.ContainsKey(name)) {
-            fKnownPlayers[name] = new PlayerModel(name, team);
+            player = new PlayerModel(name, team);
+            fKnownPlayers[name] = player;
+            needsFetch = true;
         } else {
-            fKnownPlayers[name].Team = team;
+            player = fKnownPlayers[name];
+            player.Team = team;
             known = true;
+            needsFetch = !player.TagVerified;
         }
-        fKnownPlayers[name].LastSeenTimestamp = DateTime.Now;
+        if (player != null) player.LastSeenTimestamp = DateTime.Now;
     }
     lock (fAllPlayers) {
         if (!fAllPlayers.Contains(name)) fAllPlayers.Add(name);
     }
-    if (!known) {
+    if (needsFetch) {
         AddPlayerFetch(name);
     }
     return known;
@@ -3568,9 +3595,9 @@ private bool FinishMove(String name, int team) {
             try {
                 UpdatePlayerTeam(name, team);
                 UpdateTeams();
-                if (move.For == MoveType.Balance) {fBalancedRound = fBalancedRound + 1; IncrementMoves(name);}
-                else if (move.For == MoveType.Unstack) {fUnstackedRound = fUnstackedRound + 1; IncrementMoves(name);}
-                else if (move.For == MoveType.Unswitch) {fUnswitchedRound = fUnswitchedRound + 1; IncrementTotal();}
+                if (move.For == MoveType.Balance) {++fBalancedRound; IncrementMoves(name); IncrementTotal();}
+                else if (move.For == MoveType.Unstack) {++fUnstackedRound; IncrementMoves(name); IncrementTotal();}
+                else if (move.For == MoveType.Unswitch) {++fUnswitchedRound; UpdateMoveTime(name); IncrementTotal();}
             } catch (Exception e) {
                 ConsoleException(e);
             }
@@ -4495,7 +4522,7 @@ public void ConsoleDebug(String msg)
 
 public void ConsoleDump(String msg)
 {
-    ConsoleWrite("^b[Show In Log]^n ^5" + msg);
+    ConsoleWrite("^b[Show In Log]^n ^1" + msg);
 }
 
 
@@ -4692,6 +4719,8 @@ private void Reset() {
     fIsFullRound = false;
     fLastMsg = null;
     fRoundsEnabled = 0;
+    fGrandTotalQuits = 0;
+    fGrandRageQuits = 0;
 }
 
 private void ResetRound() {
@@ -4736,6 +4765,10 @@ private void ResetRound() {
     fRushAttackerTickets = 0;
     fTimeOutOfJoint = 0;
     fRoundsEnabled = fRoundsEnabled + 1;
+    fGrandTotalQuits = fGrandTotalQuits + fTotalQuits;
+    fTotalQuits = 0;
+    fGrandRageQuits = fGrandRageQuits + fRageQuits;
+    fRageQuits = 0;
 
     fLastBalancedTimestamp = DateTime.MinValue;
 }
@@ -5347,6 +5380,12 @@ private void StopThreads() {
     }
 }
 
+private void UpdateMoveTime(String name) {
+    PlayerModel player = GetPlayer(name);
+    if (player == null) return;
+    player.MovedTimestamp = DateTime.Now;
+}
+
 private void IncrementMoves(String name) {
     if (!IsKnownPlayer(name)) return;
     lock (fKnownPlayers) {
@@ -5354,7 +5393,7 @@ private void IncrementMoves(String name) {
         m.MovesRound = m.MovesRound + 1;
         m.MovedByMB = true;
     }
-    IncrementTotal();
+    UpdateMoveTime(name);
 }
 
 private void ConditionalIncrementMoves(String name) {
@@ -5832,6 +5871,23 @@ private void ValidateDoubleRange(ref double val, String propName, double min, do
 }
 
 
+private void CheckRageQuit(String name) {
+    /*
+    Heuristic: if player leaves server within 1 minute of being moved, treat as a rage quit
+    due to actions of this plugin.
+    */
+    PlayerModel player = GetPlayer(name);
+    if (player == null) return;
+
+    ++fTotalQuits;
+
+    if (player.MovedTimestamp != DateTime.MinValue && DateTime.Now.Subtract(player.MovedTimestamp).TotalSeconds <= 60) {
+        ++fRageQuits;
+        DebugWrite("Looks like ^b" + name + "^n rage quit: " + fRageQuits + " so far this round, out of " + fTotalQuits, 4);
+    }
+}
+
+
 
 public void CheckForPluginUpdate() {
 	try {
@@ -6012,7 +6068,8 @@ private void LogStatus() {
         DebugWrite("^bStatus^n: Model not in sync for " + toj.ToString("F1") + " mins: fMoving = " + fMoving.Count + ", fReassigned = " + fReassigned.Count, 5);
     }
 
-    DebugWrite("^bStatus^n: " + fReassignedRound + " reassigned, " + fBalancedRound + " balanced, " + fUnstackedRound + " unstacked, " + fUnswitchedRound + " unswitched, " + fExcludedRound + " excluded, " + fExemptRound + " exempted, " + fFailedRound + " failed; of " + fTotalRound + " TOTAL", 5);
+    String raged = fRageQuits.ToString() + "/" + fTotalQuits + " raged, ";
+    DebugWrite("^bStatus^n: " + raged + fReassignedRound + " reassigned, " + fBalancedRound + " balanced, " + fUnstackedRound + " unstacked, " + fUnswitchedRound + " unswitched, " + fExcludedRound + " excluded, " + fExemptRound + " exempted, " + fFailedRound + " failed; of " + fTotalRound + " TOTAL", 5);
     
     if (IsSQDM()) {
         DebugWrite("^bStatus^n: Team counts [" + TotalPlayerCount + "] = " + fTeam1.Count + "(A) vs " + fTeam2.Count + "(B) vs " + fTeam3.Count + "(C) vs " + fTeam4.Count + "(D), with " + fUnassigned.Count + " unassigned", 3);
