@@ -575,6 +575,7 @@ private int fExemptRound = 0;
 private int fFailedRound = 0;
 private int fTotalRound = 0;
 private bool fBalanceIsActive = false;
+private int fRoundsEnabled = 0;
 
 // Settings support
 private Dictionary<int, Type> fEasyTypeDict = null;
@@ -676,6 +677,7 @@ public PROTObalancer() {
     fFailedRound = 0;
     fTotalRound = 0;
     fBalanceIsActive = false;
+    fRoundsEnabled = 0;
 
     fMoveThread = null;
     fFetchThread = null;
@@ -1615,6 +1617,7 @@ private void CommandToLog(string cmd) {
                     if (p.TagVerified) ++validTags;
                 }
             }
+            ConsoleDump("Plugin has been enabled for " + fRoundsEnabled + " rounds");
             ConsoleDump("fKnownPlayers.Count = " + kp + ", not playing = " + (kp-ap) + ", more than 12 hours old = " + old);
             ConsoleDump("fFetchQ.Count = " + fFetchQ.Count + ", verified tags = " + validTags);
             ConsoleDump("PROTObalancerUtils.HTML_DOC.Length = " + PROTObalancerUtils.HTML_DOC.Length);
@@ -2429,20 +2432,6 @@ private void BalanceAndUnstack(String name) {
     /* Check dispersals */
     
     bool mustMove = false;
-    /*
-    bool isDisperseByRank = (player.Rank >= perMode.DisperseEvenlyForRank);
-    if (perMode.DisperseEvenlyForRank == 0) isDisperseByRank = false;
-    List<String> dispersalList = null;
-    bool isDisperseByList = false;
-    if (perMode.EnableDisperseEvenlyList && DisperseEvenlyList != null && DisperseEvenlyList.Length > 0) {
-        dispersalList = new List<String>(DisperseEvenlyList);
-        if (dispersalList.Contains(name) || dispersalList.Contains(player.EAGUID)) {
-            isDisperseByList = true;
-        } else if (!String.IsNullOrEmpty(extractedTag) && dispersalList.Contains(extractedTag)) {
-            isDisperseByList = true;
-        }
-    }
-    */
     bool isDisperseByRank = IsRankDispersal(player);
     bool isDisperseByList = IsDispersal(player);
     if (isDisperseByRank) {
@@ -2671,7 +2660,11 @@ private void BalanceAndUnstack(String name) {
         } else {
             ts = fTeam1.Count + "(US) vs " + fTeam2.Count + "(RU)";
         }
-        DebugBalance("Autobalancing because difference of " + diff + " is greater than " + MaxDiff() + ", [" + ts + "]");
+        if (mustMove) {
+            DebugBalance("Autobalancing because ^b" + name + "^n must be moved");
+        } else {
+            DebugBalance("Autobalancing because difference of " + diff + " is greater than " + MaxDiff() + ", [" + ts + "]");
+        }
         double abTime = now.Subtract(fLastBalancedTimestamp).TotalSeconds;
         if (abTime > 0) {
             DebugBalance("^2^bAutobalance has been active for " + abTime.ToString("F1") + " seconds!");
@@ -2755,7 +2748,8 @@ private void BalanceAndUnstack(String name) {
         move.For = MoveType.Balance;
         move.Format(this, ChatMovedForBalance, false, false);
         move.Format(this, YellMovedForBalance, true, false);
-        log = "^4^bBALANCE^n^0 moving ^b" + name + "^n from " + move.SourceName + " team to " + move.DestinationName + " team because difference is " + diff;
+        String why = (mustMove) ? "to disperse evenly" : ("because difference is " + diff);
+        log = "^4^bBALANCE^n^0 moving ^b" + name + "^n from " + move.SourceName + " team to " + move.DestinationName + " team " + why;
         log = (EnableLoggingOnlyMode) ? "^9(SIMULATING)^0 " + log : log;
         DebugWrite(log, 3);
 
@@ -3245,8 +3239,15 @@ private bool CheckTeamSwitch(String name, int toTeam) {
         }
     }
 
+    // Check forbidden cases
+    PerModeSettings perMode = GetPerModeSettings();
+    bool isSQDM = IsSQDM();
+    bool isDispersal = IsDispersal(player); // on dispersal list
+    bool isRank = IsRankDispersal(player);
+    bool forbidden = (isDispersal || isRank || (player.MovedByMB && !isSQDM));
+
     // Unlimited time?
-    if (UnlimitedTeamSwitchingDuringFirstMinutesOfRound > 0 && GetTimeInRoundMinutes() < UnlimitedTeamSwitchingDuringFirstMinutesOfRound) {
+    if (!forbidden && UnlimitedTeamSwitchingDuringFirstMinutesOfRound > 0 && GetTimeInRoundMinutes() < UnlimitedTeamSwitchingDuringFirstMinutesOfRound) {
         DebugUnswitch("ALLOWED: Time in round " + GetTimeInRoundMinutes().ToString("F0") + " < " + UnlimitedTeamSwitchingDuringFirstMinutesOfRound.ToString("F0"));
         SetSpawnMessages(name, String.Empty, String.Empty, false);
         CheckAbortMove(name);
@@ -3265,11 +3266,6 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     MoveInfo move = null;
     bool toLosing = false;
     bool toSmallest = false;
-    bool isSQDM = IsSQDM();
-    PerModeSettings perMode = GetPerModeSettings();
-    bool isDispersal = IsDispersal(player); // on dispersal list
-    bool isRank = IsRankDispersal(player);
-    bool forbidden = (isDispersal || isRank || (player.MovedByMB && !isSQDM));
 
     /*
     A player that was previously moved by the plugin is forbidden from moving to any
@@ -4695,6 +4691,7 @@ private void Reset() {
     fBalanceIsActive = false;
     fIsFullRound = false;
     fLastMsg = null;
+    fRoundsEnabled = 0;
 }
 
 private void ResetRound() {
@@ -4738,6 +4735,7 @@ private void ResetRound() {
     fRushStage = 0;
     fRushAttackerTickets = 0;
     fTimeOutOfJoint = 0;
+    fRoundsEnabled = fRoundsEnabled + 1;
 
     fLastBalancedTimestamp = DateTime.MinValue;
 }
