@@ -6430,17 +6430,125 @@ private int CountMatchingTags(PlayerModel player) {
 private void ListSideBySide(List<String> us, List<String> ru) {
     int max = Math.Max(us.Count, ru.Count);
 
+    // Sort lists by specified metric, which might have changed by now, oh well
+    List<PlayerModel> all = new List<PlayerModel>();
+    PlayerModel player = null;
+    double usTotal = 0;
+    foreach (String u in us) {
+        String en = ExtractName(u);
+        player = GetPlayer(en);
+        if (player == null) continue;
+        all.Add(player);
+        double stat = 0;
+        switch (ScrambleBy) {
+            case DefineStrong.RoundScore:
+                stat = player.ScoreRound;
+                break;
+            case DefineStrong.RoundSPM:
+                stat = player.SPMRound;
+                break;
+            case DefineStrong.RoundKills:
+                stat = player.KillsRound;
+                break;
+            case DefineStrong.RoundKDR:
+                stat = player.KDRRound;
+                break;
+            case DefineStrong.PlayerRank:
+                stat = player.Rank;
+                break;
+            default:
+                break;
+        }
+        usTotal = usTotal + stat;
+    }
+    double usAvg = usTotal / Math.Max(1, us.Count);
+
+    double ruTotal = 0;
+    foreach (String r in ru) {
+        String en = ExtractName(r);
+        player = GetPlayer(en);
+        if (player == null) continue;
+        all.Add(player);
+        double stat = 0;
+        switch (ScrambleBy) {
+            case DefineStrong.RoundScore:
+                stat = player.ScoreRound;
+                break;
+            case DefineStrong.RoundSPM:
+                stat = player.SPMRound;
+                break;
+            case DefineStrong.RoundKills:
+                stat = player.KillsRound;
+                break;
+            case DefineStrong.RoundKDR:
+                stat = player.KDRRound;
+                break;
+            case DefineStrong.PlayerRank:
+                stat = player.Rank;
+                break;
+            default:
+                break;
+        }
+        ruTotal = ruTotal + stat;
+    }
+    double ruAvg = ruTotal / Math.Max(1, ru.Count);
+
+    String kstat = "?";
+    switch (ScrambleBy) {
+        case DefineStrong.RoundScore:
+            all.Sort(DescendingRoundScore);
+            kstat = "S";
+            break;
+        case DefineStrong.RoundSPM:
+            all.Sort(DescendingRoundSPM);
+            kstat = "SPM";
+            break;
+        case DefineStrong.RoundKills:
+            all.Sort(DescendingRoundKills);
+            kstat = "K";
+            break;
+        case DefineStrong.RoundKDR:
+            all.Sort(DescendingRoundKDR);
+            kstat = "KDR";
+            break;
+        case DefineStrong.PlayerRank:
+            all.Sort(DescendingPlayerRank);
+            kstat = "R";
+            break;
+        default:
+            all.Sort(DescendingRoundScore);
+            break;
+    }
+    List<String> allNames = new List<String>();
+    foreach (PlayerModel p in all) {
+        allNames.Add(p.Name); // sorted name list
+    }
+
     for (int i = 0; i < max; ++i) {
         String u = " ";
         String r = " ";
         if (i < us.Count) {
-            u = us[i];
+            u = us[i] + " (" + kstat + ":#" + (allNames.IndexOf(ExtractName(us[i]))+1) + ")";
         }
         if (i < ru.Count) {
-            r = ru[i];
+            r = ru[i] + " (" + kstat + ":#" + (allNames.IndexOf(ExtractName(ru[i]))+1) + ")";
         }
         ConsoleDump(String.Format("{0,-32} - {1,32}", u, r));
     }
+    ConsoleDump(String.Format("{0,-32} - {1,32}", 
+        "US AVG " + kstat + ":" + usAvg.ToString("F2"),
+        "RU AVG " + kstat + ":" + ruAvg.ToString("F2")
+    ));
+
+}
+
+private string ExtractName(String fullName) {
+    String ret = fullName;
+    Match m = Regex.Match(fullName, @"\[\w+\](\w+)");
+    if (m.Success) {
+        ret = m.Groups[1].Value;
+    }
+    return ret;
 }
 
 
