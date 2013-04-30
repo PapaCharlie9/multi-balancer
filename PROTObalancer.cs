@@ -117,6 +117,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
             PercentOfTopOfTeamIsStrong = 50;
             DisperseEvenlyForRank = 145;
             EnableDisperseEvenlyList = false;
+            EnableScrambler = false;
             isDefault = false;
             // Rush only
             Stage1TicketPercentageToUnstackAdjustment = 0;
@@ -262,6 +263,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         public bool EnableDisperseEvenlyList = false;
         public double PercentOfTopOfTeamIsStrong = 50;
         public int NumberOfSwapsPerGroup = 3;
+        public bool EnableScrambler = false;
 
         // Rush only
         public double Stage1TicketPercentageToUnstackAdjustment = 0;
@@ -623,6 +625,12 @@ public Speed[] EarlyPhaseBalanceSpeed;
 public Speed[] MidPhaseBalanceSpeed;
 public Speed[] LatePhaseBalanceSpeed;
 
+public bool OnlyOnNewMaps; // false means scramble every round
+public double OnlyOnFinalTicketPercentage; // 0 means scramble regardless of final score
+public DefineStrong ScrambleBy;
+public bool KeepClanTagsInSameSquad;
+public double DelaySeconds;
+
 public bool QuietMode;
 public double YellDurationSeconds;
 public String BadBecauseMovedByBalancer;
@@ -795,6 +803,14 @@ public PROTObalancer() {
     EarlyPhaseBalanceSpeed = new Speed[3]           {     Speed.Fast, Speed.Adaptive, Speed.Adaptive};
     MidPhaseBalanceSpeed = new Speed[3]             {     Speed.Fast, Speed.Adaptive, Speed.Adaptive};
     LatePhaseBalanceSpeed = new Speed[3]            {     Speed.Stop,     Speed.Stop,     Speed.Stop};
+    
+    /* ===== SECTION 4 - Scrambler ===== */
+
+    OnlyOnNewMaps = true; // false means scramble every round
+    OnlyOnFinalTicketPercentage = 120; // 0 means scramble regardless of final score
+    ScrambleBy = DefineStrong.RoundScore;
+    KeepClanTagsInSameSquad = true;
+    DelaySeconds = 30;
 
     /* ===== SECTION 5 - Messages ===== */
     
@@ -1125,6 +1141,21 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
         lstReturn.Add(new CPluginVariable("3 - Round Phase and Population Settings|Late Phase: Balance Speed (Low, Med, High population)", typeof(String), PROTObalancerUtils.ArrayToString(LatePhaseBalanceSpeed)));
 
+        /* ===== SECTION 4 - Scrambler ===== */
+
+        lstReturn.Add(new CPluginVariable("4 - Scrambler|Only On New Maps", OnlyOnNewMaps.GetType(), OnlyOnNewMaps));
+
+        lstReturn.Add(new CPluginVariable("4 - Scrambler|Only On Final Ticket Percentage >=", OnlyOnFinalTicketPercentage.GetType(), OnlyOnFinalTicketPercentage));
+
+        var_name = "4 - Scrambler|Scramble By";
+        var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(DefineStrong))) + ")";
+        
+        lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(DefineStrong), ScrambleBy)));
+
+        lstReturn.Add(new CPluginVariable("4 - Scrambler|Keep Clan Tags In Same Squad", KeepClanTagsInSameSquad.GetType(), KeepClanTagsInSameSquad));
+
+        lstReturn.Add(new CPluginVariable("4 - Scrambler|Delay Seconds", DelaySeconds.GetType(), DelaySeconds));
+
         /* ===== SECTION 5 - Messages ===== */
         
         lstReturn.Add(new CPluginVariable("5 - Messages|Quiet Mode", QuietMode.GetType(), QuietMode));
@@ -1220,6 +1251,8 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Late Phase As Tickets From End", oneSet.DefinitionOfLatePhaseFromEnd.GetType(), oneSet.DefinitionOfLatePhaseFromEnd));
             }
+
+            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Enable Scrambler", oneSet.EnableScrambler.GetType(), oneSet.EnableScrambler));
 
             if (isRush) {
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Stage 1 Ticket Percentage To Unstack Adjustment", oneSet.Stage1TicketPercentageToUnstackAdjustment.GetType(), oneSet.Stage1TicketPercentageToUnstackAdjustment));
@@ -1440,6 +1473,12 @@ private bool ValidateSettings(String strVariable, String strValue) {
         for (int i = 0; i < LatePhaseTicketPercentageToUnstack.Length; ++i) {
             if (strVariable.Contains("Late Phase: Ticket Percentage To Unstack")) ValidateDoubleRange(ref LatePhaseTicketPercentageToUnstack[i], "Late Phase Ticket Percentage To Unstack", 100.0, 1000.0, 120.0, true);
         }
+
+        /* ===== SECTION 4 - Scrambler ===== */
+
+        if (strVariable.Contains("Only On Final Ticket Percentage")) ValidateDoubleRange(ref OnlyOnFinalTicketPercentage, "Only On Final Ticket Percentage", 100.0, 1000.0, 120.0, true);
+
+        if (strVariable.Contains("Delay Seconds")) ValidateDoubleRange(ref DelaySeconds, "Delay Seconds", 0, 43, 30, false);
 
         /* ===== SECTION 5 - Messages ===== */
     
