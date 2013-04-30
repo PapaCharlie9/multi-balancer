@@ -499,16 +499,16 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         }
     } // end MoveInfo
 
-    public class ListPlayersRequest {
+    public class DelayedRequest {
         public double MaxDelay; // in seconds
         public DateTime LastUpdate;
 
-        public ListPlayersRequest() {
+        public DelayedRequest() {
             MaxDelay = 0;
             LastUpdate = DateTime.MinValue;
         }
 
-        public ListPlayersRequest(double delay, DateTime last) {
+        public DelayedRequest(double delay, DateTime last) {
             MaxDelay = delay;
             LastUpdate = last;
         }
@@ -527,6 +527,7 @@ private Dictionary<String,int> fPendingTeamChange = null;
 private Thread fMoveThread = null;
 private Thread fFetchThread = null;
 private Thread fListPlayersThread = null;
+private Thread fScramblerThread = null;
 private List<String> fReservedSlots = null;
 private bool fGotVersion = false;
 private int fServerUptime = -1;
@@ -554,7 +555,7 @@ private Queue<MoveInfo> fMoveQ = null;
 private List<String> fReassigned = null;
 private int[] fTickets = null;
 private DateTime fListPlayersTimestamp;
-private Queue<ListPlayersRequest> fListPlayersQ = null;
+private Queue<DelayedRequest> fListPlayersQ = null;
 private Dictionary<String,String> fFriendlyMaps = null;
 private Dictionary<String,String> fFriendlyModes = null;
 private double fMaxTickets = -1;
@@ -569,6 +570,8 @@ private List<MoveInfo> fMoveStash = null;
 private int fUnstackGroupCount = 0;
 private Queue<String> fFetchQ = null; // of player names waiting for stats fetching
 private bool fIsCacheEnabled = false;
+private DelayedRequest fScramblerLock = null;
+private int fWinner = 0;
 
 // Operational statistics
 private int fReassignedRound = 0;
@@ -701,6 +704,7 @@ public PROTObalancer() {
     fMoveThread = null;
     fFetchThread = null;
     fListPlayersThread = null;
+    fScramblerThread = null;
     
     fModeToSimple = new Dictionary<String,String>();
 
@@ -734,7 +738,7 @@ public PROTObalancer() {
     fRoundStartTimestamp = DateTime.MinValue;
     fListPlayersTimestamp = DateTime.MinValue;
     fFullUnstackSwapTimestamp = DateTime.MinValue;
-    fListPlayersQ = new Queue<ListPlayersRequest>();
+    fListPlayersQ = new Queue<DelayedRequest>();
 
     fPendingTeamChange = new Dictionary<String,int>();
     fMoving = new Dictionary<String, MoveInfo>();
@@ -760,6 +764,8 @@ public PROTObalancer() {
     fUnstackGroupCount = 0;
     fFetchQ = new Queue<String>();
     fIsCacheEnabled = false;
+    fScramblerLock = new DelayedRequest();
+    fWinner = 0;
     
     /* Settings */
 
@@ -1213,6 +1219,7 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
             bool isCTF = (sm == "CTF");
             bool isGM = (sm == "Gun Master");
             bool isRush = (sm.Contains("Rush"));
+            bool isSQDM = (sm == "Squad Deathmatch");
 
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Max Players", oneSet.MaxPlayers.GetType(), oneSet.MaxPlayers));
 
@@ -1252,7 +1259,9 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Late Phase As Tickets From End", oneSet.DefinitionOfLatePhaseFromEnd.GetType(), oneSet.DefinitionOfLatePhaseFromEnd));
             }
 
-            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Enable Scrambler", oneSet.EnableScrambler.GetType(), oneSet.EnableScrambler));
+            if (!isSQDM) {
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Enable Scrambler", oneSet.EnableScrambler.GetType(), oneSet.EnableScrambler));
+            }
 
             if (isRush) {
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Stage 1 Ticket Percentage To Unstack Adjustment", oneSet.Stage1TicketPercentageToUnstackAdjustment.GetType(), oneSet.Stage1TicketPercentageToUnstackAdjustment));
@@ -2282,6 +2291,7 @@ public override void OnRoundOverTeamScores(List<TeamScore> teamScores) {
     try {
         fFinalStatus = teamScores;
         ServerCommand("serverInfo"); // get info for final status report
+        Scrambler(teamScores);
     } catch (Exception e) {
         ConsoleException(e);
     }
@@ -2291,6 +2301,7 @@ public override void OnRoundOver(int winningTeamId) {
     if (!fIsEnabled) return;
     
     DebugWrite("^9^bGot OnRoundOver^n: winner " + winningTeamId, 7);
+    fWinner = winningTeamId;
 
     try {
         DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1Round over detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
@@ -4112,6 +4123,328 @@ private void SetTag(PlayerModel player, Hashtable data) {
 }
 
 
+private void Scrambler(List<TeamScore> teamScores) {
+    // Check all the reasons not to scramble
+    if (fServerInfo == null) return;
+    PerModeSettings perMode = GetPerModeSettings();
+
+    if (!perMode.EnableScrambler) return;
+
+    int current = fServerInfo.CurrentRound + 1; // zero based index
+    if (OnlyOnNewMaps && current < fServerInfo.TotalRounds) {
+        DebugScrambler("Only scrambling new maps and this is only round " + current + " of " + fServerInfo.TotalRounds);
+        return;
+    }
+
+    if (IsSQDM()) {
+        DebugScrambler("SQDM can't be scrambled");
+        return;
+    }
+
+    if (!IsCTF() && OnlyOnFinalTicketPercentage > 100) {
+        if (teamScores == null || teamScores.Count != 2) {
+            DebugScrambler("DEBUG: no final team scores");
+            return;
+        }
+        bool countDown = true;
+
+        if (fMaxTickets == -1) return;
+
+        double goal = fMaxTickets;
+
+        if (Regex.Match(fServerInfo.GameMode, @"(?:TeamDeathMatch|SquadDeathMatch)").Success) {
+            countDown = false;
+            goal = fServerInfo.TeamScores[0].WinningScore;
+        }
+        double a = teamScores[0].Score;
+        double b = teamScores[1].Score;
+        double ratio = 0;
+        if (countDown) {
+            // ratio of difference from max
+            if (a < b) {
+                ratio = (goal - a) / Math.Max(1, (goal - b));
+            } else {
+                ratio = (goal - b) / Math.Max(1, (goal - a));
+            }
+        } else {
+            // direct ratio
+            if (a > b) {
+                ratio = a / Math.Max(1, b);
+            } else {
+                ratio = b / Math.Max(1, a);
+            }
+        }
+        if ((ratio * 100) < OnlyOnFinalTicketPercentage) {
+            DebugScrambler("Only On Final Ticket Percentage >= " + OnlyOnFinalTicketPercentage.ToString("F0") + "%, but ratio is only " + (ratio * 100).ToString("F0") + "%");
+            return;
+        }
+    }
+
+    DebugScrambler("Scrambling teams by " + ScrambleBy + " in " + DelaySeconds.ToString("F0") + " seconds");
+
+    // Activate the scrambler thread
+    lock (fScramblerLock) {
+        fScramblerLock.MaxDelay = DelaySeconds;
+        fScramblerLock.LastUpdate = DateTime.Now;
+        Monitor.Pulse(fScramblerLock);
+    }
+}
+
+private void ScramblerLoop () {
+    /*
+    Strategy: TBD
+    */
+    try {
+        DateTime last = DateTime.Now;
+        while (fIsEnabled) {
+            double delay = 0;
+            DateTime since = DateTime.MinValue;
+            lock (fScramblerLock) {
+                while (fScramblerLock.MaxDelay == 0) {
+                    Monitor.Wait(fScramblerLock);
+                    if (!fIsEnabled) return;
+                }
+                delay = fScramblerLock.MaxDelay;
+                since = fScramblerLock.LastUpdate;
+                fScramblerLock.MaxDelay = 0;
+                fScramblerLock.LastUpdate = DateTime.MinValue;
+            }
+
+            if (since == DateTime.MinValue) continue;
+
+            if (DateTime.Now.Subtract(last).TotalMinutes < 5) {
+                DebugScrambler("^0Last scramble was less than 5 minutes ago, skipping!");
+            }
+
+            PerModeSettings perMode = GetPerModeSettings();
+
+            // wait specified number of seconds
+            if (delay > 0) {
+                while (DateTime.Now.Subtract(since).TotalSeconds < delay) {
+                    Thread.Sleep(1000); // 1 second
+                    if (!fIsEnabled) return;
+                }
+            }
+
+            DebugScrambler("Starting scramble of " + TotalPlayerCount + " players");
+            last = DateTime.Now;
+
+            // Build a filtered list
+            List<String> toScramble = new List<String>();
+            List<String> exempt = new List<String>();
+            PlayerModel player = null;
+
+            lock (fAllPlayers) {
+                foreach (String egg in fAllPlayers) {
+                    try {
+                        player = GetPlayer(egg);
+                        if (player == null) continue;
+
+                        // Skip Whitelisted
+                        if (OnWhitelist) {
+                            List<String> vip = new List<String>(Whitelist);
+                            if (EnableWhitelistingOfReservedSlotsList) vip.AddRange(fReservedSlots);
+                            if (vip.Contains(egg) || vip.Contains(ExtractTag(player)) || vip.Contains(player.EAGUID)) {
+                                exempt.Add(egg);
+                                continue;
+                            }
+                        }
+
+                        // Skip if on squad with clan tags
+                        if (KeepClanTagsInSameSquad && CountMatchingTags(player) >= 2) {
+                            exempt.Add(egg);
+                            continue;
+                        }
+
+                        // Add this player to list of scramblers
+                        toScramble.Add(egg);
+                    } catch (Exception e) {
+                        if (DebugLevel >= 8) ConsoleException(e);
+                    }
+                }
+            }
+
+            if (toScramble.Count == 0) continue;
+
+            // Divide into team lists
+            List<PlayerModel> us = new List<PlayerModel>();
+            List<PlayerModel> ru = new List<PlayerModel>();
+
+            foreach (String egg in toScramble) {
+                try {
+                    if (!IsKnownPlayer(egg)) continue; // might have left while we were working
+                    player = GetPlayer(egg);
+                    if (player == null) continue;
+                    if (player.Team == 1) {
+                        us.Add(player);
+                    } else if (player.Team == 2) {
+                        ru.Add(player);
+                    }
+                } catch (Exception e) {
+                    if (DebugLevel >= 8) ConsoleException(e);
+                }
+            }
+
+            if (us.Count == 0 && ru.Count == 0) continue;
+
+            // Sort lists by specified metric
+            switch (ScrambleBy) {
+                case DefineStrong.RoundScore:
+                    us.Sort(DescendingRoundScore);
+                    ru.Sort(DescendingRoundScore);
+                    break;
+                case DefineStrong.RoundSPM:
+                    us.Sort(DescendingRoundSPM);
+                    ru.Sort(DescendingRoundSPM);
+                    break;
+                case DefineStrong.RoundKills:
+                    us.Sort(DescendingRoundKills);
+                    ru.Sort(DescendingRoundKills);
+                    break;
+                case DefineStrong.RoundKDR:
+                    us.Sort(DescendingRoundKDR);
+                    ru.Sort(DescendingRoundKDR);
+                    break;
+                case DefineStrong.PlayerRank:
+                    us.Sort(DescendingPlayerRank);
+                    ru.Sort(DescendingPlayerRank);
+                    break;
+                default:
+                    us.Sort(DescendingRoundScore);
+                    ru.Sort(DescendingRoundScore);
+                    break;
+            }
+
+            
+            // Prepare the new team lists
+            List<PlayerModel> usScrambled = new List<PlayerModel>();
+            List<PlayerModel> ruScrambled = new List<PlayerModel>();
+
+            foreach (String egg in exempt) {
+                try {
+                    if (!IsKnownPlayer(egg)) continue; // might have left while we were working
+                    player = GetPlayer(egg);
+                    if (player == null) continue;
+                    if (player.Team == 1) {
+                        usScrambled.Add(player);
+                    } else if (player.Team == 2) {
+                        ruScrambled.Add(player);
+                    }
+                } catch (Exception e) {
+                    if (DebugLevel >= 8) ConsoleException(e);
+                }
+            }
+
+            DebugScrambler("Before adjusting: US counts = " + us.Count + "/" + usScrambled.Count + ", RU counts = " + ru.Count + "/" + ruScrambled.Count);
+
+            // If teams are uneven, fill in
+            int target = (usScrambled.Count < ruScrambled.Count) ? usScrambled.Count : ruScrambled.Count;
+
+            while (usScrambled.Count < target) {
+                if (us.Count > ru.Count) {
+                    player = (fWinner == 1) ? us[us.Count-1] : us[0]; // weak if US won, strong is US lost
+                    us.Remove(player);
+                } else if (ru.Count > 0) {
+                    player = (fWinner == 2) ? ru[ru.Count-1] : ru[0]; // weak if RU won, strong if US lost
+                    ru.Remove(player);
+                } else if (us.Count == 0 && ru.Count == 0) {
+                    break;
+                }
+                usScrambled.Add(player);
+            }
+
+            while (ruScrambled.Count < target) {
+                if (us.Count > ru.Count) {
+                    player = (fWinner == 1) ? us[us.Count-1] : us[0]; // weak if US won, strong is US lost
+                    us.Remove(player);
+                } else if (ru.Count > 0) {
+                    player = (fWinner == 2) ? ru[ru.Count-1] : ru[0]; // weak if RU won, strong if US lost
+                    ru.Remove(player);
+                } else if (us.Count == 0 && ru.Count == 0) {
+                    break;
+                }
+                ruScrambled.Add(player);
+            }
+            
+            DebugScrambler("After adjusting: US counts = " + us.Count + "/" + usScrambled.Count + ", RU counts = " + ru.Count + "/" + ruScrambled.Count);
+
+            // Now dole out strong players to each team round robin, loser first
+            while (us.Count + ru.Count > 0) {
+                if (us.Count > ru.Count) {
+                    player = us[0];
+                    us.Remove(player);
+                } else if (ru.Count > 0) {
+                    player = ru[0];
+                    ru.Remove(player);
+                }
+                if (!IsKnownPlayer(player.Name)) continue; // might have left
+                if (usScrambled.Count < ruScrambled.Count) {
+                    usScrambled.Add(player);
+                } else if (ruScrambled.Count < usScrambled.Count) {
+                    ruScrambled.Add(player);
+                } else {
+                    if (fWinner == 1) { // US won, so give to RU first
+                        ruScrambled.Add(player);
+                    } else if (fWinner == 2) { // RU won, so give to US first
+                        usScrambled.Add(player);
+                    }
+                }
+            }
+
+            if (!fIsEnabled) return;
+
+            // Now run through each list and move any players that need moving
+            ScrambleMove(usScrambled, 1);
+            ScrambleMove(ruScrambled, 2);
+
+            ScheduleListPlayers(1); // refresh
+
+            DebugScrambler("DONE!");
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
+    } finally {
+        ConsoleWrite("^bScramblerLoop^n thread stopped");
+    }
+}
+
+private void ScrambleMove(List<PlayerModel> scrambled, int where) {
+    int toSquad = 0;
+    int[] squads = new int[SQUAD_NAMES.Length];
+    for (int i = 0; i < squads.Length; ++i) {squads[i] = 0;}
+
+    // Get squad counts
+    foreach (PlayerModel dude in scrambled) {
+        if (!IsKnownPlayer(dude.Name)) continue; // might have left
+        if (dude.Team == where && dude.Squad > 0 && dude.Squad < squads.Length) {
+            squads[dude.Squad] = squads[dude.Squad] + 1;
+        }
+    }
+
+    // Move to available squad
+    foreach (PlayerModel dude in scrambled) {
+        if (!IsKnownPlayer(dude.Name)) continue; // might have left
+        if (dude.Team != where) {
+            toSquad = 1;
+            while (toSquad < squads.Length && squads[toSquad] == 4) ++toSquad; // pick a squad with less than 4 players
+            if (toSquad >= squads.Length) toSquad = 0;
+                    
+            // Do the move
+            if (!EnableLoggingOnlyMode) {
+                DebugScrambler("^1^bMOVE^n^0 ^b" + dude.Name + "^n to " + GetTeamName(where) + " team, squad " + SQUAD_NAMES[toSquad]);
+                ServerCommand("admin.movePlayer", dude.Name, where.ToString(), toSquad.ToString(), "false");
+                Thread.Sleep(20);
+            } else {
+                DebugScrambler("^9(SIMULATED) ^1^bMOVE^n^0 ^b" + dude.Name + "^n to " + GetTeamName(where) + " team, squad " + SQUAD_NAMES[toSquad]);
+            }
+            squads[toSquad] = squads[toSquad] + 1;
+        }
+    }
+}
+
+
+
+
 
 
 
@@ -5374,6 +5707,11 @@ private void StartThreads() {
     fFetchThread.IsBackground = true;
     fFetchThread.Name = "fetcher";
     fFetchThread.Start();
+
+    fScramblerThread = new Thread(new ThreadStart(ScramblerLoop));
+    fScramblerThread.IsBackground = true;
+    fScramblerThread.Name = "scrambler";
+    fScramblerThread.Start();
 }
 
 private void JoinWith(Thread thread, int secs)
@@ -5408,6 +5746,12 @@ private void StopThreads() {
                     }
                     JoinWith(fFetchThread, 3);
                     fFetchThread = null;
+                    lock (fScramblerLock) {
+                        fScramblerLock.MaxDelay = 0;
+                        Monitor.Pulse(fScramblerLock);
+                    }
+                    JoinWith(fScramblerThread, 3);
+                    fScramblerThread = null;
                 }
                 catch (Exception e)
                 {
@@ -5494,7 +5838,7 @@ private void ListPlayersLoop() {
     */
     try {
         while (fIsEnabled) {
-            ListPlayersRequest request = null;
+            DelayedRequest request = null;
             lock (fListPlayersQ) {
                 while (fListPlayersQ.Count == 0) {
                     Monitor.Wait(fListPlayersQ);
@@ -5522,7 +5866,7 @@ private void ListPlayersLoop() {
 }
 
 private void ScheduleListPlayers(double delay) {
-    ListPlayersRequest r = new ListPlayersRequest(delay, fListPlayersTimestamp);
+    DelayedRequest r = new DelayedRequest(delay, fListPlayersTimestamp);
     DebugWrite("^9Scheduling listPlayers no sooner than " + r.MaxDelay  + " seconds from " + r.LastUpdate.ToString("HH:mm:ss"), 7);
     lock (fListPlayersQ) {
         fListPlayersQ.Enqueue(r);
@@ -5700,6 +6044,10 @@ private void DebugUnswitch(String msg) {
 
 private void DebugFetch(String msg) {
     DebugWrite("^5(FETCH)^9 " + msg, 6);
+}
+
+private void DebugScrambler(String msg) {
+    DebugWrite("^5(SCRAMBLER)^9 " + msg, 6);
 }
 
 
@@ -6514,8 +6862,18 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p>If you forget the names of the balance speeds, click on the <b>Spelling Of Speed Names Reminder</b> setting. This will display all of the balance speed names for you.</p>
 
-<h3>4 - TBD</h3>
-<p>There is no section 4. This section is reserved for future use.
+<h3>4 - Scrambler</h3>
+<p>These settings define options for between-round scrambling of teams. The setting <b>Enable Scrambler</b> is a per-mode setting, which allows you to decide on a mode-by-mode basis whether to use scrambling between rounds or not. See the per-mode settings in Section 8 below for more details. Note that whitelisted players are exempt from scrambling.</p>
+
+<p><b>Only On New Maps</b>: True or False, default True. If True, scrambles will happen only after the last round of a map. For example, if a map has 2 rounds, there will be no scramble after round 1, only after round 2. If False, scrambling will be attempted at the end of every round.</p>
+
+<p><b>Only On Final Ticket Percentage &gt;=</b>: Number greater than 100 or equal to 0, default 120. This is the ratio between the winning and losing teams final ticket counts at the end of the round. In count-down modes like Conquest, this is the ratio of the difference between the maximum starting tickets and the final ticket count. For example, on a 1000 ticket server, if the final ticket counts are 0/250, the ratio is (1000-0)/(1000-250)=1000/750=133%. Since that is greater than 120, scrambling would be done. For count-up modes like TDM, the ratio is final ticket values. If this value is set to 0, scrambling will occur regardless of final ticket counts.</p>
+
+<p><b>Scramble By</b>: One of the values defined in <b>Definition Of Strong</b> above. Determines how strong vs. weak players are chosen for scrambling.</p>
+
+<p><b>Keep Clan Tags In Same Squad</b>: True or False, default True. If True, a player will be excluded from being moved for scrambling if they are a member of a squad that has at least one other player in it with the same clan tag.</p>
+
+<p><b>Delay Seconds</b>: Number of seconds greater than or equal to 0 and less than or equal to 43, default 30. Number of seconds to wait after the round ends before doing the scramble. If done too soon, many players may leave after the scramble, resulting in wildly unequal teams. If done too late, the next level may load and the game server will swap players to opposite teams, interefering with the scramble in progress, which may result in wildly unequal teams.</p>
 
 <h3>5 - Messages</h3>
 <p>These settings define all of the chat and yell messages that are sent to players when various actions are taken by the plugin. All of the messages are in pairs, one for chat, one for yell. If both the chat and the yell messages are defined and <b>Quiet&nbsp;Mode</b> is not set to True, both will be sent at the same time. The message setting descriptions apply to both chat and yell. To disable a chat message for a specific actcion, delete the message and leave it empty. To disable theyell message for a specific action, delete the message and leave it empty.</p>
@@ -6594,17 +6952,19 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Percent Of Top Of Team Is Strong</b>: Number greater than or equal to 5 and less than or equal to 50, or 0. After sorting a team with the <b>Determine Strong Players By</b> choice, this percentage determines the portion of the top players to define as strong. Default is 50 so that any player above the median counts as strong. CAUTION: This setting is changed when the <b>Preset</b> is changed, previous values are overwritten for all modes.</p>
 
-<p><b>Disperse Evenly For Rank >=</b>: Number greater than or equal to 0 and less than or equal to 145, default 145. Any players with this absolute rank (Colonel 100 is 145) or higher will be dispersed evenly across teams. This is useful to insure that Colonel 100 ranked players don't all stack on one team. Set to 0 to disable.</p>
+<p><b>Disperse Evenly For Rank &gt;=</b>: Number greater than or equal to 0 and less than or equal to 145, default 145. Any players with this absolute rank (Colonel 100 is 145) or higher will be dispersed evenly across teams. This is useful to insure that Colonel 100 ranked players don't all stack on one team. Set to 0 to disable.</p>
 
 <p><b>Enable Disperse Evenly List</b>:  True or False, default False. If set to true, the players are matched against the <b>Disperse Evenly List</b> and any that match will be dispersed evenly across teams. This is useful to insure that certain clans or groups of players don't always dominate whatever team they are not on.</p>
 
-<p><b>Definition Of High Population For Players >=</b>: Number greater than or equal to 0 and less than or equal to <b>Max&nbsp;Players</b>. This is where you define the High population level. If the total number of players in the server is greater than or equal to this number, population is High.</p>
+<p><b>Definition Of High Population For Players &gt;=</b>: Number greater than or equal to 0 and less than or equal to <b>Max&nbsp;Players</b>. This is where you define the High population level. If the total number of players in the server is greater than or equal to this number, population is High.</p>
 
-<p><b>Definition Of Low Population For Players <=</b>: Number greater than or equal to 0 and less than or equal to <b>Max&nbsp;Players</b>. This is where you define the Low population level. If the total number of players in the server is less than or equal to this number, population is Low. If the total number is between the definition of High and Low, it is Medium.</p>
+<p><b>Definition Of Low Population For Players &lt;=</b>: Number greater than or equal to 0 and less than or equal to <b>Max&nbsp;Players</b>. This is where you define the Low population level. If the total number of players in the server is less than or equal to this number, population is Low. If the total number is between the definition of High and Low, it is Medium.</p>
 
 <p><b>Definition Of Early Phase As Tickets From Start</b>: Number greater than or equal to 0. This is where you define the Early phase, as tickets from the start of the round. For example, if your round starts with 1500 tickets and you set this to 300, as long as the ticket level for all teams is greater than or equal to 1500-300=1200, the phase is Early. Set to 0 to disable Early phase.</p>
 
 <p><b>Definition Of Late Phase As Tickets From End</b>: Number greater than or equal to 0. This is where you define the Late phase, as tickets from the end of the round. For example, if you set this to 300 and at least one team in Conquest has less than 300 tickets less, the phase is Late. If the ticket level of both teams is between the Early and Late settings, the phase is Mid. Set to 0 to disable Late phase.</p>
+
+<p><b>Enable Scrambler</b>:  True or False, default False. If set to True, between-round scrambling of teams will be attempted for rounds played in this mode, depending on the settings in Section 5.</p>
 
 <p>These settings are unique to CTF.</p>
 
