@@ -4362,7 +4362,6 @@ public void CacheResponse(params String[] response) {
 
 
 private bool CheckSuccess(Hashtable json, out String err) {
-    String m;
 
     if (json == null) {
         err = "JSON response is null!";
@@ -5265,7 +5264,7 @@ private int ToSquad(String name, int team) {
     try {
         List<PlayerModel> teamList = null;
 
-        if (IsSQDM()) return team; // SQDM, team and squad should always be the same
+        if (IsSQDM()) return 1; // SQDM, squad is always 1
 
         teamList = GetTeam(team);
         if (teamList == null) return 0;
@@ -5919,11 +5918,16 @@ private int CountMatchingTags(PlayerModel player) {
         if (ExtractTag(mate) == tag) ++same;
     }
 
+    String sname = squad.ToString();
+    if (squad > 0 && squad <= 4) {
+        sname = SQUAD_NAMES[squad];
+    }
+
     if (verified < 2) {
-        if (DebugLevel >= 6) DebugBalance("For ^b" + player.Name + "^n in " + GetSquadName(squad) + ", not enough verified tags to find matches");
+        if (DebugLevel >= 6) DebugBalance("For ^b" + player.Name + "^n in " + sname + ", not enough verified tags to find matches");
         return 0;
     } else {
-        if (DebugLevel >= 6) DebugBalance("For ^b" + player.Name + "^n in " + GetSquadName(squad) + ", found " + same + " matching tags");
+        if (DebugLevel >= 6) DebugBalance("For ^b" + player.Name + "^n in " + sname + ", found " + same + " matching tags");
     }
     return same;
 }
