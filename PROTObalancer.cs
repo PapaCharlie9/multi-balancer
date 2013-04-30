@@ -537,6 +537,8 @@ private DateTime fEnabledTimestamp = DateTime.MinValue;
 private String fLastMsg = null;
 private DateTime fLastVersionCheckTimestamp = DateTime.MinValue;
 private double fTimeOutOfJoint = 0;
+private List<String>[] fDebugScramblerBefore = null;
+private List<String>[] fDebugScramblerAfter = null;
 
 // Data model
 private List<String> fAllPlayers = null;
@@ -686,6 +688,8 @@ public PROTObalancer() {
     fGotVersion = false;
     fServerUptime = 0;
     fServerCrashed = false;
+    fDebugScramblerBefore = new List<String>[2]{new List<String>(), new List<String>()};
+    fDebugScramblerAfter = new List<String>[2]{new List<String>(), new List<String>()};
 
     fBalancedRound = 0;
     fUnstackedRound = 0;
@@ -1640,14 +1644,6 @@ private void CommandToLog(string cmd) {
         Match m = null;
         ConsoleDump("Command: " + cmd);
 
-        if (Regex.Match(cmd, @"help", RegexOptions.IgnoreCase).Success) {
-            ConsoleDump("^1^bmodes^n^0: List the known game modes");
-            ConsoleDump("^1^breset settings^n^0: Reset all plugin settings to default, except for ^bWhitelist^n and ^bDisperse Evenly List^n");
-            ConsoleDump("^1^bsizes^n^0: List the sizes of various data structures");
-            ConsoleDump("^1^bsort^n ^iteam^n ^itype^n^0: List sorted ^iteam^n (1-4) by ^itype^n (one of: score, spm, kills, kdr, rank)");
-            return;
-        }
-
         if (Regex.Match(cmd, @"modes", RegexOptions.IgnoreCase).Success) {
             List<String> modeList = GetSimplifiedModes();
             ConsoleDump("modes(" + modeList.Count + "):");
@@ -1665,6 +1661,22 @@ private void CommandToLog(string cmd) {
         if (Regex.Match(cmd, @"reset settings", RegexOptions.IgnoreCase).Success) {
             ConsoleDump("^8^bRESETTING ALL PLUGIN SETTINGS (except Whitelist and Dispersal list) TO DEFAULT!");
             ResetSettings();
+            return;
+        }
+
+        if (Regex.Match(cmd, @"scramble[d]?", RegexOptions.IgnoreCase).Success) {
+            if (fDebugScramblerBefore[0].Count == 0
+              || fDebugScramblerBefore[1].Count == 0
+              || fDebugScramblerAfter[0].Count == 0
+              || fDebugScramblerAfter[1].Count == 0) {
+                ConsoleDump("No scrambler data available");
+                return;
+            }
+            ConsoleDump("===== BEFORE =====");
+            ListSideBySide(fDebugScramblerBefore[0], fDebugScramblerBefore[1]);
+            ConsoleDump("===== AFTER =====");
+            ListSideBySide(fDebugScramblerAfter[0], fDebugScramblerAfter[1]);
+            ConsoleDump("===== END =====");
             return;
         }
 
@@ -1750,6 +1762,70 @@ private void CommandToLog(string cmd) {
                 }
                 n = n + 1;
             }
+            return;
+        }
+
+        if (Regex.Match(cmd, @"tags?", RegexOptions.IgnoreCase).Success) {
+            Dictionary<String,List<PlayerModel>> byTag = new Dictionary<String,List<PlayerModel>>();
+
+            lock (fAllPlayers) {
+                foreach (String name in fAllPlayers) {
+                    PlayerModel player = GetPlayer(name);
+                    if (player == null || player.Team < 1 || player.Team > 2) continue;
+                    String tag = ExtractTag(player);
+                    if (String.IsNullOrEmpty(tag)) continue;
+                    if (!byTag.ContainsKey(tag)) {
+                        byTag[tag] = new List<PlayerModel>();
+                    }
+                    byTag[tag].Add(player);
+                }
+            }
+
+            List<String> tags = new List<String>();
+            foreach (String t in byTag.Keys) {
+                tags.Add(t);
+                byTag[t].Sort(delegate(PlayerModel lhs, PlayerModel rhs) { // ascending by team/squad
+                    if (lhs == null && rhs == null) return 0;
+                    if (lhs == null) return -1;
+                    if (rhs == null) return 1;
+
+                    // by team, then by squad
+                    if (lhs.Team < rhs.Team) return -1;
+                    if (lhs.Team > rhs.Team) return 1;
+                    if (lhs.Team == rhs.Team) {
+                        if (lhs.Squad < 1 || rhs.Squad < 1) return 0;
+                        if (lhs.Squad < rhs.Squad) return -1;
+                        if (lhs.Squad > rhs.Squad) return 1;
+                    }
+                    return 0;
+                });
+            }
+            tags.Sort();
+
+            foreach (String t in tags) {
+                ConsoleDump("Tag [" + t + "]:");
+                List<PlayerModel> clan = byTag[t];
+                foreach (PlayerModel p in clan) {
+                    ConsoleDump(String.Format("        {0}, {1}, {2}",
+                        p.Name,
+                        GetTeamName(p.Team),
+                        (p.Squad < 0 || p.Squad > SQUAD_NAMES.Length) ? "None" : SQUAD_NAMES[p.Squad]
+                    ));
+                }
+            }
+            ConsoleDump(" === END OF TAGS === ");
+            return;
+        }
+
+        if (Regex.Match(cmd, @"help", RegexOptions.IgnoreCase).Success || !String.IsNullOrEmpty(cmd)) {
+            ConsoleDump("^1^bmodes^n^0: Examine the known game modes");
+            ConsoleDump("^1^brage^n^0: Examine rage quit statistics");
+            ConsoleDump("^1^breset settings^n^0: Reset all plugin settings to default, except for ^bWhitelist^n and ^bDisperse Evenly List^n");
+            ConsoleDump("^1^bscrambled^n^0: Examine list of players before and after last successful scramble");
+            ConsoleDump("^1^bsizes^n^0: Examine the sizes of various data structures");
+            ConsoleDump("^1^bsort^n ^iteam^n ^itype^n^0: Examine sorted ^iteam^n (1-4) by ^itype^n (one of: score, spm, kills, kdr, rank)");
+            ConsoleDump("^1^btags^n^0: Examine list of players sorted by clan tags");
+            return;
         }
 
             
@@ -2777,7 +2853,7 @@ private void BalanceAndUnstack(String name) {
             }
         }
 
-        // Strong/Weak exemptions
+        // Strong/Weak exemptions and clan tag
         if (!mustMove && balanceSpeed != Speed.Fast && fromList.Count >= minPlayers) { // TBD
             if (DebugLevel > 5) DebugBalance(strongMsg);
             // don't move weak player to losing team
@@ -4126,6 +4202,16 @@ private void SetTag(PlayerModel player, Hashtable data) {
 private void Scrambler(List<TeamScore> teamScores) {
     // Check all the reasons not to scramble
     if (fServerInfo == null) return;
+
+    try {
+        fDebugScramblerBefore[0].Clear();
+        fDebugScramblerBefore[1].Clear();
+        fDebugScramblerAfter[0].Clear();
+        fDebugScramblerAfter[1].Clear();
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+
     PerModeSettings perMode = GetPerModeSettings();
 
     if (!perMode.EnableScrambler) return;
@@ -4214,182 +4300,207 @@ private void ScramblerLoop () {
 
             if (DateTime.Now.Subtract(last).TotalMinutes < 5) {
                 DebugScrambler("^0Last scramble was less than 5 minutes ago, skipping!");
+                continue;
             }
 
-            PerModeSettings perMode = GetPerModeSettings();
+            try {
 
-            // wait specified number of seconds
-            if (delay > 0) {
-                while (DateTime.Now.Subtract(since).TotalSeconds < delay) {
-                    Thread.Sleep(1000); // 1 second
-                    if (!fIsEnabled) return;
+                PerModeSettings perMode = GetPerModeSettings();
+
+                // wait specified number of seconds
+                if (delay > 0) {
+                    while (DateTime.Now.Subtract(since).TotalSeconds < delay) {
+                        Thread.Sleep(1000); // 1 second
+                        if (!fIsEnabled) return;
+                    }
                 }
-            }
 
-            DebugScrambler("Starting scramble of " + TotalPlayerCount + " players");
-            last = DateTime.Now;
+                DebugScrambler("Starting scramble of " + TotalPlayerCount + " players, winner was " + GetTeamName(fWinner));
+                last = DateTime.Now;
 
-            // Build a filtered list
-            List<String> toScramble = new List<String>();
-            List<String> exempt = new List<String>();
-            PlayerModel player = null;
+                // Build a filtered list
+                List<String> toScramble = new List<String>();
+                List<String> exempt = new List<String>();
+                PlayerModel player = null;
 
-            lock (fAllPlayers) {
-                foreach (String egg in fAllPlayers) {
-                    try {
-                        player = GetPlayer(egg);
-                        if (player == null) continue;
+                lock (fAllPlayers) {
+                    foreach (String egg in fAllPlayers) {
+                        try {
+                            player = GetPlayer(egg);
+                            if (player == null) continue;
 
-                        // Skip Whitelisted
-                        if (OnWhitelist) {
-                            List<String> vip = new List<String>(Whitelist);
-                            if (EnableWhitelistingOfReservedSlotsList) vip.AddRange(fReservedSlots);
-                            if (vip.Contains(egg) || vip.Contains(ExtractTag(player)) || vip.Contains(player.EAGUID)) {
+                            // For debugging
+                            if (player.Team > 0 && player.Team <= 2) {
+                                String xt = ExtractTag(player);
+                                String fullName = (String.IsNullOrEmpty(xt)) ? player.Name : "[" + xt + "]" + player.Name;
+                                fDebugScramblerBefore[player.Team-1].Add(fullName);
+                            }
+
+                            // Skip Whitelisted
+                            if (OnWhitelist) {
+                                List<String> vip = new List<String>(Whitelist);
+                                if (EnableWhitelistingOfReservedSlotsList) vip.AddRange(fReservedSlots);
+                                if (vip.Contains(egg) || vip.Contains(ExtractTag(player)) || vip.Contains(player.EAGUID)) {
+                                    exempt.Add(egg);
+                                    DebugScrambler("Exempting ^b" + egg + "^n, whitelisted");
+                                    continue;
+                                }
+                            }
+
+                            // Skip if on squad with clan tags
+                            if (KeepClanTagsInSameSquad && CountMatchingTags(player) >= 2) {
                                 exempt.Add(egg);
-                                DebugScrambler("Exempting ^b" + egg + "^n, whitelisted");
+                                DebugScrambler("Exempting ^b" + egg + "^n, in same squad with tag [" + ExtractTag(player) + "]");
                                 continue;
                             }
-                        }
 
-                        // Skip if on squad with clan tags
-                        if (KeepClanTagsInSameSquad && CountMatchingTags(player) >= 2) {
-                            exempt.Add(egg);
-                            DebugScrambler("Exempting ^b" + egg + "^n, in same squad with tag [" + ExtractTag(player) + "]");
-                            continue;
+                            // Add this player to list of scramblers
+                            toScramble.Add(egg);
+                        } catch (Exception e) {
+                            if (DebugLevel >= 8) ConsoleException(e);
                         }
+                    }
+                }
 
-                        // Add this player to list of scramblers
-                        toScramble.Add(egg);
+                if (toScramble.Count == 0) continue;
+
+                // Merge into a single list
+                List<PlayerModel> all = new List<PlayerModel>();
+
+                foreach (String egg in toScramble) {
+                    try {
+                        if (!IsKnownPlayer(egg)) continue; // might have left while we were working
+                        player = GetPlayer(egg);
+                        if (player == null) continue;
+                        all.Add(player);
                     } catch (Exception e) {
                         if (DebugLevel >= 8) ConsoleException(e);
                     }
                 }
-            }
 
-            if (toScramble.Count == 0) continue;
+                if (all.Count == 0) continue;
 
-            // Merge into a single list
-            List<PlayerModel> all = new List<PlayerModel>();
-
-            foreach (String egg in toScramble) {
-                try {
-                    if (!IsKnownPlayer(egg)) continue; // might have left while we were working
-                    player = GetPlayer(egg);
-                    if (player == null) continue;
-                    all.Add(player);
-                } catch (Exception e) {
-                    if (DebugLevel >= 8) ConsoleException(e);
+                // Sort lists by specified metric
+                switch (ScrambleBy) {
+                    case DefineStrong.RoundScore:
+                        all.Sort(DescendingRoundScore);
+                        break;
+                    case DefineStrong.RoundSPM:
+                        all.Sort(DescendingRoundSPM);
+                        break;
+                    case DefineStrong.RoundKills:
+                        all.Sort(DescendingRoundKills);
+                        break;
+                    case DefineStrong.RoundKDR:
+                        all.Sort(DescendingRoundKDR);
+                        break;
+                    case DefineStrong.PlayerRank:
+                        all.Sort(DescendingPlayerRank);
+                        break;
+                    default:
+                        all.Sort(DescendingRoundScore);
+                        break;
                 }
-            }
-
-            if (all.Count == 0) continue;
-
-            // Sort lists by specified metric
-            switch (ScrambleBy) {
-                case DefineStrong.RoundScore:
-                    all.Sort(DescendingRoundScore);
-                    break;
-                case DefineStrong.RoundSPM:
-                    all.Sort(DescendingRoundSPM);
-                    break;
-                case DefineStrong.RoundKills:
-                    all.Sort(DescendingRoundKills);
-                    break;
-                case DefineStrong.RoundKDR:
-                    all.Sort(DescendingRoundKDR);
-                    break;
-                case DefineStrong.PlayerRank:
-                    all.Sort(DescendingPlayerRank);
-                    break;
-                default:
-                    all.Sort(DescendingRoundScore);
-                    break;
-            }
 
             
-            // Prepare the new team lists
-            List<PlayerModel> usScrambled = new List<PlayerModel>();
-            List<PlayerModel> ruScrambled = new List<PlayerModel>();
+                // Prepare the new team lists
+                List<PlayerModel> usScrambled = new List<PlayerModel>();
+                List<PlayerModel> ruScrambled = new List<PlayerModel>();
 
-            foreach (String egg in exempt) {
-                try {
-                    if (!IsKnownPlayer(egg)) continue; // might have left while we were working
-                    player = GetPlayer(egg);
-                    if (player == null) continue;
-                    if (player.Team == 1) {
-                        usScrambled.Add(player);
-                    } else if (player.Team == 2) {
-                        ruScrambled.Add(player);
+                foreach (String egg in exempt) {
+                    try {
+                        if (!IsKnownPlayer(egg)) continue; // might have left while we were working
+                        player = GetPlayer(egg);
+                        if (player == null) continue;
+                        if (player.Team == 1) {
+                            usScrambled.Add(player);
+                        } else if (player.Team == 2) {
+                            ruScrambled.Add(player);
+                        }
+                    } catch (Exception e) {
+                        if (DebugLevel >= 8) ConsoleException(e);
                     }
-                } catch (Exception e) {
-                    if (DebugLevel >= 8) ConsoleException(e);
                 }
-            }
 
-            DebugScrambler("Before adjusting: " + all.Count + " to scramble, exempt US count = " + usScrambled.Count + ", RU count = " + ruScrambled.Count);
+                DebugScrambler("Before adjusting: " + all.Count + " to scramble, exempt US count = " + usScrambled.Count + ", RU count = " + ruScrambled.Count);
 
-            // If teams are uneven, fill in
-            int target = Math.Max(usScrambled.Count, ruScrambled.Count);
+                // If teams are uneven, fill in
+                int target = Math.Max(usScrambled.Count, ruScrambled.Count);
 
-            while (usScrambled.Count < target) {
-                if (all.Count == 0) break;
-                if (fWinner == 0 || fWinner == 1) {
-                    player = all[all.Count-1]; // weak if US won
-                } else {
-                    player = all[0]; // strong if US lost
-                }
-                all.Remove(player);
-                usScrambled.Add(player);
-            }
-
-            while (ruScrambled.Count < target) {
-                if (all.Count == 0) break;
-                if (fWinner == 0 || fWinner == 2) {
-                    player = all[all.Count-1]; // weak if RU won
-                } else {
-                    player = all[0]; // strong if RU lost
-                }
-                all.Remove(player);
-                ruScrambled.Add(player);
-            }
-            
-            DebugScrambler("After adjusting: " + all.Count + " to scramble, US count = " + usScrambled.Count + ", RU count = " + ruScrambled.Count);
-
-            // Now dole out strong players to each team round robin, loser first
-            String ff = null;
-            int na = all.Count;
-            
-            foreach (PlayerModel p in all) {
-                player = p;
-                --na;
-                ff = "^b" + player.Name + "^n (" + na + " left)";
-                if (!IsKnownPlayer(player.Name)) continue; // might have left
-                if (usScrambled.Count < ruScrambled.Count && usScrambled.Count <= (perMode.MaxPlayers/2)) {
+                while (usScrambled.Count < target) {
+                    if (all.Count == 0) break;
+                    if (fWinner == 0 || fWinner == 1) {
+                        player = all[all.Count-1]; // weak if US won
+                    } else {
+                        player = all[0]; // strong if US lost
+                    }
+                    all.Remove(player);
                     usScrambled.Add(player);
-                    DebugScrambler(ff + " to US (" + usScrambled.Count + ")");
-                } else if (ruScrambled.Count < usScrambled.Count && ruScrambled.Count <= (perMode.MaxPlayers/2)) {
+                }
+
+                while (ruScrambled.Count < target) {
+                    if (all.Count == 0) break;
+                    if (fWinner == 0 || fWinner == 2) {
+                        player = all[all.Count-1]; // weak if RU won
+                    } else {
+                        player = all[0]; // strong if RU lost
+                    }
+                    all.Remove(player);
                     ruScrambled.Add(player);
-                    DebugScrambler(ff + " to RU (" + ruScrambled.Count + ")");
-                } else {
-                    if (fWinner == 1 && ruScrambled.Count <= (perMode.MaxPlayers/2)) { // US won, so give to RU first
-                        ruScrambled.Add(player);
-                        DebugScrambler(ff + " to RU (" + ruScrambled.Count + ")");
-                    } else if (fWinner == 2 && usScrambled.Count <= (perMode.MaxPlayers/2)) { // RU won, so give to US first
+                }
+            
+                DebugScrambler("After adjusting: " + all.Count + " to scramble, US count = " + usScrambled.Count + ", RU count = " + ruScrambled.Count);
+
+                // Now dole out strong players to each team round robin, loser first
+                String ff = null;
+                int na = all.Count;
+            
+                foreach (PlayerModel p in all) {
+                    player = p;
+                    --na;
+                    ff = "^b" + player.Name + "^n (" + na + " left)";
+                    if (!IsKnownPlayer(player.Name)) continue; // might have left
+                    if (usScrambled.Count < ruScrambled.Count && usScrambled.Count <= (perMode.MaxPlayers/2)) {
                         usScrambled.Add(player);
                         DebugScrambler(ff + " to US (" + usScrambled.Count + ")");
+                    } else if (ruScrambled.Count < usScrambled.Count && ruScrambled.Count <= (perMode.MaxPlayers/2)) {
+                        ruScrambled.Add(player);
+                        DebugScrambler(ff + " to RU (" + ruScrambled.Count + ")");
+                    } else {
+                        if (fWinner == 1 && ruScrambled.Count <= (perMode.MaxPlayers/2)) { // US won, so give to RU first
+                            ruScrambled.Add(player);
+                            DebugScrambler(ff + " to RU (" + ruScrambled.Count + ")");
+                        } else if (fWinner == 2 && usScrambled.Count <= (perMode.MaxPlayers/2)) { // RU won, so give to US first
+                            usScrambled.Add(player);
+                            DebugScrambler(ff + " to US (" + usScrambled.Count + ")");
+                        }
                     }
                 }
+
+                if (!fIsEnabled) return;
+
+                // Now run through each list and move any players that need moving
+                ScrambleMove(usScrambled, 1);
+                ScrambleMove(ruScrambled, 2);
+
+                ScheduleListPlayers(1); // refresh
+
+                // For debugging
+                foreach (PlayerModel dude in usScrambled) {
+                    String xt = ExtractTag(dude);
+                    String fullName = (String.IsNullOrEmpty(xt)) ? dude.Name : "[" + xt + "]" + dude.Name;
+                    fDebugScramblerAfter[0].Add(fullName);
+                }
+                foreach (PlayerModel dude in ruScrambled) {
+                    String xt = ExtractTag(dude);
+                    String fullName = (String.IsNullOrEmpty(xt)) ? dude.Name : "[" + xt + "]" + dude.Name;
+                    fDebugScramblerAfter[1].Add(fullName);
+                }
+
+                DebugScrambler("DONE!");
+            } catch (Exception e) {
+                ConsoleException(e);
             }
-
-            if (!fIsEnabled) return;
-
-            // Now run through each list and move any players that need moving
-            ScrambleMove(usScrambled, 1);
-            ScrambleMove(ruScrambled, 2);
-
-            ScheduleListPlayers(1); // refresh
-
-            DebugScrambler("DONE!");
         }
     } catch (Exception e) {
         ConsoleException(e);
@@ -5092,6 +5203,11 @@ private void Reset() {
     fRoundsEnabled = 0;
     fGrandTotalQuits = 0;
     fGrandRageQuits = 0;
+
+    fDebugScramblerBefore[0].Clear();
+    fDebugScramblerBefore[1].Clear();
+    fDebugScramblerAfter[0].Clear();
+    fDebugScramblerAfter[1].Clear();
 }
 
 private void ResetRound() {
@@ -6284,6 +6400,7 @@ private int CountMatchingTags(PlayerModel player) {
     if (teamList == null) return 0;
 
     String tag = ExtractTag(player);
+    if (String.IsNullOrEmpty(tag)) return 0;
     int same = 0;
     int verified = 0;
     int total = 0;
@@ -6296,7 +6413,7 @@ private int CountMatchingTags(PlayerModel player) {
     }
 
     String sname = squad.ToString();
-    if (squad > 0 && squad <= 4) {
+    if (squad > 0 && squad <= SQUAD_NAMES.Length) {
         sname = SQUAD_NAMES[squad];
     }
 
@@ -6304,9 +6421,26 @@ private int CountMatchingTags(PlayerModel player) {
         if (DebugLevel >= 6) DebugBalance("For ^b" + player.Name + "^n in " + sname + ", not enough verified tags to find matches");
         return 0;
     } else {
-        if (DebugLevel >= 6) DebugBalance("For ^b" + player.Name + "^n in " + sname + ", found " + same + " matching tags");
+        if (DebugLevel >= 6) DebugBalance("For ^b" + player.Name + "^n in " + sname + ", found " + same + " matching tags [" + tag + "]");
     }
     return same;
+}
+
+
+private void ListSideBySide(List<String> us, List<String> ru) {
+    int max = Math.Max(us.Count, ru.Count);
+
+    for (int i = 0; i < max; ++i) {
+        String u = " ";
+        String r = " ";
+        if (i < us.Count) {
+            u = us[i];
+        }
+        if (i < ru.Count) {
+            r = ru[i];
+        }
+        ConsoleDump(String.Format("{0,-32} - {1,32}", u, r));
+    }
 }
 
 
