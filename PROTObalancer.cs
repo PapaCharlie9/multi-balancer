@@ -1644,6 +1644,45 @@ private void CommandToLog(string cmd) {
         Match m = null;
         ConsoleDump("Command: " + cmd);
 
+        m = Regex.Match(cmd, @"^gen\s+((?:cs|cl|ctf|gm|r|sqdm|sr|s|tdm|u)|[123459])", RegexOptions.IgnoreCase);
+        if (m.Success) {
+            String what = m.Groups[1].Value;
+            int section = 8;
+            if (!Int32.TryParse(what, out section)) section = 8;
+
+            List<CPluginVariable> vars = GetDisplayPluginVariables();
+
+            String sm = section.ToString() + " -";
+            if (section == 8) {
+                switch (what) {
+                    case "cs": sm = "for Conq Small, Dom, Scav"; break;
+                    case "cl": sm = "for Conquest Large"; break;
+                    case "ctf": sm = "for CTF"; break;
+                    case "gm": sm = "for Gun Master"; break;
+                    case "r": sm = "for Rush"; break;
+                    case "sqdm": sm = "for Squad Deathmatch"; break;
+                    case "sr": sm = "for Squad Rush"; break;
+                    case "s": sm = "for Superiority"; break;
+                    case "tdm": sm = "for Team Deathmatch"; break;
+                    case "u": sm = "for Unknown or New Mode"; break;
+                    default: ConsoleDump("Unknown mode: " + what); return;
+                }
+            }
+
+            foreach (CPluginVariable var in vars) {
+                if (section == 8) {
+                    if (var.Name.Contains(sm)) {
+                        ConsoleDump(var.Name + ": " + var.Value);
+                    }
+                } else {
+                    if (var.Name.Contains(sm)) {
+                        ConsoleDump(var.Name + ": " + var.Value);
+                    }
+                }
+            }
+            return;
+        }
+
         if (Regex.Match(cmd, @"modes", RegexOptions.IgnoreCase).Success) {
             List<String> modeList = GetSimplifiedModes();
             ConsoleDump("modes(" + modeList.Count + "):");
@@ -1818,6 +1857,8 @@ private void CommandToLog(string cmd) {
         }
 
         if (Regex.Match(cmd, @"help", RegexOptions.IgnoreCase).Success || !String.IsNullOrEmpty(cmd)) {
+            ConsoleDump("^1^bgen^n ^imode^n: Generate settings listing for ^imode^n (one of: cs, cl, ctf, gm, r, sqdm, sr, s, tdm, u)");
+            ConsoleDump("^1^bgen^n ^isection^n: Generate settings listing for ^isection^n (1-5,9)");
             ConsoleDump("^1^bmodes^n^0: Examine the known game modes");
             ConsoleDump("^1^brage^n^0: Examine rage quit statistics");
             ConsoleDump("^1^breset settings^n^0: Reset all plugin settings to default, except for ^bWhitelist^n and ^bDisperse Evenly List^n");
@@ -6524,6 +6565,31 @@ private void ListSideBySide(List<String> us, List<String> ru) {
         allNames.Add(p.Name); // sorted name list
     }
 
+    // Sort teams
+    
+    us.Sort(delegate(String lhs, String rhs) { // descending position in allNames
+        if (lhs == null && rhs == null) return 0;
+        if (lhs == null) return 1;
+        if (rhs == null) return -1;
+
+        int l = allNames.IndexOf(ExtractName(lhs))+1;
+        int r = allNames.IndexOf(ExtractName(rhs))+1;
+        if (l < r) return 1;
+        if (l > r) return -1;
+        return 0;
+    });
+    ru.Sort(delegate(String lhs, String rhs) { // descending position in allNames
+        if (lhs == null && rhs == null) return 0;
+        if (lhs == null) return 1;
+        if (rhs == null) return -1;
+
+        int l = allNames.IndexOf(ExtractName(lhs))+1;
+        int r = allNames.IndexOf(ExtractName(rhs))+1;
+        if (l < r) return 1;
+        if (l > r) return -1;
+        return 0;
+    });
+
     for (int i = 0; i < max; ++i) {
         String u = " ";
         String r = " ";
@@ -6542,7 +6608,7 @@ private void ListSideBySide(List<String> us, List<String> ru) {
 
 }
 
-private string ExtractName(String fullName) {
+private String ExtractName(String fullName) {
     String ret = fullName;
     Match m = Regex.Match(fullName, @"\[\w+\](\w+)");
     if (m.Success) {
@@ -6550,6 +6616,7 @@ private string ExtractName(String fullName) {
     }
     return ret;
 }
+
 
 
 
