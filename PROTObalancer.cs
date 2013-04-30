@@ -4246,6 +4246,7 @@ private void ScramblerLoop () {
                             if (EnableWhitelistingOfReservedSlotsList) vip.AddRange(fReservedSlots);
                             if (vip.Contains(egg) || vip.Contains(ExtractTag(player)) || vip.Contains(player.EAGUID)) {
                                 exempt.Add(egg);
+                                DebugScrambler("Exempting ^b" + egg + "^n, whitelisted");
                                 continue;
                             }
                         }
@@ -4253,6 +4254,7 @@ private void ScramblerLoop () {
                         // Skip if on squad with clan tags
                         if (KeepClanTagsInSameSquad && CountMatchingTags(player) >= 2) {
                             exempt.Add(egg);
+                            DebugScrambler("Exempting ^b" + egg + "^n, in same squad with tag [" + ExtractTag(player) + "]");
                             continue;
                         }
 
@@ -4338,7 +4340,7 @@ private void ScramblerLoop () {
             DebugScrambler("Before adjusting: US counts = " + us.Count + "/" + usScrambled.Count + ", RU counts = " + ru.Count + "/" + ruScrambled.Count);
 
             // If teams are uneven, fill in
-            int target = (usScrambled.Count < ruScrambled.Count) ? usScrambled.Count : ruScrambled.Count;
+            int target = Math.Max(usScrambled.Count, ruScrambled.Count);
 
             while (usScrambled.Count < target) {
                 if (us.Count > ru.Count) {
@@ -4369,24 +4371,31 @@ private void ScramblerLoop () {
             DebugScrambler("After adjusting: US counts = " + us.Count + "/" + usScrambled.Count + ", RU counts = " + ru.Count + "/" + ruScrambled.Count);
 
             // Now dole out strong players to each team round robin, loser first
+            String ff = null;
             while (us.Count + ru.Count > 0) {
                 if (us.Count > ru.Count) {
                     player = us[0];
                     us.Remove(player);
+                    ff = player.Name + " from US (" + us.Count + " left)";
                 } else if (ru.Count > 0) {
                     player = ru[0];
                     ru.Remove(player);
+                    ff = player.Name + " from RU (" + ru.Count + " left)";
                 }
                 if (!IsKnownPlayer(player.Name)) continue; // might have left
                 if (usScrambled.Count < ruScrambled.Count) {
                     usScrambled.Add(player);
+                    DebugScrambler(ff + " to US (" + usScrambled.Count + ")");
                 } else if (ruScrambled.Count < usScrambled.Count) {
                     ruScrambled.Add(player);
+                    DebugScrambler(ff + " to RU (" + ruScrambled.Count + ")");
                 } else {
                     if (fWinner == 1) { // US won, so give to RU first
                         ruScrambled.Add(player);
+                        DebugScrambler(ff + " to RU (" + ruScrambled.Count + ")");
                     } else if (fWinner == 2) { // RU won, so give to US first
                         usScrambled.Add(player);
+                        DebugScrambler(ff + " to US (" + usScrambled.Count + ")");
                     }
                 }
             }
