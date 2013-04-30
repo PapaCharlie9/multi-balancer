@@ -4268,52 +4268,41 @@ private void ScramblerLoop () {
 
             if (toScramble.Count == 0) continue;
 
-            // Divide into team lists
-            List<PlayerModel> us = new List<PlayerModel>();
-            List<PlayerModel> ru = new List<PlayerModel>();
+            // Merge into a single list
+            List<PlayerModel> all = new List<PlayerModel>();
 
             foreach (String egg in toScramble) {
                 try {
                     if (!IsKnownPlayer(egg)) continue; // might have left while we were working
                     player = GetPlayer(egg);
                     if (player == null) continue;
-                    if (player.Team == 1) {
-                        us.Add(player);
-                    } else if (player.Team == 2) {
-                        ru.Add(player);
-                    }
+                    all.Add(player);
                 } catch (Exception e) {
                     if (DebugLevel >= 8) ConsoleException(e);
                 }
             }
 
-            if (us.Count == 0 && ru.Count == 0) continue;
+            if (all.Count == 0) continue;
 
             // Sort lists by specified metric
             switch (ScrambleBy) {
                 case DefineStrong.RoundScore:
-                    us.Sort(DescendingRoundScore);
-                    ru.Sort(DescendingRoundScore);
+                    all.Sort(DescendingRoundScore);
                     break;
                 case DefineStrong.RoundSPM:
-                    us.Sort(DescendingRoundSPM);
-                    ru.Sort(DescendingRoundSPM);
+                    all.Sort(DescendingRoundSPM);
                     break;
                 case DefineStrong.RoundKills:
-                    us.Sort(DescendingRoundKills);
-                    ru.Sort(DescendingRoundKills);
+                    all.Sort(DescendingRoundKills);
                     break;
                 case DefineStrong.RoundKDR:
-                    us.Sort(DescendingRoundKDR);
-                    ru.Sort(DescendingRoundKDR);
+                    all.Sort(DescendingRoundKDR);
                     break;
                 case DefineStrong.PlayerRank:
-                    us.Sort(DescendingPlayerRank);
-                    ru.Sort(DescendingPlayerRank);
+                    all.Sort(DescendingPlayerRank);
                     break;
                 default:
-                    us.Sort(DescendingRoundScore);
-                    ru.Sort(DescendingRoundScore);
+                    all.Sort(DescendingRoundScore);
                     break;
             }
 
@@ -4337,63 +4326,55 @@ private void ScramblerLoop () {
                 }
             }
 
-            DebugScrambler("Before adjusting: US counts = " + us.Count + "/" + usScrambled.Count + ", RU counts = " + ru.Count + "/" + ruScrambled.Count);
+            DebugScrambler("Before adjusting: " + all.Count + " to scramble, exempt US count = " + usScrambled.Count + ", RU count = " + ruScrambled.Count);
 
             // If teams are uneven, fill in
             int target = Math.Max(usScrambled.Count, ruScrambled.Count);
 
             while (usScrambled.Count < target) {
-                if (us.Count > ru.Count) {
-                    player = (fWinner == 1) ? us[us.Count-1] : us[0]; // weak if US won, strong is US lost
-                    us.Remove(player);
-                } else if (ru.Count > 0) {
-                    player = (fWinner == 2) ? ru[ru.Count-1] : ru[0]; // weak if RU won, strong if US lost
-                    ru.Remove(player);
-                } else if (us.Count == 0 && ru.Count == 0) {
-                    break;
+                if (all.Count == 0) break;
+                if (fWinner == 0 || fWinner == 1) {
+                    player = all[all.Count-1]; // weak if US won
+                } else {
+                    player = all[0]; // strong if US lost
                 }
+                all.Remove(player);
                 usScrambled.Add(player);
             }
 
             while (ruScrambled.Count < target) {
-                if (us.Count > ru.Count) {
-                    player = (fWinner == 1) ? us[us.Count-1] : us[0]; // weak if US won, strong is US lost
-                    us.Remove(player);
-                } else if (ru.Count > 0) {
-                    player = (fWinner == 2) ? ru[ru.Count-1] : ru[0]; // weak if RU won, strong if US lost
-                    ru.Remove(player);
-                } else if (us.Count == 0 && ru.Count == 0) {
-                    break;
+                if (all.Count == 0) break;
+                if (fWinner == 0 || fWinner == 2) {
+                    player = all[all.Count-1]; // weak if RU won
+                } else {
+                    player = all[0]; // strong if RU lost
                 }
+                all.Remove(player);
                 ruScrambled.Add(player);
             }
             
-            DebugScrambler("After adjusting: US counts = " + us.Count + "/" + usScrambled.Count + ", RU counts = " + ru.Count + "/" + ruScrambled.Count);
+            DebugScrambler("After adjusting: " + all.Count + " to scramble, US count = " + usScrambled.Count + ", RU count = " + ruScrambled.Count);
 
             // Now dole out strong players to each team round robin, loser first
             String ff = null;
-            while (us.Count + ru.Count > 0) {
-                if (us.Count > ru.Count) {
-                    player = us[0];
-                    us.Remove(player);
-                    ff = player.Name + " from US (" + us.Count + " left)";
-                } else if (ru.Count > 0) {
-                    player = ru[0];
-                    ru.Remove(player);
-                    ff = player.Name + " from RU (" + ru.Count + " left)";
-                }
+            int na = all.Count;
+            
+            foreach (PlayerModel p in all) {
+                player = p;
+                --na;
+                ff = "^b" + player.Name + "^n (" + na + " left)";
                 if (!IsKnownPlayer(player.Name)) continue; // might have left
-                if (usScrambled.Count < ruScrambled.Count) {
+                if (usScrambled.Count < ruScrambled.Count && usScrambled.Count <= (perMode.MaxPlayers/2)) {
                     usScrambled.Add(player);
                     DebugScrambler(ff + " to US (" + usScrambled.Count + ")");
-                } else if (ruScrambled.Count < usScrambled.Count) {
+                } else if (ruScrambled.Count < usScrambled.Count && ruScrambled.Count <= (perMode.MaxPlayers/2)) {
                     ruScrambled.Add(player);
                     DebugScrambler(ff + " to RU (" + ruScrambled.Count + ")");
                 } else {
-                    if (fWinner == 1) { // US won, so give to RU first
+                    if (fWinner == 1 && ruScrambled.Count <= (perMode.MaxPlayers/2)) { // US won, so give to RU first
                         ruScrambled.Add(player);
                         DebugScrambler(ff + " to RU (" + ruScrambled.Count + ")");
-                    } else if (fWinner == 2) { // RU won, so give to US first
+                    } else if (fWinner == 2 && usScrambled.Count <= (perMode.MaxPlayers/2)) { // RU won, so give to US first
                         usScrambled.Add(player);
                         DebugScrambler(ff + " to US (" + usScrambled.Count + ")");
                     }
