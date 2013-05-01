@@ -654,6 +654,11 @@ public String ShowInLog; // command line to show info in plugin.log
 public bool LogChat;
 public bool EnableLoggingOnlyMode;
 
+public bool ForbidSwitchAfterAutobalance;
+public bool ForbidSwitchToWinningTeam;
+public bool ForbidSwitchToBiggestTeam;
+public bool ForbidSwitchAfterDispersal;
+
 // Properties
 public int TotalPlayerCount {get{lock (fAllPlayers) {return fAllPlayers.Count;}}}
 public String FriendlyMap { 
@@ -839,7 +844,12 @@ public PROTObalancer() {
     ChatAfterUnswitching = "%name%, please stay on the %toTeam% team for the rest of this round";
     YellAfterUnswitching = "Please stay on the %toTeam% team for the rest of this round";
     
-    /* ===== SECTION 6 - TBD ===== */
+    /* ===== SECTION 6 - Unswitcher ===== */
+
+    ForbidSwitchAfterAutobalance = true;
+    ForbidSwitchToWinningTeam = true;
+    ForbidSwitchToBiggestTeam = true;
+    ForbidSwitchAfterDispersal = true;
 
     /* ===== SECTION 7 - TBD ===== */
 
@@ -1200,7 +1210,15 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         lstReturn.Add(new CPluginVariable("5 - Messages|Yell: After Unswitching", YellAfterUnswitching.GetType(), YellAfterUnswitching));
 
 
-        /* ===== SECTION 6 - TBD ===== */
+        /* ===== SECTION 6 - Unswitcher ===== */
+
+        lstReturn.Add(new CPluginVariable("6 - Unswitcher|Forbid Switch After Autobalance", ForbidSwitchAfterAutobalance.GetType(), ForbidSwitchAfterAutobalance));
+
+        lstReturn.Add(new CPluginVariable("6 - Unswitcher|Forbid Switch To Winning Team", ForbidSwitchToWinningTeam.GetType(), ForbidSwitchToWinningTeam)); 
+
+        lstReturn.Add(new CPluginVariable("6 - Unswitcher|Forbid Switch To Biggest Team", ForbidSwitchToBiggestTeam.GetType(), ForbidSwitchToBiggestTeam)); 
+
+        lstReturn.Add(new CPluginVariable("6 - Unswitcher|Forbid Switch After Dispersal", ForbidSwitchAfterDispersal.GetType(), ForbidSwitchAfterDispersal)); 
 
         /* ===== SECTION 7 - TBD ===== */
 
@@ -1538,7 +1556,7 @@ private bool ValidateSettings(String strVariable, String strValue) {
             if (strVariable.Contains("Definition Of Low Population For Players")) ValidateIntRange(ref perMode.DefinitionOfLowPopulationForPlayers, mode + ":" + "Definition Of Low Population For Players", 0, perMode.MaxPlayers, def.DefinitionOfLowPopulationForPlayers, false);
             if (strVariable.Contains("Definition Of Early Phase")) ValidateInt(ref perMode.DefinitionOfEarlyPhaseFromStart, mode + ":" + "Definition Of Early Phase From Start", def.DefinitionOfEarlyPhaseFromStart);
             if (strVariable.Contains("Definition Of Late Phase")) ValidateInt(ref perMode.DefinitionOfLatePhaseFromEnd, mode + ":" + "Definition Of Late Phase From End", def.DefinitionOfLatePhaseFromEnd);
-            if (IsCTF()) {
+            if (mode == "CTF") {
                 int maxMinutes = 20; // TBD, might need to factor in gameModeCounter
                 if (strVariable.Contains("Definition Of Late Phase") && perMode.DefinitionOfLatePhaseFromEnd > maxMinutes) {
                     ConsoleError("^b" + "Definition Of Late Phase" + "^n must be less than or equal to " + maxMinutes + " minutes, corrected to " + maxMinutes);
@@ -1589,7 +1607,6 @@ private void ResetSettings() {
     JoinedMidPhase = rhs.JoinedMidPhase;
     JoinedLatePhase = rhs.JoinedLatePhase;
 
-
     /* ===== SECTION 3 - Round Phase & Population Settings ===== */
 
     EarlyPhaseTicketPercentageToUnstack = rhs.EarlyPhaseTicketPercentageToUnstack;
@@ -1601,6 +1618,14 @@ private void ResetSettings() {
     EarlyPhaseBalanceSpeed = rhs.EarlyPhaseBalanceSpeed;
     MidPhaseBalanceSpeed = rhs.MidPhaseBalanceSpeed;
     LatePhaseBalanceSpeed = rhs.LatePhaseBalanceSpeed;
+
+    /* ===== SECTION 4 - Scrambler ===== */
+
+    OnlyOnNewMaps = rhs.OnlyOnNewMaps;
+    OnlyOnFinalTicketPercentage = rhs.OnlyOnFinalTicketPercentage;
+    ScrambleBy = rhs.ScrambleBy;
+    KeepClanTagsInSameSquad = rhs.KeepClanTagsInSameSquad;
+    DelaySeconds = rhs.DelaySeconds;
 
     /* ===== SECTION 5 - Messages ===== */
     
@@ -1622,7 +1647,12 @@ private void ResetSettings() {
     ChatAfterUnswitching = rhs.ChatAfterUnswitching;
     YellAfterUnswitching = rhs.YellAfterUnswitching;
     
-    /* ===== SECTION 6 - TBD ===== */
+    /* ===== SECTION 6 - Unswitcher ===== */
+
+    ForbidSwitchAfterAutobalance = rhs.ForbidSwitchAfterAutobalance;
+    ForbidSwitchToWinningTeam = rhs.ForbidSwitchToWinningTeam;
+    ForbidSwitchToBiggestTeam = rhs.ForbidSwitchToBiggestTeam;
+    ForbidSwitchAfterDispersal = rhs.ForbidSwitchAfterDispersal;
 
     /* ===== SECTION 7 - TBD ===== */
 
@@ -2280,7 +2310,7 @@ public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subs
  
         UpdateTeams();
 
-        LogStatus();
+        LogStatus(false);
     
         /* Special handling for JustEnabled state */
         if (fPluginState == PluginState.JustEnabled) {
@@ -2316,7 +2346,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
                     if (ts.TeamID >= fTickets.Length) break;
                     fTickets[ts.TeamID] = (ts.Score == 1) ? 0 : ts.Score; // fix rounding
                 }
-                LogStatus();
+                LogStatus(true);
             } catch (Exception) {}
             fFinalStatus = null;
         }
@@ -3454,9 +3484,9 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     // Check forbidden cases
     PerModeSettings perMode = GetPerModeSettings();
     bool isSQDM = IsSQDM();
-    bool isDispersal = IsDispersal(player); // on dispersal list
+    bool isDispersal = IsDispersal(player);
     bool isRank = IsRankDispersal(player);
-    bool forbidden = (isDispersal || isRank || (player.MovedByMB && !isSQDM));
+    bool forbidden = (((isDispersal || isRank) && ForbidSwitchAfterDispersal) || (player.MovedByMB && !isSQDM && ForbidSwitchAfterAutobalance));
 
     // Unlimited time?
     if (!forbidden && UnlimitedTeamSwitchingDuringFirstMinutesOfRound > 0 && GetTimeInRoundMinutes() < UnlimitedTeamSwitchingDuringFirstMinutesOfRound) {
@@ -3606,14 +3636,44 @@ private bool CheckTeamSwitch(String name, int toTeam) {
 
     if (player.MovedByMB && !isSQDM) {
         why = ForbidBecause.MovedByBalancer;
+        if (!ForbidSwitchAfterAutobalance) {
+            DebugUnswitch("ALLOWED: move by ^b" + name + "^n because ^bForbid Switch After Autobalance^n is False");
+            SetSpawnMessages(name, String.Empty, String.Empty, false);
+            CheckAbortMove(name);
+            return true;
+        }
     } else if (toTeam == winningTeam) {
         why = ForbidBecause.ToWinning;
+        if (!ForbidSwitchToWinningTeam) {
+            DebugUnswitch("ALLOWED: move by ^b" + name + "^n because ^bForbid Switch To Winning Team^n is False");
+            SetSpawnMessages(name, String.Empty, String.Empty, false);
+            CheckAbortMove(name);
+            return true;
+        }
     } else if (toTeam == biggestTeam) {
         why = ForbidBecause.ToBiggest;
+        if (!ForbidSwitchToBiggestTeam) {
+            DebugUnswitch("ALLOWED: move by ^b" + name + "^n because ^bForbid Switch To Biggest Team^n is False");
+            SetSpawnMessages(name, String.Empty, String.Empty, false);
+            CheckAbortMove(name);
+            return true;
+        }
     } else if (isDispersal) {
         why = ForbidBecause.DisperseByList;
+        if (!ForbidSwitchAfterDispersal) {
+            DebugUnswitch("ALLOWED: move by ^b" + name + "^n because ^bForbid Switch After Dispersal^n is False");
+            SetSpawnMessages(name, String.Empty, String.Empty, false);
+            CheckAbortMove(name);
+            return true;
+        }
     } else if (isRank) {
         why = ForbidBecause.DisperseByRank;
+        if (!ForbidSwitchAfterDispersal) {
+            DebugUnswitch("ALLOWED: move by ^b" + name + "^n because ^bForbid Switch After Dispersal^n is False");
+            SetSpawnMessages(name, String.Empty, String.Empty, false);
+            CheckAbortMove(name);
+            return true;
+        }
     }
 
     // Tried to switch toTeam from origTeam, so moving from toTeam back to origTeam
@@ -6772,7 +6832,7 @@ private uint VersionToNumeric(String ver) {
 }
 
 
-private void LogStatus() {
+private void LogStatus(bool isFinal) {
   try {
     // If server is empty, log status only every 20 minutes
     if (TotalPlayerCount == 0) {
@@ -6783,7 +6843,7 @@ private void LogStatus() {
         }
     }
 
-    if (DebugLevel == 3 || DebugLevel == 4) ConsoleWrite("+------------------------------------------------+");
+    if (isFinal || DebugLevel == 3 || DebugLevel == 4) ConsoleWrite("+------------------------------------------------+");
 
     Speed balanceSpeed = Speed.Adaptive;
 
@@ -6808,12 +6868,13 @@ private void LogStatus() {
     String rt = GetTimeInRoundString();
 
     DebugWrite("^bStatus^n: Plugin state = " + fPluginState + ", game state = " + fGameState + ", Enable Logging Only Mode = " + EnableLoggingOnlyMode, 4);
+    int useLevel = (isFinal) ? 1 : 3;
     if (IsRush()) {
-        DebugWrite("^bStatus^n: Map = " + FriendlyMap + ", mode = " + FriendlyMode + ", stage = " + fRushStage + ", time in round = " + rt + ", tickets = " + tm, 3);
+        DebugWrite("^bStatus^n: Map = " + FriendlyMap + ", mode = " + FriendlyMode + ", stage = " + fRushStage + ", time in round = " + rt + ", tickets = " + tm, useLevel);
     } else if (IsCTF()) {
-        DebugWrite("^bStatus^n: Map = " + FriendlyMap + ", mode = " + FriendlyMode + ", time in round = " + rt + ", points = " + tm, 3);
+        DebugWrite("^bStatus^n: Map = " + FriendlyMap + ", mode = " + FriendlyMode + ", time in round = " + rt + ", points = " + tm, useLevel);
     } else {
-        DebugWrite("^bStatus^n: Map = " + FriendlyMap + ", mode = " + FriendlyMode + ", time in round = " + rt + ", tickets = " + tm, 3);
+        DebugWrite("^bStatus^n: Map = " + FriendlyMap + ", mode = " + FriendlyMode + ", time in round = " + rt + ", tickets = " + tm, useLevel);
     }
     if (fPluginState == PluginState.Active) {
         double secs = DateTime.Now.Subtract(fLastBalancedTimestamp).TotalSeconds;
@@ -6834,12 +6895,14 @@ private void LogStatus() {
     }
 
     String raged = fRageQuits.ToString() + "/" + fTotalQuits + " raged, ";
-    DebugWrite("^bStatus^n: " + raged + fReassignedRound + " reassigned, " + fBalancedRound + " balanced, " + fUnstackedRound + " unstacked, " + fUnswitchedRound + " unswitched, " + fExcludedRound + " excluded, " + fExemptRound + " exempted, " + fFailedRound + " failed; of " + fTotalRound + " TOTAL", 5);
+    useLevel = (isFinal) ? 2 : 5;
+    DebugWrite("^bStatus^n: " + raged + fReassignedRound + " reassigned, " + fBalancedRound + " balanced, " + fUnstackedRound + " unstacked, " + fUnswitchedRound + " unswitched, " + fExcludedRound + " excluded, " + fExemptRound + " exempted, " + fFailedRound + " failed; of " + fTotalRound + " TOTAL", useLevel);
     
+    useLevel = (isFinal) ? 1 : 3;
     if (IsSQDM()) {
-        DebugWrite("^bStatus^n: Team counts [" + TotalPlayerCount + "] = " + fTeam1.Count + "(A) vs " + fTeam2.Count + "(B) vs " + fTeam3.Count + "(C) vs " + fTeam4.Count + "(D), with " + fUnassigned.Count + " unassigned", 3);
+        DebugWrite("^bStatus^n: Team counts [" + TotalPlayerCount + "] = " + fTeam1.Count + "(A) vs " + fTeam2.Count + "(B) vs " + fTeam3.Count + "(C) vs " + fTeam4.Count + "(D), with " + fUnassigned.Count + " unassigned", useLevel);
     } else {
-        DebugWrite("^bStatus^n: Team counts [" + TotalPlayerCount + "] = " + fTeam1.Count + "(US) vs " + fTeam2.Count + "(RU), with " + fUnassigned.Count + " unassigned", 3);
+        DebugWrite("^bStatus^n: Team counts [" + TotalPlayerCount + "] = " + fTeam1.Count + "(US) vs " + fTeam2.Count + "(RU), with " + fUnassigned.Count + " unassigned", useLevel);
     }
     
     List<int> counts = new List<int>();
@@ -7017,24 +7080,14 @@ static class PROTObalancerUtils {
 
 <p>For BF3, this plugin does live round team balancing and unstacking for all game modes, including Squad Deathmatch (SQDM).</p>
 
-<h2>THIS IS A PROTOTYPE FOR TESTING AND FEEDBACK!</h2>
-<p>This version of the plugin is 90% functional. <font color=#FF0000>Set PROTObalancer's <b>Enable Logging Only Mode</b> to false</font> to test the plugin live.</p>
+<h2>FULL BETA</h2>
+<p>This version of the plugin is 100% functional.</p>
 
 <p><font color=#0000FF>The purpose of this prototype is to get feedback about usage and behavior.</font></p>
 
 <p>Since logging to plugin.log is an important part of this phase of testing, it would be best if you could reduce or eliminate logging of other plugins so that most or all of the log is from PROTObalancer. If you are planning to leave the plugin unattended to collect logs, set <b>Debug Level</b> to 5. If you are going to watch the log interactively for a while, you can experiment with higher or lower <b>Debug Level</b> settings. It would also be useful to set the console.log to enable Event logging, but be advised that the console.log might get quite large. Do <b>not</b> enable Debug on your console.log.</p>
 
-<h3>KNOWN ISSUES</h3>
-<p>The following settings are not hooked up, they don't do anything:
-<ul>
-<li>Enable Battlelog Requests</li>
-<li>Maximum Request Rate</li>
-<li>Same Clan Tags In Squad</li>
-<li>Substitution %tag% for chat or yell message</li>
-</ul>
-</p>
-
-<p><b>Sections 4, 6 and 7 of settings are intentionally not defined.</b></p>
+<p><b>Section 7 of settings is intentionally not defined.</b></p>
 
 <h2>Description</h2>
 <p>This plugin performs several automated operations:
@@ -7248,8 +7301,16 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>After Unswitching Dispersal Player</b>: Message sent after a player on the <b>Disperse Evenly List</b> is killed by admin and moved back to the team he was assigned to. This message is sent after the <b>Detected Switch By Dispersal Player</b> message.</p>
 
-<h3>6 - TBD</h3>
-<p>There is no section 6. This section is reserved for future use.</p>
+<h3>6 - Unswitcher</h3>
+<p>This section controls the unswitcher. Every time a player tries to switch to a different team, the unswitcher checks if the switch is allowed or forbidden. If forbidden, when the player spawns, he is warned (see Section 5), then he is admin killed, then moved back to his original team. Note that setting any of these settings to False will reduce the effectiveness of the balancer and unstacker.</p>
+
+<p><b>Forbid Switch After Autobalance</b>: True or False, default True. If True, after a player is moved to a different team for balance or unstacking, this setting forbids them from moving back to their original team. If False, they may move back to their original team.</p>
+
+<p><b>Forbid Switch To Winning Team</b>: True or False, default True. If True, a player is not allowed to switch to the winning team. If False, they are allowed.</p>
+
+<p><b>Forbid Switch To Biggest Team</b>: True or False, default True. If True, a player is not allowed to switch to the biggest team. If False, they are allowed.</p>
+
+<p><b>Forbid Switch After Dispersal</b>: True or False, default True. If True, after a player is moved to a different team due to <b>Disperse Evenly For Rank</b> or the <b>Disperse Evenly List</b>, this setting forbids them from moving back to their original team. If False, they may move back to their original team.</p>
 
 <h3>7 - TBD</h3>
 <p>There is no section 7. This section is reserved for future use.</p>
