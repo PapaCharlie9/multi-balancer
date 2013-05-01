@@ -271,9 +271,6 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
         public double Stage3TicketPercentageToUnstackAdjustment = 0;
         public double Stage4TicketPercentageToUnstackAdjustment = 0;
         
-        //public double MinTicketsPercentage = 10.0; // TBD
-        public int GoAggressive = 0; // TBD
-        
         public bool isDefault = true; // not a setting
     } // end PerModeSettings
 
@@ -600,9 +597,9 @@ private Dictionary<String,PerModeSettings> fPerMode = null;
 // Settings
 public int DebugLevel;
 public int MaximumServerSize;
-public bool EnableBattlelogRequests; // TBD
-public int MaximumRequestRate; // TBD
-public double WaitTimeout; // TBD
+public bool EnableBattlelogRequests;
+public int MaximumRequestRate;
+public double WaitTimeout;
 public int MaxTeamSwitchesByStrongPlayers; // disabled
 public int MaxTeamSwitchesByWeakPlayers; // disabled
 public double UnlimitedTeamSwitchingDuringFirstMinutesOfRound;
@@ -616,7 +613,7 @@ public double SecondsUntilAdaptiveSpeedBecomesFast;
 
 public bool OnWhitelist;
 public bool TopScorers;
-public bool SameClanTagsInSquad; // TBD
+public bool SameClanTagsInSquad;
 public double MinutesAfterJoining;
 public bool JoinedEarlyPhase; // disabled
 public bool JoinedMidPhase; // disabled
@@ -852,7 +849,7 @@ public PROTObalancer() {
 
     ShowInLog = String.Empty;
     LogChat = true;
-    EnableLoggingOnlyMode = true; // TBD false
+    EnableLoggingOnlyMode = false;
 }
 
 public PROTObalancer(PresetItems preset) : this() {
@@ -1541,6 +1538,17 @@ private bool ValidateSettings(String strVariable, String strValue) {
             if (strVariable.Contains("Definition Of Low Population For Players")) ValidateIntRange(ref perMode.DefinitionOfLowPopulationForPlayers, mode + ":" + "Definition Of Low Population For Players", 0, perMode.MaxPlayers, def.DefinitionOfLowPopulationForPlayers, false);
             if (strVariable.Contains("Definition Of Early Phase")) ValidateInt(ref perMode.DefinitionOfEarlyPhaseFromStart, mode + ":" + "Definition Of Early Phase From Start", def.DefinitionOfEarlyPhaseFromStart);
             if (strVariable.Contains("Definition Of Late Phase")) ValidateInt(ref perMode.DefinitionOfLatePhaseFromEnd, mode + ":" + "Definition Of Late Phase From End", def.DefinitionOfLatePhaseFromEnd);
+            if (IsCTF()) {
+                int maxMinutes = 20; // TBD, might need to factor in gameModeCounter
+                if (strVariable.Contains("Definition Of Late Phase") && perMode.DefinitionOfLatePhaseFromEnd > maxMinutes) {
+                    ConsoleError("^b" + "Definition Of Late Phase" + "^n must be less than or equal to " + maxMinutes + " minutes, corrected to " + maxMinutes);
+                    perMode.DefinitionOfEarlyPhaseFromStart = 0;
+                }
+                if (strVariable.Contains("Definition Of Early Phase") && perMode.DefinitionOfEarlyPhaseFromStart > (maxMinutes - perMode.DefinitionOfLatePhaseFromEnd)) {
+                    ConsoleError("^b" + "Definition Of Early Phase" + "^n must be less than or equal to " + (maxMinutes - perMode.DefinitionOfLatePhaseFromEnd) + " minutes, corrected to " + (maxMinutes - perMode.DefinitionOfLatePhaseFromEnd));
+                    perMode.DefinitionOfEarlyPhaseFromStart = maxMinutes - perMode.DefinitionOfLatePhaseFromEnd;
+                }
+            }
         }
 
         /* ===== SECTION 9 - Debug Settings ===== */
@@ -2493,7 +2501,6 @@ public override void OnPlayerKilledByAdmin(string soldierName) {
     if (!fIsEnabled) return;
     
     DebugWrite("^9^bGot OnPlayerKilledByAdmin^n: " + soldierName, 7);
-    // TBD for m.IsDeployed
 }
 
 public override void OnReservedSlotsList(List<String> lstSoldierNames) {
@@ -2818,7 +2825,7 @@ private void BalanceAndUnstack(String name) {
         }
     }
 
-    int numTeams = 2; //(isSQDM) ? 4 : 2; // TBD
+    int numTeams = 2; //(isSQDM) ? 4 : 2; // TBD, what is max squad size for SQDM?
     int maxTeamSlots = (MaximumServerSize/numTeams);
     int maxTeamPerMode = (perMode.MaxPlayers/numTeams);
     List<PlayerModel> lt = GetTeam(toTeam);
@@ -2895,7 +2902,7 @@ private void BalanceAndUnstack(String name) {
         }
 
         // Strong/Weak exemptions and clan tag
-        if (!mustMove && balanceSpeed != Speed.Fast && fromList.Count >= minPlayers) { // TBD
+        if (!mustMove && balanceSpeed != Speed.Fast && fromList.Count >= minPlayers) {
             if (DebugLevel > 5) DebugBalance(strongMsg);
             // don't move weak player to losing team
             if (!isStrong  && toTeam == losingTeam) {
@@ -3406,6 +3413,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
             player.SpawnYellMessage = String.Empty;
         } else {
             DebugUnswitch("Player team switch: ^b" + name + "^n, player model already updated to " + GetTeamName(toTeam) + " team");
+            return true;
         }
     } else {
         DebugUnswitch("Player team switch: ^b" + name + "^n from " + GetTeamName(player.Team) + " team to " + GetTeamName(toTeam) + " team");
@@ -4036,9 +4044,11 @@ private Phase GetPhase(PerModeSettings perMode, bool verbose) {
         //double totalRoundMins = DateTime.Now.Subtract(fRoundStartTimestamp).TotalMinutes;
         double totalRoundMins = GetTimeInRoundMinutes();
 
-        // Late is higher priority than early - TBD, move this to settings validation
+        /* moved to ValidateSettings, keep here for reference
+        // Late is higher priority than early
         if (lateMinutes > maxMinutes) {earlyMinutes = 0; lateMinutes = maxMinutes;}
         if (earlyMinutes > (maxMinutes - lateMinutes)) {earlyMinutes = maxMinutes - lateMinutes;}
+        */
 
         if (totalRoundMins <= earlyMinutes) {
             phase = Phase.Early;
@@ -4083,7 +4093,7 @@ private Phase GetPhase(PerModeSettings perMode, bool verbose) {
     }
 
     if (countDown) {
-        // Late takes priority over early -- TBD, move this to settings validation
+        // Late takes priority over early
         if (lateTickets > fMaxTickets) {earlyTickets = 0; lateTickets = fMaxTickets;}
         if (lateTickets > (fMaxTickets - earlyTickets)) {earlyTickets = fMaxTickets - lateTickets;}
 
@@ -4096,7 +4106,7 @@ private Phase GetPhase(PerModeSettings perMode, bool verbose) {
         }
     } else {
         // count up
-        // Late takes priority over early -- TBD, move this to settings validation
+        // Late takes priority over early
         if (lateTickets > goal) {earlyTickets = 0; lateTickets = goal;}
         if (earlyTickets > (goal - lateTickets)) {earlyTickets = goal - lateTickets;}
 
@@ -4333,7 +4343,13 @@ private void Scrambler(List<TeamScore> teamScores) {
 
 private void ScramblerLoop () {
     /*
-    Strategy: TBD
+    Strategy: Scan each team and leave behind any players who are exempt. Everyone
+    else goes into a pool of players to be distributed across two teams. The pool is
+    sorted according to the ScrambleBy setting. After adjusting for exempted players,
+    players are assigned to teams in round-robin fashion, strongest to weakest.
+    Finally, each member of the new team is checked and if they need to be moved,
+    a move command is issued.  Since this is between rounds, a special move command
+    that bypasses all move tracking is used.
     */
     try {
         DateTime last = DateTime.Now;
@@ -5660,8 +5676,6 @@ private int ToTeam(String name, int fromTeam, bool isReassign, out int diff, ref
     tm = tm + ")";
     DebugWrite("ToTeam for ^b" + name + "^n: analyze returned " + tm + ", " + fromTeam + " ==> " + targetTeam, 5);
 
-    // TBD, for SQDM, based on name, might need to take into account dispersal by Rank, etc.
-    // mustMove set to True if dispersal policy (etc) must override other policies
     return targetTeam;
 }
 
@@ -5782,11 +5796,11 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] byI
             }
         }
 
-        if (allEqual || grandTotal < 2) { // TBD
+        if (allEqual || grandTotal < 2) {
             DebugWrite("^9ToTeamByDispersal: all equal by rank, skipping", 5);
             return 0; // don't disperse
         }
-        // TBD fall through
+        // fall through
     }
 
     return targetTeam; // ok if 0 or same as fromTeam, caller checks
@@ -7314,7 +7328,10 @@ For each phase, there are three unstacking settings for server population: Low, 
 <p><b>Enable Logging Only Mode</b>: True or False, default False. If set to True, the plugin will only log messages. No move, chat or yell commands will be sent to the game server. If set to False, the plugin will operate normally.</p>
 
 <h2>Development</h2>
-<p>TBD</p>
+<p>This plugin is an open source project hosted on GitHub.com. The repo is located at
+<a href='https://github.com/PapaCharlie9/multi-balancer'>https://github.com/PapaCharlie9/multi-balancer</a> and
+the master branch is used for public distributions. See the <a href='https://github.com/PapaCharlie9/multi-balancer/tags'>Tags</a> tab for the latest ZIP distributions. If you would like to offer bug fixes or new features, feel
+free to fork the repo and submit pull requests.</p>
 ";
 #endregion
 
