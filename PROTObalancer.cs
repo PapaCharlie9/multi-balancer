@@ -4278,32 +4278,46 @@ private void Scrambler(List<TeamScore> teamScores) {
         if (fMaxTickets == -1) return;
 
         double goal = fMaxTickets;
+        double a = teamScores[0].Score;
+        double b = teamScores[1].Score;
+
+        
+        if (IsRush()) {
+            // normalize Rush ticket ratio
+            b = fMaxTickets - (fRushMaxTickets - b);
+            b = Math.Max(b, 1);
+        }
 
         if (Regex.Match(fServerInfo.GameMode, @"(?:TeamDeathMatch|SquadDeathMatch)").Success) {
             countDown = false;
-            goal = fServerInfo.TeamScores[0].WinningScore;
+            goal = teamScores[0].WinningScore;
         }
-        double a = teamScores[0].Score;
-        double b = teamScores[1].Score;
+
         double ratio = 0;
         if (countDown) {
             // ratio of difference from max
             if (a < b) {
-                ratio = (goal - a) / Math.Max(1, (goal - b));
+                ratio = (goal - a) / Math.Max(1, (goal - b)); 
+                DebugScrambler("Ratio us/ru: " + a + " vs " + b + " <- [" + goal + "]: " + (goal-a) + "/" + Math.Max(1, (goal-b)) + " = " + ratio.ToString("F2"));
             } else {
                 ratio = (goal - b) / Math.Max(1, (goal - a));
+                DebugScrambler("Ratio ru/us: " + a + " vs " + b + " <- [" + goal + "]: " + (goal-b) + "/" + Math.Max(1, (goal-a)) + " = " + ratio.ToString("F2"));
             }
         } else {
             // direct ratio
             if (a > b) {
                 ratio = a / Math.Max(1, b);
+                DebugScrambler("Ratio us/ru: " + a + " vs " + b + " -> [" + goal + "]: " + a + "/" + Math.Max(1, b) + " = " + ratio.ToString("F2"));
             } else {
                 ratio = b / Math.Max(1, a);
+                DebugScrambler("Ratio ru/us: " + a + " vs " + b + " -> [" + goal + "]: " + b + "/" + Math.Max(1, a) + " = " + ratio.ToString("F2"));
             }
-        }
+        } 
         if ((ratio * 100) < OnlyOnFinalTicketPercentage) {
             DebugScrambler("Only On Final Ticket Percentage >= " + OnlyOnFinalTicketPercentage.ToString("F0") + "%, but ratio is only " + (ratio * 100).ToString("F0") + "%");
             return;
+        } else {
+            DebugScrambler("Only On Final Ticket Percentage >= " + OnlyOnFinalTicketPercentage.ToString("F0") + "% and ratio is " + (ratio * 100).ToString("F0") + "%");
         }
     }
 
@@ -6569,24 +6583,30 @@ private void ListSideBySide(List<String> us, List<String> ru) {
     
     us.Sort(delegate(String lhs, String rhs) { // descending position in allNames
         if (lhs == null && rhs == null) return 0;
-        if (lhs == null) return 1;
-        if (rhs == null) return -1;
+        if (lhs == null) return -1;
+        if (rhs == null) return 1;
 
         int l = allNames.IndexOf(ExtractName(lhs))+1;
         int r = allNames.IndexOf(ExtractName(rhs))+1;
-        if (l < r) return 1;
-        if (l > r) return -1;
+        if (l == 0 && r == 0) return 0;
+        if (l == 0) return 1; // 0 sorts to end
+        if (r == 0) return 1;
+        if (l < r) return -1;
+        if (l > r) return 1;
         return 0;
     });
     ru.Sort(delegate(String lhs, String rhs) { // descending position in allNames
         if (lhs == null && rhs == null) return 0;
-        if (lhs == null) return 1;
-        if (rhs == null) return -1;
+        if (lhs == null) return -1;
+        if (rhs == null) return 1;
 
         int l = allNames.IndexOf(ExtractName(lhs))+1;
         int r = allNames.IndexOf(ExtractName(rhs))+1;
-        if (l < r) return 1;
-        if (l > r) return -1;
+        if (l == 0 && r == 0) return 0;
+        if (l == 0) return 1; // 0 sorts to end
+        if (r == 0) return 1;
+        if (l < r) return -1;
+        if (l > r) return 1;
         return 0;
     });
 
