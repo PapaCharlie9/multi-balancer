@@ -654,6 +654,7 @@ public String ShowInLog; // command line to show info in plugin.log
 public bool LogChat;
 public bool EnableLoggingOnlyMode;
 
+public bool EnableImmediateUnswitch;
 public bool ForbidSwitchAfterAutobalance;
 public bool ForbidSwitchToWinningTeam;
 public bool ForbidSwitchToBiggestTeam;
@@ -846,6 +847,7 @@ public PROTObalancer() {
     
     /* ===== SECTION 6 - Unswitcher ===== */
 
+    EnableImmediateUnswitch = true;
     ForbidSwitchAfterAutobalance = true;
     ForbidSwitchToWinningTeam = true;
     ForbidSwitchToBiggestTeam = true;
@@ -875,6 +877,7 @@ public PROTObalancer(PresetItems preset) : this() {
          // ForbidSwitchToWinningTeam = true;
          // ForbidSwitchToBiggestTeam = true;
          // ForbidSwitchAfterDispersal = true;
+         // EnableImmediateUnswitch = true;
          // 
          // foreach (String mode in fPerMode.Keys) {
          //      fPerMode[mode].PercentOfTopOfTeamIsStrong = 50;
@@ -903,6 +906,7 @@ public PROTObalancer(PresetItems preset) : this() {
             ForbidSwitchToWinningTeam = true;
             ForbidSwitchToBiggestTeam = true;
             ForbidSwitchAfterDispersal = true;
+            EnableImmediateUnswitch = true;
 
             // Does not count for automatic detection of preset
             foreach (String mode in fPerMode.Keys) {
@@ -933,6 +937,7 @@ public PROTObalancer(PresetItems preset) : this() {
             ForbidSwitchToWinningTeam = true;
             ForbidSwitchToBiggestTeam = true;
             ForbidSwitchAfterDispersal = false;
+            EnableImmediateUnswitch = false;
 
             // Does not count for automatic detection of preset
             foreach (String mode in fPerMode.Keys) {
@@ -964,6 +969,7 @@ public PROTObalancer(PresetItems preset) : this() {
             ForbidSwitchToWinningTeam = true;
             ForbidSwitchToBiggestTeam = false;
             ForbidSwitchAfterDispersal = true;
+            EnableImmediateUnswitch = true;
 
             foreach (String mode in fPerMode.Keys) {
                 fPerMode[mode].PercentOfTopOfTeamIsStrong = 25;
@@ -993,6 +999,7 @@ public PROTObalancer(PresetItems preset) : this() {
             ForbidSwitchToWinningTeam = true;
             ForbidSwitchToBiggestTeam = false;
             ForbidSwitchAfterDispersal = false;
+            EnableImmediateUnswitch = true;
 
             foreach (String mode in fPerMode.Keys) {
                 fPerMode[mode].PercentOfTopOfTeamIsStrong = 5;
@@ -1022,6 +1029,7 @@ public PROTObalancer(PresetItems preset) : this() {
             ForbidSwitchToWinningTeam = false;
             ForbidSwitchToBiggestTeam = false;
             ForbidSwitchAfterDispersal = false;
+            EnableImmediateUnswitch = true;
 
             foreach (String mode in fPerMode.Keys) {
                 fPerMode[mode].PercentOfTopOfTeamIsStrong = 0;
@@ -1051,6 +1059,7 @@ public PROTObalancer(PresetItems preset) : this() {
             ForbidSwitchToWinningTeam = true;
             ForbidSwitchToBiggestTeam = false;
             ForbidSwitchAfterDispersal = true;
+            EnableImmediateUnswitch = true;
 
             // Does not count for automatic detection of preset
             foreach (String mode in fPerMode.Keys) {
@@ -1254,6 +1263,8 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         lstReturn.Add(new CPluginVariable("6 - Unswitcher|Forbid Switch To Biggest Team", ForbidSwitchToBiggestTeam.GetType(), ForbidSwitchToBiggestTeam)); 
 
         lstReturn.Add(new CPluginVariable("6 - Unswitcher|Forbid Switch After Dispersal", ForbidSwitchAfterDispersal.GetType(), ForbidSwitchAfterDispersal)); 
+
+        lstReturn.Add(new CPluginVariable("6 - Unswitcher|Enable Immediate Unswitch", EnableImmediateUnswitch.GetType(), EnableImmediateUnswitch)); 
 
         /* ===== SECTION 7 - TBD ===== */
 
@@ -1688,6 +1699,7 @@ private void ResetSettings() {
     ForbidSwitchToWinningTeam = rhs.ForbidSwitchToWinningTeam;
     ForbidSwitchToBiggestTeam = rhs.ForbidSwitchToBiggestTeam;
     ForbidSwitchAfterDispersal = rhs.ForbidSwitchAfterDispersal;
+    EnableImmediateUnswitch = rhs.EnableImmediateUnswitch;
 
     /* ===== SECTION 7 - TBD ===== */
 
@@ -3711,6 +3723,11 @@ private bool CheckTeamSwitch(String name, int toTeam) {
         }
     }
 
+    if (toTeam == origTeam) {
+        ConsoleDebug("CheckTeamSwitch: ^b" + name + "^n, can't forbid unswitch to same team " + GetTeamName(toTeam) + "?");
+        return true;
+    }
+
     // Tried to switch toTeam from origTeam, so moving from toTeam back to origTeam
     move = new MoveInfo(name, player.Tag, toTeam, GetTeamName(toTeam), origTeam, origName);
     move.For = MoveType.Unswitch;
@@ -3719,22 +3736,31 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     move.Format(this, badYell, true, true);
     move.Format(this, ChatAfterUnswitching, false, false);
     move.Format(this, YellAfterUnswitching, true, false);
-    DebugUnswitch("FORBIDDEN: delaying unswitch action until spawn of ^b" + name + "^n from " + move.SourceName + " back to " + move.DestinationName);
+    player.LastMoveFrom = 0;
 
     if (DebugLevel >= 8) DebugUnswitch(move.ToString());
 
-    // Delay action until after the player spawns
-    if (player.DelayedMove != null) {
-        CheckAbortMove(name);
-    }
-    player.DelayedMove = move;
+    if (isSQDM || !EnableImmediateUnswitch) {
+        // Delay action until after the player spawns
+        DebugUnswitch("FORBIDDEN: delaying unswitch action until spawn of ^b" + name + "^n from " + move.SourceName + " back to " + move.DestinationName);
 
-    if (!String.IsNullOrEmpty(player.SpawnChatMessage)) {
-        DebugUnswitch("IGNORED: previously delayed spawn message for ^b" + name + "^n: " + player.SpawnChatMessage);
-        SetSpawnMessages(name, String.Empty, String.Empty, false);
-    }
+        if (player.DelayedMove != null) {
+            CheckAbortMove(name);
+        }
+        player.DelayedMove = move;
 
-    //KillAndMoveAsync(move);
+        if (!String.IsNullOrEmpty(player.SpawnChatMessage)) {
+            DebugUnswitch("IGNORED: previously delayed spawn message for ^b" + name + "^n: " + player.SpawnChatMessage);
+            SetSpawnMessages(name, String.Empty, String.Empty, false);
+        }
+    } else {
+        // Do the move immediately
+        DebugUnswitch("FORBIDDEN: immediately unswitch ^b" + name + "^n from " + move.SourceName + " back to " + move.DestinationName);
+        String log = "^4^bUNSWITCHING^n^0 ^b" + name + "^n from " + move.SourceName + " back to " + move.DestinationName;
+        log = (EnableLoggingOnlyMode) ? "^9(SIMULATING)^0 " + log : log;
+        DebugWrite(log, 3);
+        StartMoveImmediate(move, true);
+    }
 
     return false;
 }
@@ -5266,6 +5292,7 @@ public bool CheckForEquality(PROTObalancer rhs) {
      && this.ForbidSwitchToWinningTeam == rhs.ForbidSwitchToWinningTeam 
      && this.ForbidSwitchToBiggestTeam == rhs.ForbidSwitchToBiggestTeam
      && this.ForbidSwitchAfterDispersal == rhs.ForbidSwitchAfterDispersal
+     && this.EnableImmediateUnswitch == rhs.EnableImmediateUnswitch
     );
 }
 
@@ -7017,6 +7044,7 @@ static class PROTObalancerUtils {
             lhs.ForbidSwitchToWinningTeam = rhs.ForbidSwitchToWinningTeam;
             lhs.ForbidSwitchToBiggestTeam = rhs.ForbidSwitchToBiggestTeam;
             lhs.ForbidSwitchAfterDispersal = rhs.ForbidSwitchAfterDispersal;
+            lhs.EnableImmediateUnswitch = rhs.EnableImmediateUnswitch;
 
         } catch (Exception) { }
     }
@@ -7320,7 +7348,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Quiet Mode</b>: True or False, default False. If False, chat messages are sent to all players and yells are sent to the player being moved. If True, chat and yell messages are only sent to the player being moved.</p>
 
-<p><b>Yell Duration Seconds</b>: A number greater than 0 and less than or equal to 20, or 0. If set to 0, all yells are disabled, even if they have non-empty messages. All yells have the same duration.</p>
+<p><b>Yell Duration Seconds</b>: A number greater than 0 and less than or equal to 20, or 0. If set to 0, all yells are disabled, even if they have non-empty messages. All yells have the same duration. This duration also controls the delay between when a player is warned and when the are unswitched (see Section 6).</p>
 
 <p><b>Moved For Balance</b>: Message sent after a player is moved for balance.</p>
 
@@ -7342,12 +7370,8 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>After Unswitching</b>: Message sent after a player is killed by admin and moved back to the team he was assigned to. This message is sent after the <b>Detected Bad Team Switch</b> message.</p>
 
-<p><b>Detected Switch By Dispersal Player</b>: Message sent after a player on the <b>Disperse Evenly List</b> switches teams from the one he was sent to by the plugin. The message is sent before the player is sent back to his original team.</p>
-
-<p><b>After Unswitching Dispersal Player</b>: Message sent after a player on the <b>Disperse Evenly List</b> is killed by admin and moved back to the team he was assigned to. This message is sent after the <b>Detected Switch By Dispersal Player</b> message.</p>
-
 <h3>6 - Unswitcher</h3>
-<p>This section controls the unswitcher. Every time a player tries to switch to a different team, the unswitcher checks if the switch is allowed or forbidden. If forbidden, when the player spawns, he is warned (see Section 5), then he is admin killed, then moved back to his original team. Note that setting any of these settings to False will reduce the effectiveness of the balancer and unstacker.</p>
+<p>This section controls the unswitcher. Every time a player tries to switch to a different team, the unswitcher checks if the switch is allowed or forbidden. If forbidden, when the player spawns, he is warned (see Section 5), then he is admin killed, then moved back to his original team. Note that setting any of the <b>Forbid ...</b> settings to False will reduce the effectiveness of the balancer and unstacker.</p>
 
 <p><b>Forbid Switch After Autobalance</b>: True or False, default True. If True, after a player is moved to a different team for balance or unstacking, this setting forbids them from moving back to their original team. If False, they may move back to their original team.</p>
 
@@ -7356,6 +7380,8 @@ For each phase, there are three unstacking settings for server population: Low, 
 <p><b>Forbid Switch To Biggest Team</b>: True or False, default True. If True, a player is not allowed to switch to the biggest team. If False, they are allowed.</p>
 
 <p><b>Forbid Switch After Dispersal</b>: True or False, default True. If True, after a player is moved to a different team due to <b>Disperse Evenly For Rank</b> or the <b>Disperse Evenly List</b>, this setting forbids them from moving back to their original team. If False, they may move back to their original team.</p>
+
+<p><b>Enable Immediate Unswitch</b>: True or False, default True. If True, if a player tries to make a forbidden team switch, the plugin will immediately move them back without any warning. They will only see the <b>After Unswitching</b> message(s). If False, the plugin will wait until the player spawns, it will then post the <b>Detected Bad Team Switch</b> message(s), it will wait <b>Yell Duration Seconds</b> seconds, then it will admin kill the player and move him back. <b>NOTE: Does not apply to SQDM. SQDM is always treated as this were set to False.</b></p>
 
 <h3>7 - TBD</h3>
 <p>There is no section 7. This section is reserved for future use.</p>
