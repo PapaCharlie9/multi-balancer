@@ -871,6 +871,11 @@ public PROTObalancer(PresetItems preset) : this() {
          // EarlyPhaseBalanceSpeed = new Speed[3]   {     Speed.Fast, Speed.Adaptive, Speed.Adaptive};
          // MidPhaseBalanceSpeed = new Speed[3]     {     Speed.Fast, Speed.Adaptive, Speed.Adaptive};
          // LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Stop,     Speed.Stop,     Speed.Stop};
+         // ForbidSwitchAfterAutobalance = true;
+         // ForbidSwitchToWinningTeam = true;
+         // ForbidSwitchToBiggestTeam = true;
+         // ForbidSwitchAfterDispersal = true;
+         // 
          // foreach (String mode in fPerMode.Keys) {
          //      fPerMode[mode].PercentOfTopOfTeamIsStrong = 50;
          // }
@@ -893,6 +898,11 @@ public PROTObalancer(PresetItems preset) : this() {
             EarlyPhaseBalanceSpeed = new Speed[3]   {     Speed.Fast,     Speed.Fast,     Speed.Fast};
             MidPhaseBalanceSpeed = new Speed[3]     {     Speed.Fast,     Speed.Fast,     Speed.Fast};
             LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Fast,     Speed.Fast,     Speed.Fast};
+
+            ForbidSwitchAfterAutobalance = true;
+            ForbidSwitchToWinningTeam = true;
+            ForbidSwitchToBiggestTeam = true;
+            ForbidSwitchAfterDispersal = true;
 
             // Does not count for automatic detection of preset
             foreach (String mode in fPerMode.Keys) {
@@ -918,6 +928,11 @@ public PROTObalancer(PresetItems preset) : this() {
             EarlyPhaseBalanceSpeed = new Speed[3]   {     Speed.Slow,     Speed.Slow,     Speed.Slow};
             MidPhaseBalanceSpeed = new Speed[3]     {     Speed.Slow,     Speed.Slow,     Speed.Slow};
             LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Stop,     Speed.Stop,     Speed.Stop};
+
+            ForbidSwitchAfterAutobalance = true;
+            ForbidSwitchToWinningTeam = true;
+            ForbidSwitchToBiggestTeam = true;
+            ForbidSwitchAfterDispersal = false;
 
             // Does not count for automatic detection of preset
             foreach (String mode in fPerMode.Keys) {
@@ -945,6 +960,11 @@ public PROTObalancer(PresetItems preset) : this() {
             MidPhaseBalanceSpeed = new Speed[3]     { Speed.Adaptive, Speed.Adaptive, Speed.Adaptive};
             LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Stop,     Speed.Stop,     Speed.Stop};
 
+            ForbidSwitchAfterAutobalance = true;
+            ForbidSwitchToWinningTeam = true;
+            ForbidSwitchToBiggestTeam = false;
+            ForbidSwitchAfterDispersal = true;
+
             foreach (String mode in fPerMode.Keys) {
                 fPerMode[mode].PercentOfTopOfTeamIsStrong = 25;
             }
@@ -968,6 +988,11 @@ public PROTObalancer(PresetItems preset) : this() {
             EarlyPhaseBalanceSpeed = new Speed[3]   {     Speed.Slow, Speed.Adaptive,     Speed.Slow};
             MidPhaseBalanceSpeed = new Speed[3]     {     Speed.Slow, Speed.Adaptive,     Speed.Slow};
             LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Stop,     Speed.Stop,     Speed.Stop};
+
+            ForbidSwitchAfterAutobalance = false;
+            ForbidSwitchToWinningTeam = true;
+            ForbidSwitchToBiggestTeam = false;
+            ForbidSwitchAfterDispersal = false;
 
             foreach (String mode in fPerMode.Keys) {
                 fPerMode[mode].PercentOfTopOfTeamIsStrong = 5;
@@ -993,6 +1018,11 @@ public PROTObalancer(PresetItems preset) : this() {
             MidPhaseBalanceSpeed = new Speed[3]     { Speed.Adaptive, Speed.Adaptive, Speed.Adaptive};
             LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Stop,     Speed.Stop,     Speed.Stop};
 
+            ForbidSwitchAfterAutobalance = true;
+            ForbidSwitchToWinningTeam = false;
+            ForbidSwitchToBiggestTeam = false;
+            ForbidSwitchAfterDispersal = false;
+
             foreach (String mode in fPerMode.Keys) {
                 fPerMode[mode].PercentOfTopOfTeamIsStrong = 0;
             }
@@ -1016,6 +1046,11 @@ public PROTObalancer(PresetItems preset) : this() {
             EarlyPhaseBalanceSpeed = new Speed[3]   {     Speed.Unstack,     Speed.Unstack,     Speed.Unstack};
             MidPhaseBalanceSpeed = new Speed[3]     {     Speed.Unstack,     Speed.Unstack,     Speed.Unstack};
             LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Unstack,     Speed.Unstack,     Speed.Unstack};
+
+            ForbidSwitchAfterAutobalance = false;
+            ForbidSwitchToWinningTeam = true;
+            ForbidSwitchToBiggestTeam = false;
+            ForbidSwitchAfterDispersal = true;
 
             // Does not count for automatic detection of preset
             foreach (String mode in fPerMode.Keys) {
@@ -1682,7 +1717,7 @@ private void CommandToLog(string cmd) {
         Match m = null;
         ConsoleDump("Command: " + cmd);
 
-        m = Regex.Match(cmd, @"^gen\s+((?:cs|cl|ctf|gm|r|sqdm|sr|s|tdm|u)|[123459])", RegexOptions.IgnoreCase);
+        m = Regex.Match(cmd, @"^gen\s+((?:cs|cl|ctf|gm|r|sqdm|sr|s|tdm|u)|[1234569])", RegexOptions.IgnoreCase);
         if (m.Success) {
             String what = m.Groups[1].Value;
             int section = 8;
@@ -2341,7 +2376,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
         // Show final status 
         if (fFinalStatus != null) {
             try {
-                DebugWrite("^bFINAL STATUS FOR PREVIOUS ROUND:^n", 3);
+                DebugWrite("^bFINAL STATUS FOR PREVIOUS ROUND:^n", 2);
                 foreach (TeamScore ts in fFinalStatus) {
                     if (ts.TeamID >= fTickets.Length) break;
                     fTickets[ts.TeamID] = (ts.Score == 1) ? 0 : ts.Score; // fix rounding
@@ -5227,6 +5262,10 @@ public bool CheckForEquality(PROTObalancer rhs) {
      && PROTObalancerUtils.EqualArrays(this.EarlyPhaseBalanceSpeed, rhs.EarlyPhaseBalanceSpeed)
      && PROTObalancerUtils.EqualArrays(this.MidPhaseBalanceSpeed, rhs.MidPhaseBalanceSpeed)
      && PROTObalancerUtils.EqualArrays(this.LatePhaseBalanceSpeed, rhs.LatePhaseBalanceSpeed)
+     && this.ForbidSwitchAfterAutobalance == rhs.ForbidSwitchAfterAutobalance 
+     && this.ForbidSwitchToWinningTeam == rhs.ForbidSwitchToWinningTeam 
+     && this.ForbidSwitchToBiggestTeam == rhs.ForbidSwitchToBiggestTeam
+     && this.ForbidSwitchAfterDispersal == rhs.ForbidSwitchAfterDispersal
     );
 }
 
@@ -6868,7 +6907,7 @@ private void LogStatus(bool isFinal) {
     String rt = GetTimeInRoundString();
 
     DebugWrite("^bStatus^n: Plugin state = " + fPluginState + ", game state = " + fGameState + ", Enable Logging Only Mode = " + EnableLoggingOnlyMode, 4);
-    int useLevel = (isFinal) ? 1 : 3;
+    int useLevel = (isFinal) ? 2 : 3;
     if (IsRush()) {
         DebugWrite("^bStatus^n: Map = " + FriendlyMap + ", mode = " + FriendlyMode + ", stage = " + fRushStage + ", time in round = " + rt + ", tickets = " + tm, useLevel);
     } else if (IsCTF()) {
@@ -6973,6 +7012,12 @@ static class PROTObalancerUtils {
             lhs.EarlyPhaseBalanceSpeed = rhs.EarlyPhaseBalanceSpeed;
             lhs.MidPhaseBalanceSpeed = rhs.MidPhaseBalanceSpeed;
             lhs.LatePhaseBalanceSpeed = rhs.LatePhaseBalanceSpeed;
+
+            lhs.ForbidSwitchAfterAutobalance = rhs.ForbidSwitchAfterAutobalance;
+            lhs.ForbidSwitchToWinningTeam = rhs.ForbidSwitchToWinningTeam;
+            lhs.ForbidSwitchToBiggestTeam = rhs.ForbidSwitchToBiggestTeam;
+            lhs.ForbidSwitchAfterDispersal = rhs.ForbidSwitchAfterDispersal;
+
         } catch (Exception) { }
     }
     
