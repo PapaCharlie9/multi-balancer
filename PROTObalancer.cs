@@ -1942,8 +1942,8 @@ private void CommandToLog(string cmd) {
         }
 
         if (Regex.Match(cmd, @"help", RegexOptions.IgnoreCase).Success || !String.IsNullOrEmpty(cmd)) {
-            ConsoleDump("^1^bgen^n ^imode^n: Generate settings listing for ^imode^n (one of: cs, cl, ctf, gm, r, sqdm, sr, s, tdm, u)");
-            ConsoleDump("^1^bgen^n ^isection^n: Generate settings listing for ^isection^n (1-5,9)");
+            ConsoleDump("^1^bgen^n ^imode^n^0: Generate settings listing for ^imode^n (one of: cs, cl, ctf, gm, r, sqdm, sr, s, tdm, u)");
+            ConsoleDump("^1^bgen^n ^isection^n^0: Generate settings listing for ^isection^n (1-6,9)");
             ConsoleDump("^1^bmodes^n^0: Examine the known game modes");
             ConsoleDump("^1^brage^n^0: Examine rage quit statistics");
             ConsoleDump("^1^breset settings^n^0: Reset all plugin settings to default, except for ^bWhitelist^n and ^bDisperse Evenly List^n");
@@ -5717,6 +5717,14 @@ private int ToTeam(String name, int fromTeam, bool isReassign, out int diff, ref
     // diff already set by AnalyzeTeams
     if (mustMove) {
         int disTeam = ToTeamByDispersal(name, fromTeam, byId);
+
+        if (disTeam == -1) {
+            // this player moved more than other dispersals, skip
+            DebugBalance("Exempting dispersal player ^b" + name + "^n, moved more than others");
+            // leave mustMove set to true so that caller does the right thing
+            return 0;
+        }
+
         if (disTeam != 0) {
             DebugWrite("^9ToTeam for ^b" + name + "^n: dispersal returned team " + disTeam, 7);
             return disTeam;
@@ -5825,6 +5833,7 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] byI
     if (perMode.isDefault) return 0;
 
     bool isSQDM = IsSQDM();
+    bool mostMoves = true;
 
     bool isDispersalByRank = IsRankDispersal(player);
     List<String> dispersalList = null;
@@ -5854,8 +5863,18 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] byI
                 || (!String.IsNullOrEmpty(et) && dispersalList.Contains(et))) {
                     usualSuspects[i] = usualSuspects[i] + 1;
                     grandTotal = grandTotal + 1;
+
+                    // Make sure this player hasn't been moved more than any other dispersal player
+                    if (p.MovesRound > player.MovesRound) {
+                        mostMoves = false;
+                    }
                 }
             }
+        }
+
+        if (mostMoves) {
+            DebugWrite("ToTeamByDispersal List: ^b" + player.Name + "^n moved more than other dispersals (" + player.MovesRound + " times), skipping!", 5);
+            return -1;
         }
 
         String an = usualSuspects[1] + "/" + usualSuspects[2];
@@ -5897,8 +5916,18 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] byI
                 if (p.Rank >= perMode.DisperseEvenlyForRank) {
                     rankers[i] = rankers[i] + 1;
                     grandTotal = grandTotal + 1;
+
+                    // Make sure this player hasn't been moved more than any other dispersal player
+                    if (p.MovesRound > player.MovesRound) {
+                        mostMoves = false;
+                    }
                 }
             }
+        }
+
+        if (mostMoves) {
+            DebugWrite("ToTeamByDispersal Rank: ^b" + player.Name + "^n moved more than other dispersals (" + player.MovesRound + " times), skipping!", 5);
+            return -1;
         }
 
         String a = rankers[1] + "/" + rankers[2];
@@ -7332,7 +7361,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Keep Clan Tags In Same Squad</b>: True or False, default True. If True, a player will be excluded from being moved for scrambling if they are a member of a squad that has at least one other player in it with the same clan tag.</p>
 
-<p><b>Delay Seconds</b>: Number of seconds greater than or equal to 0 and less than or equal to 43, default 30. Number of seconds to wait after the round ends before doing the scramble. If done too soon, many players may leave after the scramble, resulting in wildly unequal teams. If done too late, the next level may load and the game server will swap players to opposite teams, interefering with the scramble in progress, which may result in wildly unequal teams.</p>
+<p><b>Delay Seconds</b>: Number of seconds greater than or equal to 0 and less than or equal to 43, default 30. Number of seconds to wait after the round ends before doing the scramble. If done too soon, many players may leave after the scramble, resulting in wildly unequal teams. If done too late, the next level may load and the game server will swap players to opposite teams, interfering with the scramble in progress, which may result in wildly unequal teams.</p>
 
 <h3>5 - Messages</h3>
 <p>These settings define all of the chat and yell messages that are sent to players when various actions are taken by the plugin. All of the messages are in pairs, one for chat, one for yell. If both the chat and the yell messages are defined and <b>Quiet&nbsp;Mode</b> is not set to True, both will be sent at the same time. The message setting descriptions apply to both chat and yell. To disable a chat message for a specific actcion, delete the message and leave it empty. To disable theyell message for a specific action, delete the message and leave it empty.</p>
@@ -7354,7 +7383,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Moved To Unstack</b>: Message sent after a player is moved to unstack teams.</p>
 
-<p><b>Detected Bad Team Switch</b>: Message sent after a player switches from the losing team to the winning team, or from the smallest team to the biggest team, or after being moved by the plugin for balance or unstacking. The message is sent before player is sent back to his original team.</p>
+<p><b>Detected Bad Team Switch</b>: Message sent after a player tries to make a forbidden team switch if [b]Enable Immediate Unswitch[/b] is set to False (see Section 6 below) or mode is Squad Deathmatch. The message is sent before the player is admin killed and sent back to his original team.</p>
 
 <p><b>Bad Because: Moved By Balancer</b>: Replacement for %reason% if the player tried to move to a different team from the one the plugin have moved them to for balance or unstacking.</p>
 
@@ -7371,7 +7400,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 <p><b>After Unswitching</b>: Message sent after a player is killed by admin and moved back to the team he was assigned to. This message is sent after the <b>Detected Bad Team Switch</b> message.</p>
 
 <h3>6 - Unswitcher</h3>
-<p>This section controls the unswitcher. Every time a player tries to switch to a different team, the unswitcher checks if the switch is allowed or forbidden. If forbidden, when the player spawns, he is warned (see Section 5), then he is admin killed, then moved back to his original team. Note that setting any of the <b>Forbid ...</b> settings to False will reduce the effectiveness of the balancer and unstacker.</p>
+<p>This section controls the unswitcher. Every time a player tries to switch to a different team, the unswitcher checks if the switch is allowed or forbidden. If forbidden, he will be moved back by the plugin (see <b>Enable Immediate Unswitch</b> for details about how). Note that setting any of the <b>Forbid ...</b> settings to False will reduce the effectiveness of the balancer and unstacker.</p>
 
 <p><b>Forbid Switch After Autobalance</b>: True or False, default True. If True, after a player is moved to a different team for balance or unstacking, this setting forbids them from moving back to their original team. If False, they may move back to their original team.</p>
 
