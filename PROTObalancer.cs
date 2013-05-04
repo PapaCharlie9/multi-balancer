@@ -1081,7 +1081,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "0.0.0.17";
+    return "0.0.0.18";
 }
 
 public String GetPluginAuthor() {
@@ -7177,8 +7177,8 @@ static class PROTObalancerUtils {
     public const String HTML_DOC = @"
 <h1>Multi-Balancer &amp; Unstacker, including SQDM</h1>
 <h3>Acknowledgments</h3>
-<p>This plugin would not have been possible without the help and support of these individuals and communiites:<br></br>
-<small>[C2C]Blitz, [FTB]guapoloko, [Xtra]HexaCanon, [11]EBassie, Firejack, [IAF]SDS, dyn, Jaythegreat1, ADKGamers, AgentHawk, TreeSaint, Taxez, PatPgtips, Hutchew, LumpyNutz, popbndr, tarreltje, 24Flat ... and many others</small></p>
+<p>This plugin would not have been possible without the help and support of these individuals and communities:<br></br>
+<small>myrcon.com staff, [C2C]Blitz, [FTB]guapoloko, [Xtra]HexaCanon, [11]EBassie, Firejack, [IAF]SDS, dyn, Jaythegreat1, ADKGamers, AgentHawk, TreeSaint, Taxez, PatPgtips, Hutchew, LumpyNutz, popbndr, tarreltje, 24Flat, [Oaks]kcuestag ... and many others</small></p>
 
 <p>For BF3, this plugin does live round team balancing and unstacking for all game modes, including Squad Deathmatch (SQDM).</p>
 
@@ -7484,7 +7484,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Show In Log</b>: Special commands may be typed in this text area to display information in plugin.log.</p>
 
-<p><b>Log Chat</b>: True or False, default True. All chat and yell messages sent by the plugin will be logged in chat.log.</p>
+<p><b>Log Chat</b>: True or False, default True. If set to True, all chat messages sent by the plugin will be logged in chat.log.</p>
 
 <p><b>Enable Logging Only Mode</b>: True or False, default False. If set to True, the plugin will only log messages. No move, chat or yell commands will be sent to the game server. If set to False, the plugin will operate normally.</p>
 
