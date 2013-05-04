@@ -2394,6 +2394,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
                     fTickets[ts.TeamID] = (ts.Score == 1) ? 0 : ts.Score; // fix rounding
                 }
                 LogStatus(true);
+                DebugWrite("+------------------------------------------------+", 2);
             } catch (Exception) {}
             fFinalStatus = null;
         }
@@ -6938,7 +6939,7 @@ private void LogStatus(bool isFinal) {
         }
     }
 
-    if (isFinal || DebugLevel == 3 || DebugLevel == 4) ConsoleWrite("+------------------------------------------------+");
+    if (!isFinal && (DebugLevel == 3 || DebugLevel == 4)) ConsoleWrite("+------------------------------------------------+");
 
     Speed balanceSpeed = Speed.Adaptive;
 
