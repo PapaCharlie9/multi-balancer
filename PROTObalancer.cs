@@ -6814,9 +6814,9 @@ public void CheckForPluginUpdate() {
 	try {
 		XmlDocument xml = new XmlDocument();
         try {
-            xml.Load("http://myrcon.com/procon/plugins/plugin/PROTObalancer");
+            xml.Load("https://myrcon.com/procon/plugins/plugin/PROTObalancer");
             //WebClient c = new WebClient();
-            //String x = c.DownloadString("http://myrcon.com/procon/plugins/plugin/PROTObalancer");
+            //String x = c.DownloadString("https://myrcon.com/procon/plugins/plugin/PROTObalancer");
             //xml.LoadXml(x);
         } catch (System.Security.SecurityException e) {
             if (DebugLevel >= 8) ConsoleException(e);
