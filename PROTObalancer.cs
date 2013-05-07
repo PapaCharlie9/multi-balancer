@@ -88,7 +88,7 @@ public class PROTObalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     public const double MODEL_TIMEOUT = 24*60; // in minutes
 
-    public const int CRASH_COUNT_HEURISTIC = 6; // player count difference signifies a crash
+    public const int CRASH_COUNT_HEURISTIC = 24; // player count difference signifies a crash
 
     public const int MIN_UPDATE_USAGE_COUNT = 10; // minimum number of plugin updates in use
 
@@ -2333,7 +2333,9 @@ public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subs
         */
         if (fServerCrashed 
         || fGotVersion 
-        || (players.Count + CRASH_COUNT_HEURISTIC) <  TotalPlayerCount 
+        || (TotalPlayerCount >= 16 
+            && TotalPlayerCount > players.Count 
+            && (TotalPlayerCount - players.Count) >= Math.Min(CRASH_COUNT_HEURISTIC, TotalPlayerCount)) 
         || TotalPlayerCount > MaximumServerSize
         || (fTimeOutOfJoint > 0 && GetTimeInRoundMinutes() - fTimeOutOfJoint > 3.0))  {
             fServerCrashed = false;
@@ -2404,7 +2406,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
         }
     
         // Check for server crash
-        if (fServerUptime > 0 && fServerUptime > serverInfo.ServerUptime) {
+        if (fServerUptime > 0 && fServerUptime > serverInfo.ServerUptime + 2) { // +2 secs for rounding error in server!
             fServerCrashed = true;
         }
         fServerInfo = serverInfo;
