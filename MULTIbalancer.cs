@@ -781,7 +781,7 @@ public MULTIbalancer() {
     DebugLevel = 2;
     MaximumServerSize = 64;
     EnableBattlelogRequests = true;
-    MaximumRequestRate = 2; // in 20 seconds
+    MaximumRequestRate = 10; // in 20 seconds
     WaitTimeout = 30; // seconds
     MaxTeamSwitchesByStrongPlayers = 1;
     MaxTeamSwitchesByWeakPlayers = 2;
@@ -1534,7 +1534,7 @@ private bool ValidateSettings(String strVariable, String strValue) {
 
         if (strVariable.Contains("Debug Level")) ValidateIntRange(ref DebugLevel, "Debug Level", 0, 9, 2, false);
         if (strVariable.Contains("Maximum Server Size")) ValidateIntRange(ref MaximumServerSize, "Maximum Server Size", 8, 64, 64, false);
-        if (strVariable.Contains("Maximum Request Rate")) ValidateIntRange(ref MaximumRequestRate, "Maximum Request Rate", 1, 15, 2, true); // in 20 seconds
+        if (strVariable.Contains("Maximum Request Rate")) ValidateIntRange(ref MaximumRequestRate, "Maximum Request Rate", 1, 15, 10, true); // in 20 seconds
         if (strVariable.Contains("Wait Timeout")) ValidateDoubleRange(ref WaitTimeout, "Wait Timeout", 15, 90, 30, false);
         if (strVariable.Contains("Unlimited Team Switching During First Minutes Of Round")) ValidateDouble(ref UnlimitedTeamSwitchingDuringFirstMinutesOfRound, "Unlimited Team Switching During First Minutes Of Round", 5.0);
         if (strVariable.Contains("Seconds Until Adaptive Speed Becomes Fast")) ValidateDoubleRange(ref SecondsUntilAdaptiveSpeedBecomesFast, "Seconds Until Adaptive Speed Becomes Fast", MIN_ADAPT_FAST, 999999, 3*60, true); // 3 minutes default
@@ -5109,13 +5109,13 @@ private bool FetchWebPage(ref String result, String url) {
         ret = true;
     } catch (WebException e) {
         if (e.Status.Equals(WebExceptionStatus.Timeout)) {
-            if (DebugLevel >= 5) DebugFetch("EXCEPTION: HTTP request timed-out");
+            if (DebugLevel >= 3) DebugFetch("EXCEPTION: HTTP request timed-out");
         } else {
-            if (DebugLevel >= 5) DebugFetch("EXCEPTION: " + e.Message);
+            if (DebugLevel >= 3) DebugFetch("EXCEPTION: " + e.Message);
         }
         ret = false;
     } catch (Exception ae) {
-        if (DebugLevel >= 5) DebugFetch("EXCEPTION: " + ae.Message);
+        if (DebugLevel >= 3) DebugFetch("EXCEPTION: " + ae.Message);
         ret = false;
     }
     return ret;
@@ -7304,7 +7304,7 @@ static class MULTIbalancerUtils {
 
 <p><b>Enable Battlelog Requests</b>: True or False, default True. Enables making requests to Battlelog (uses BattlelogCache if available). Used to obtain clan tag for players.</p>
 
-<p><b>Maximum Request Rate</b>: Number from 1 to 15, default 2. If <b>Enable Battlelog Requests</b> is set to True, defines the maximum number of Battlelog requests that are sent every 20 seconds.</p>
+<p><b>Maximum Request Rate</b>: Number from 1 to 15, default 10. If <b>Enable Battlelog Requests</b> is set to True, defines the maximum number of Battlelog requests that are sent every 20 seconds.</p>
 
 <p><b>Wait Timeout</b>: Number from 15 to 90, default 30. If <b>Enable Battlelog Requests</b> is set to True, defines the maximum number of seconds to wait for a reply from Battlelog or BattlelogCache before giving up.</p>
 
