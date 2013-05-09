@@ -7226,7 +7226,9 @@ static class MULTIbalancerUtils {
 
 <p>2) Review plugin section <b>5. Messages</b> and change any messages you don't like.</p>
 
-<p>3) That's it! You are good to go.</p>
+<p>3) Find your game mode in Section 8 and review the settings. Adjust the <b>Max Players</b> and <b>Definition Of ...</b> settings as need.</p>
+
+<p>4) That's it! You are good to go.</p>
 
 <h3>Details</h3>
 <p>This plugin provides a rich set of features for a wide variety of team management styles. Some (but not all) of the styles this plugin is designed for are listed below, and you can mix and max these styles depending on the game mode, number of players on the server and whether it is early or late in the round:</p>
