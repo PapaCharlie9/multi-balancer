@@ -1,8 +1,21 @@
-/* MULTIbalancer.cs
+﻿/* MULTIbalancer.cs
 
-by PapaCharlie9@gmail.com
+Copyright 2013, by PapaCharlie9
 
-Free to use as is in any way you want with no warranty.
+Permission is hereby granted, free of charge, to any person or organization
+obtaining a copy of the software and accompanying documentation covered by
+this license (the "Software") to use, reproduce, display, distribute,
+execute, and transmit the Software, and to prepare derivative works of the
+Software, and to permit third-parties to whom the Software is furnished to
+do so, without restriction.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, TITLE AND NON-INFRINGEMENT. IN NO EVENT
+SHALL THE COPYRIGHT HOLDERS OR ANYONE DISTRIBUTING THE SOFTWARE BE LIABLE
+FOR ANY DAMAGES OR OTHER LIABILITY, WHETHER IN CONTRACT, TORT OR OTHERWISE,
+ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
 
 */
 
@@ -20,6 +33,7 @@ using System.Timers;
 using System.Diagnostics;
 using System.ComponentModel;
 using System.Reflection;
+using System.Xml;
 
 using PRoCon.Core;
 using PRoCon.Core.Plugin;
@@ -33,185 +47,672 @@ using PRoCon.Core.Maps;
 namespace PRoConEvents
 {
 
-//Aliases
+/* Aliases */
+
 using EventType = PRoCon.Core.Events.EventType;
 using CapturableEvent = PRoCon.Core.Events.CapturableEvents;
 
-public enum PresetItems { Standard, Aggressive, Passive, Intensify, Retain, None };
-
-public enum BalanceSpeed { Stop, Slow, Adaptive, Fast };
-
-public enum DefineStrong { RoundScore, RoundKDR, RoundKills };
+/* Main Class */
 
 public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
 {
+    /* Enums */
 
-/* Inherited:
-    this.PunkbusterPlayerInfoList = new Dictionary<String, CPunkbusterInfo>();
-    this.FrostbitePlayerInfoList = new Dictionary<String, CPlayerInfo>();
-*/
+    public enum MessageType { Warning, Error, Exception, Normal, Debug };
+    
+    public enum PresetItems { Standard, Aggressive, Passive, Intensify, Retain, BalanceOnly, UnstackOnly, None };
+
+    public enum Speed { Click_Here_For_Speed_Names, Stop, Slow, Adaptive, Fast, Unstack };
+
+    public enum DefineStrong { RoundScore, RoundSPM, RoundKills, RoundKDR, PlayerRank };
+    
+    public enum PluginState { Disabled, JustEnabled, Active, Error, Reconnected };
+    
+    public enum GameState { RoundEnding, RoundStarting, Playing, Warmup, Unknown };
+
+    public enum MoveType { Balance, Unstack, Unswitch };
+
+    public enum ForbidBecause { None, MovedByBalancer, ToWinning, ToBiggest, DisperseByRank, DisperseByList };
+
+    public enum Phase {Early, Mid, Late};
+
+    public enum Population {Low, Medium, High};
+
+    public enum UnstackState {Off, SwappedStrong, SwappedWeak};
+
+    public enum FetchState {New, InQueue, Requesting, Aborted, Succeeded, Failed};
+
+    /* Constants & Statics */
+
+    public const double SWAP_TIMEOUT = 300; // in seconds
+
+    public const double MODEL_TIMEOUT = 24*60; // in minutes
+
+    public const int CRASH_COUNT_HEURISTIC = 24; // player count difference signifies a crash
+
+    public const int MIN_UPDATE_USAGE_COUNT = 10; // minimum number of plugin updates in use
+
+    public const double CHECK_FOR_UPDATES_MINS = 12*60; // 12 hours
+
+    public const double MIN_ADAPT_FAST = 120.0;
+
+    public static String[] TEAM_NAMES = new String[] { "None", "US", "RU" };
+
+    public static String[] RUSH_NAMES = new String[] { "None", "Attacking", "Defending" };
+
+    public static String[] SQUAD_NAMES = new String[] { "None",
+      "Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel",
+      "India", "Juliet", "Kilo", "Lima", "Mike", "November", "Oscar", "Papa",
+      "Quebec", "Romeo", "Sierra", "Tango", "Uniform", "Victor", "Whiskey", "Xray",
+      "Yankee", "Zulu", "Haggard", "Sweetwater", "Preston", "Redford", "Faith", "Celeste"
+    };
+
+    /* Classes */
 
     public class PerModeSettings {
         public PerModeSettings() {}
         
         public PerModeSettings(String simplifiedModeName) {
             DetermineStrongPlayersBy = DefineStrong.RoundScore;
+            PercentOfTopOfTeamIsStrong = 50;
+            DisperseEvenlyForRank = 145;
+            EnableDisperseEvenlyList = false;
+            EnableScrambler = false;
+            isDefault = false;
+            // Rush only
+            Stage1TicketPercentageToUnstackAdjustment = 0;
+            Stage2TicketPercentageToUnstackAdjustment = 0;
+            Stage3TicketPercentageToUnstackAdjustment = 0;
+            Stage4TicketPercentageToUnstackAdjustment = 0;
             
             switch (simplifiedModeName) {
-                case "Conquest":
+                case "Conq Small, Dom, Scav":
+                    MaxPlayers = 32;
+                    CheckTeamStackingAfterFirstMinutes = 10;
+                    MaxUnstackingSwapsPerRound = 6;
+                    NumberOfSwapsPerGroup = 3;
+                    DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
+                    DefinitionOfHighPopulationForPlayers = 28;
+                    DefinitionOfLowPopulationForPlayers = 8;
+                    DefinitionOfEarlyPhaseFromStart = 50; // assuming 200 tickets typical
+                    DefinitionOfLatePhaseFromEnd = 50; // assuming 200 tickets typical
+                    break;
+                case "Conquest Large":
                     MaxPlayers = 64;
-                    EstimatedMaxTickets = 300;
-                    DefinitionOfHighPopulationPlayers = 48;
-                    DefinitionOfLowPopulationPlayers = 16;
-                    DefinitionOfEarlyPhaseTickets = 240;
-                    DefinitionOfLatePhaseTickets = 60;
+                    CheckTeamStackingAfterFirstMinutes = 10;
+                    MaxUnstackingSwapsPerRound = 12;
+                    NumberOfSwapsPerGroup = 3;
+                    DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
+                    DefinitionOfHighPopulationForPlayers = 48;
+                    DefinitionOfLowPopulationForPlayers = 16;
+                    DefinitionOfEarlyPhaseFromStart = 100; // assuming 300 tickets typical
+                    DefinitionOfLatePhaseFromEnd = 100; // assuming 300 tickets typical
+                    break;
+                case "CTF":
+                    MaxPlayers = 64;
+                    CheckTeamStackingAfterFirstMinutes = 5;
+                    MaxUnstackingSwapsPerRound = 12;
+                    NumberOfSwapsPerGroup = 3;
+                    DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
+                    DefinitionOfHighPopulationForPlayers = 48;
+                    DefinitionOfLowPopulationForPlayers = 16;
+                    DefinitionOfEarlyPhaseFromStart = 5; // minutes
+                    DefinitionOfLatePhaseFromEnd = 5; // minutes
                     break;
                 case "Rush":
                     MaxPlayers = 32;
-                    EstimatedMaxTickets = 75;
-                    DefinitionOfHighPopulationPlayers = 24;
-                    DefinitionOfLowPopulationPlayers = 8;
-                    DefinitionOfEarlyPhaseTickets = 60;
-                    DefinitionOfLatePhaseTickets = 15;
-                    break;
-                case "Scavenger":
-                    MaxPlayers = 64;
-                    EstimatedMaxTickets = 300;
-                    DefinitionOfHighPopulationPlayers = 48;
-                    DefinitionOfLowPopulationPlayers = 16;
-                    DefinitionOfEarlyPhaseTickets = 240;
-                    DefinitionOfLatePhaseTickets = 60;
+                    CheckTeamStackingAfterFirstMinutes = 5;
+                    MaxUnstackingSwapsPerRound = 6;
+                    NumberOfSwapsPerGroup = 1;
+                    DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
+                    DefinitionOfHighPopulationForPlayers = 24;
+                    DefinitionOfLowPopulationForPlayers = 8;
+                    DefinitionOfEarlyPhaseFromStart = 25; // assuming 75 tickets typical
+                    DefinitionOfLatePhaseFromEnd = 25; // assuming 75 tickets typical
+                    // Rush only
+                    Stage1TicketPercentageToUnstackAdjustment = 5;
+                    Stage2TicketPercentageToUnstackAdjustment = 30;
+                    Stage3TicketPercentageToUnstackAdjustment = 80;
+                    Stage4TicketPercentageToUnstackAdjustment = -120;
                     break;
                 case "Squad Deathmatch":
                     MaxPlayers = 16;
-                    EstimatedMaxTickets = 100;
-                    DefinitionOfHighPopulationPlayers = 14;
-                    DefinitionOfLowPopulationPlayers = 8;
-                    DefinitionOfEarlyPhaseTickets = 80;
-                    DefinitionOfLatePhaseTickets = 20;
+                    CheckTeamStackingAfterFirstMinutes = 0;
+                    MaxUnstackingSwapsPerRound = 0;
+                    NumberOfSwapsPerGroup = 0;
+                    DelaySecondsBetweenSwapGroups = 60;
+                    DefinitionOfHighPopulationForPlayers = 14;
+                    DefinitionOfLowPopulationForPlayers = 8;
+                    DefinitionOfEarlyPhaseFromStart = 10; // assuming 50 tickets typical
+                    DefinitionOfLatePhaseFromEnd = 10; // assuming 50 tickets typical
                     break;
-                case "Squad Rush":
-                    MaxPlayers = 8;
-                    EstimatedMaxTickets = 20;
-                    DefinitionOfHighPopulationPlayers = 6;
-                    DefinitionOfLowPopulationPlayers = 4;
-                    DefinitionOfEarlyPhaseTickets = 18;
-                    DefinitionOfLatePhaseTickets = 2;
-                    break;
-                case "Tank Superiority":
-                    MaxPlayers = 64;
-                    EstimatedMaxTickets = 200;
-                    DefinitionOfHighPopulationPlayers = 48;
-                    DefinitionOfLowPopulationPlayers = 16;
-                    DefinitionOfEarlyPhaseTickets = 160;
-                    DefinitionOfLatePhaseTickets = 40;
+                case "Superiority":
+                    MaxPlayers = 24;
+                    CheckTeamStackingAfterFirstMinutes = 15;
+                    MaxUnstackingSwapsPerRound = 6;
+                    NumberOfSwapsPerGroup = 3;
+                    DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
+                    DefinitionOfHighPopulationForPlayers = 20;
+                    DefinitionOfLowPopulationForPlayers = 8;
+                    DefinitionOfEarlyPhaseFromStart = 50; // assuming 250 tickets typical
+                    DefinitionOfLatePhaseFromEnd = 50; // assuming 250 tickets typical
                     break;
                 case "Team Deathmatch":
                     MaxPlayers = 64;
-                    EstimatedMaxTickets = 100;
-                    DefinitionOfHighPopulationPlayers = 48;
-                    DefinitionOfLowPopulationPlayers = 16;
-                    DefinitionOfEarlyPhaseTickets = 80;
-                    DefinitionOfLatePhaseTickets = 20;
+                    CheckTeamStackingAfterFirstMinutes = 5;
+                    MaxUnstackingSwapsPerRound = 12;
+                    NumberOfSwapsPerGroup = 2;
+                    DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
+                    DefinitionOfHighPopulationForPlayers = 48;
+                    DefinitionOfLowPopulationForPlayers = 16;
+                    DefinitionOfEarlyPhaseFromStart = 20; // assuming 100 tickets typical
+                    DefinitionOfLatePhaseFromEnd = 20; // assuming 100 tickets typical
                     break;
+                case "Squad Rush":
+                    MaxPlayers = 8;
+                    CheckTeamStackingAfterFirstMinutes = 2;
+                    MaxUnstackingSwapsPerRound = 1;
+                    NumberOfSwapsPerGroup = 1;
+                    DelaySecondsBetweenSwapGroups = 60;
+                    DefinitionOfHighPopulationForPlayers = 6;
+                    DefinitionOfLowPopulationForPlayers = 4;
+                    DefinitionOfEarlyPhaseFromStart = 5; // assuming 20 tickets typical
+                    DefinitionOfLatePhaseFromEnd = 5; // assuming 20 tickets typical
+                    // Rush only
+                    Stage1TicketPercentageToUnstackAdjustment = 5;
+                    Stage2TicketPercentageToUnstackAdjustment = 30;
+                    Stage3TicketPercentageToUnstackAdjustment = 80;
+                    Stage4TicketPercentageToUnstackAdjustment = -120;
+                    break;
+                case "Gun Master":
+                    MaxPlayers = 16;
+                    CheckTeamStackingAfterFirstMinutes = 2;
+                    MaxUnstackingSwapsPerRound = 6;
+                    NumberOfSwapsPerGroup = 1;
+                    DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
+                    DefinitionOfHighPopulationForPlayers = 12;
+                    DefinitionOfLowPopulationForPlayers = 6;
+                    DefinitionOfEarlyPhaseFromStart = 0;
+                    DefinitionOfLatePhaseFromEnd = 0;
+                    break;
+                case "Unknown or New Mode":
                 default:
+                    MaxPlayers = 32;
+                    CheckTeamStackingAfterFirstMinutes = 10;
+                    MaxUnstackingSwapsPerRound = 6;
+                    NumberOfSwapsPerGroup = 3;
+                    DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
+                    DefinitionOfHighPopulationForPlayers = 28;
+                    DefinitionOfLowPopulationForPlayers = 8;
+                    DefinitionOfEarlyPhaseFromStart = 50;
+                    DefinitionOfLatePhaseFromEnd = 50;
                     break;
             }
         }
         
         public int MaxPlayers = 64; // will be corrected later
-        public int EstimatedMaxTickets = 100; // will be corrected later
+        public double CheckTeamStackingAfterFirstMinutes = 10;
+        public int MaxUnstackingSwapsPerRound = 6;
+        public double DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
         public DefineStrong DetermineStrongPlayersBy = DefineStrong.RoundScore;
-        public double DefinitionOfHighPopulationPlayers = 48;
-        public double DefinitionOfLowPopulationPlayers = 16;
-        public double DefinitionOfEarlyPhaseTickets = 80;
-        public double DefinitionOfLatePhaseTickets = 20;
+        public int DefinitionOfHighPopulationForPlayers = 48;
+        public int DefinitionOfLowPopulationForPlayers = 16;
+        public int DefinitionOfEarlyPhaseFromStart = 50;
+        public int DefinitionOfLatePhaseFromEnd = 50;
+        public int DisperseEvenlyForRank = 145;
+        public bool EnableDisperseEvenlyList = false;
+        public double PercentOfTopOfTeamIsStrong = 50;
+        public int NumberOfSwapsPerGroup = 3;
+        public bool EnableScrambler = false;
+
+        // Rush only
+        public double Stage1TicketPercentageToUnstackAdjustment = 0;
+        public double Stage2TicketPercentageToUnstackAdjustment = 0;
+        public double Stage3TicketPercentageToUnstackAdjustment = 0;
+        public double Stage4TicketPercentageToUnstackAdjustment = 0;
         
-        //public double MinTicketsPercentage = 10.0; // TBD
-        public int GoAggressive = 0; // TBD
+        public bool isDefault = true; // not a setting
+    } // end PerModeSettings
+
+    public class FetchInfo {
+        public FetchState State;
+        public DateTime Since;
+        public String RequestType;
+
+        public FetchInfo() {
+            State = FetchState.New;
+            Since = DateTime.Now;
+            RequestType = String.Empty;
+        }
     }
 
-
-    public class PlayerStats {
-        public PlayerStats() {}
+    public class PlayerModel {
+        // Permanent
+        public String Name;
+        public String EAGUID;
         
+        // Updated on events
+        public int Team;
+        public int Squad;
+        public DateTime FirstSeenTimestamp; // on player join or plugin enable
         public DateTime FirstSpawnTimestamp;
-        public DateTime RoundStartTimestamp;
-        public String Tag;
-        public int Score;
-        public int Kills;
-        public int Deaths;
+        public DateTime LastSeenTimestamp;
+        public double ScoreRound;
+        public double KillsRound;
+        public double DeathsRound;
         public int Rounds; // incremented OnRoundOverPlayers
+        public int Rank;
+        public bool IsDeployed;
+        public String SpawnChatMessage;
+        public String SpawnYellMessage;
+        public bool QuietMessage;
+        public MoveInfo DelayedMove;
+        public int LastMoveTo;
+        public int LastMoveFrom;
         
-        public int ScoreTotal; // not including current round
-        public int KillsTotal; // not including current round
-        public int DeathsTotal; // not including current round
-    }
+        // Battlelog
+        public String Tag;
+        public bool TagVerified;
+        public String FullName { get {return (String.IsNullOrEmpty(Tag) ? Name : "[" + Tag + "]" + Name);}}
+        public FetchInfo FetchStatus;
+        
+        // Computed
+        public double KDRRound;
+        public double SPMRound;
+        
+        // Accumulated
+        public double ScoreTotal; // not including current round
+        public double KillsTotal; // not including current round
+        public double DeathsTotal; // not including current round
 
+        //  Per-round state
+        public int MovesRound;
+        public bool MovedByMB;
+        public DateTime MovedTimestamp;
+        
+        public PlayerModel() {
+            Name = null;
+            Team = -1;
+            Squad = -1;
+            EAGUID = String.Empty;
+            FirstSeenTimestamp = DateTime.Now;
+            FirstSpawnTimestamp = DateTime.MinValue;
+            LastSeenTimestamp = DateTime.MinValue;
+            Tag = String.Empty;
+            TagVerified = false;
+            ScoreRound = -1;
+            KillsRound = -1;
+            DeathsRound = -1;
+            Rounds = -1;
+            Rank = -1;
+            KDRRound = -1;
+            SPMRound = -1;
+            ScoreTotal = 0;
+            KillsTotal = 0;
+            DeathsTotal = 0;
+            IsDeployed = false;
+            MovesRound = 0;
+            MovedByMB = false;
+            MovedTimestamp = DateTime.MinValue;
+            SpawnChatMessage = String.Empty;
+            SpawnYellMessage = String.Empty;
+            QuietMessage = false;
+            DelayedMove = null;
+            LastMoveTo = 0;
+            LastMoveFrom = 0;
+            FetchStatus = new FetchInfo();
+        }
+        
+        public PlayerModel(String name, int team) : this() {
+            Name = name;
+            Team = team;
+        }
 
+        public void ResetRound() {
+            ScoreTotal = ScoreTotal + ScoreRound;
+            KillsTotal = KillsTotal + KillsRound;
+            DeathsTotal = DeathsTotal + DeathsRound;
+            Rounds = (Rounds > 0) ? Rounds + 1 : 1;
+
+            ScoreRound = -1;
+            KillsRound = -1;
+            DeathsRound = -1;
+            KDRRound = -1;
+            SPMRound = -1;
+            IsDeployed = false;
+            SpawnChatMessage = String.Empty;
+            SpawnYellMessage = String.Empty;
+            QuietMessage = false;
+            DelayedMove = null;
+            LastMoveTo = 0;
+            LastMoveFrom = 0;
+
+            MovesRound = 0;
+            MovedByMB = false;
+            MovedTimestamp = DateTime.MinValue;
+        }
+    } // end PlayerModel
+
+    class TeamRoster {
+        public int Team = 0; 
+        public List<PlayerModel> Roster = null;
+
+        public TeamRoster(int team, List<PlayerModel> roster) {
+            Team = team;
+            Roster = roster;
+        }
+    } // end TeamList
+
+    public class MoveInfo {
+        public MoveType For = MoveType.Balance;
+        public ForbidBecause Because = ForbidBecause.None;
+        public String Name = String.Empty;
+        public String Tag = String.Empty;
+        public int Source = -1;
+        public String SourceName = String.Empty;
+        public int Destination = -1;
+        public String DestinationName = String.Empty;
+        public String ChatBefore = String.Empty;
+        public String YellBefore = String.Empty;
+        public String ChatAfter = String.Empty;
+        public String YellAfter = String.Empty;
+        public bool aborted = false;
+
+        public MoveInfo() {}
+
+        public MoveInfo(String name, String tag, int fromTeam, String fromName, int toTeam, String toName) : this() {
+            Name = name;
+            Tag = tag;
+            Source = fromTeam;
+            SourceName = (String.IsNullOrEmpty(fromName)) ? fromTeam.ToString() : fromName;
+            Destination = toTeam;
+            DestinationName = (String.IsNullOrEmpty(toName)) ? toTeam.ToString() : toName;
+        }
+
+        public void Format(MULTIbalancer plugin, String fmt, bool isYell, bool isBefore) {
+            String expanded = fmt;
+
+            if (String.IsNullOrEmpty(expanded)) return;
+
+            String reason = String.Empty;
+
+            if (For == MoveType.Unswitch) {
+                switch (this.Because) {
+                    case ForbidBecause.MovedByBalancer:
+                        reason = plugin.BadBecauseMovedByBalancer;
+                        break;
+                    case ForbidBecause.DisperseByList:
+                        reason = plugin.BadBecauseDispersalList;
+                        break;
+                    case ForbidBecause.DisperseByRank:
+                        reason = plugin.BadBecauseRank;
+                        break;
+                    case ForbidBecause.ToBiggest:
+                        reason = plugin.BadBecauseBiggestTeam;
+                        break;
+                    case ForbidBecause.ToWinning:
+                        reason = plugin.BadBecauseWinningTeam;
+                        break;
+                    case ForbidBecause.None:
+                    default:
+                        reason = "(no reason)";
+                        break;
+                }
+
+                if (expanded.Contains("%reason%")) expanded = expanded.Replace("%reason%", reason);
+            }
+
+            if (expanded.Contains("%name%")) expanded = expanded.Replace("%name%", Name);
+            if (expanded.Contains("%tag%")) expanded = expanded.Replace("%tag%", Tag);
+            if (expanded.Contains("%fromTeam%")) expanded = expanded.Replace("%fromTeam%", SourceName);
+            if (expanded.Contains("%toTeam%")) expanded = expanded.Replace("%toTeam%", DestinationName);
+
+            if (isYell) {
+                if (isBefore) {
+                    YellBefore = expanded;
+                } else {
+                    YellAfter = expanded;
+                }
+            } else {
+                if (isBefore) {
+                    ChatBefore = expanded;
+                } else {
+                    ChatAfter = expanded;
+                }
+            }
+        }
+
+        public override String ToString() {
+            String s = "Move(";
+            s += "[" + Tag + "]" + Name + ",";
+            s += For + ",";
+            s += Source + "(" + SourceName + "),";
+            s += Destination + "(" + DestinationName + "),";
+            s += "CB'" + ChatBefore + "',";
+            s += "YB'" + YellBefore + "',";
+            s += "CA'" + ChatAfter + "',";
+            s += "YA'" + YellAfter + "')";
+            return s;
+        }
+    } // end MoveInfo
+
+    public class DelayedRequest {
+        public double MaxDelay; // in seconds
+        public DateTime LastUpdate;
+
+        public DelayedRequest() {
+            MaxDelay = 0;
+            LastUpdate = DateTime.MinValue;
+        }
+
+        public DelayedRequest(double delay, DateTime last) {
+            MaxDelay = delay;
+            LastUpdate = last;
+        }
+    } // end ListPlayersRequest
+
+/* Inherited:
+    this.PunkbusterPlayerInfoList = new Dictionary<String, CPunkbusterInfo>();
+    this.FrostbitePlayerInfoList = new Dictionary<String, CPlayerInfo>();
+*/
+
+// General
 private bool fIsEnabled;
+private bool fFinalizerActive = false;
 private Dictionary<String,String> fModeToSimple = null;
+private Dictionary<String,int> fPendingTeamChange = null;
+private Thread fMoveThread = null;
+private Thread fFetchThread = null;
+private Thread fListPlayersThread = null;
+private Thread fScramblerThread = null;
+private List<String> fReservedSlots = null;
+private bool fGotVersion = false;
+private int fServerUptime = -1;
+private bool fServerCrashed = false; // because fServerUptime >  fServerInfo.ServerUptime
+private DateTime fLastBalancedTimestamp = DateTime.MinValue;
+private DateTime fEnabledTimestamp = DateTime.MinValue;
+private String fLastMsg = null;
+private DateTime fLastVersionCheckTimestamp = DateTime.MinValue;
+private double fTimeOutOfJoint = 0;
+private List<String>[] fDebugScramblerBefore = null;
+private List<String>[] fDebugScramblerAfter = null;
+
+// Data model
+private List<String> fAllPlayers = null;
+private Dictionary<String, PlayerModel> fKnownPlayers = null;
+private PluginState fPluginState;
+private GameState fGameState;
+private CServerInfo fServerInfo;
+private List<PlayerModel> fTeam1 = null;
+private List<PlayerModel> fTeam2 = null;
+private List<PlayerModel> fTeam3 = null;
+private List<PlayerModel> fTeam4 = null;
+private List<String> fUnassigned = null;
+private DateTime fRoundStartTimestamp;
+private Dictionary<String, MoveInfo> fMoving = null;
+private Queue<MoveInfo> fMoveQ = null;
+private List<String> fReassigned = null;
+private int[] fTickets = null;
+private DateTime fListPlayersTimestamp;
+private Queue<DelayedRequest> fListPlayersQ = null;
+private Dictionary<String,String> fFriendlyMaps = null;
+private Dictionary<String,String> fFriendlyModes = null;
+private double fMaxTickets = -1;
+private double fRushMaxTickets = -1; // not normalized
+private List<TeamScore> fFinalStatus = null;
+private bool fIsFullRound = false;
+private UnstackState fUnstackState = UnstackState.Off;
+private DateTime fFullUnstackSwapTimestamp;
+private int fRushStage = 0;
+private double fRushAttackerTickets = 0;
+private List<MoveInfo> fMoveStash = null;
+private int fUnstackGroupCount = 0;
+private Queue<String> fFetchQ = null; // of player names waiting for stats fetching
+private bool fIsCacheEnabled = false;
+private DelayedRequest fScramblerLock = null;
+private int fWinner = 0;
+
+// Operational statistics
+private int fReassignedRound = 0;
+private int fBalancedRound = 0;
+private int fUnstackedRound = 0;
+private int fUnswitchedRound = 0;
+private int fExcludedRound = 0;
+private int fExemptRound = 0;
+private int fFailedRound = 0;
+private int fTotalRound = 0;
+private bool fBalanceIsActive = false;
+private int fRoundsEnabled = 0;
+private int fGrandTotalQuits = 0;
+private int fGrandRageQuits = 0;
+private int fTotalQuits = 0;
+private int fRageQuits = 0;
+
+// Settings support
 private Dictionary<int, Type> fEasyTypeDict = null;
 private Dictionary<int, Type> fBoolDict = null;
 private Dictionary<int, Type> fListStrDict = null;
 private Dictionary<String,PerModeSettings> fPerMode = null;
 
-/* Settings */
+// Settings
+public int DebugLevel;
+public int MaximumServerSize;
+public bool EnableBattlelogRequests;
+public int MaximumRequestRate;
+public double WaitTimeout;
+public int MaxTeamSwitchesByStrongPlayers; // disabled
+public int MaxTeamSwitchesByWeakPlayers; // disabled
+public double UnlimitedTeamSwitchingDuringFirstMinutesOfRound;
+public bool Enable2SlotReserve; // disabled
+public bool EnablerecruitCommand; // disabled
+public bool EnableWhitelistingOfReservedSlotsList;
+public String[] Whitelist;
+public String[] DisperseEvenlyList;
+public PresetItems Preset;
+public double SecondsUntilAdaptiveSpeedBecomesFast;
 
-private int DebugLevel;
-private bool QuietMode;
-private int MaxSlots;
-private int MaxSwitchesStrong;
-private int MaxSwitchesWeak;
-private double FirstMinutesBalancerDisabled;
-private double FirstMinutesAnySwitchingAllowed;
-private bool Enable2SlotReserve;
-private bool Enable_recruit_Command;
-private bool EnableExclusionsWhenBalancingNewPlayers;
-private bool EnableWhitelistingOfReservedSlotsList;
-private String[] Whitelist;
-private String[] Blacklist;
-private PresetItems Preset;
+public bool OnWhitelist;
+public bool TopScorers;
+public bool SameClanTagsInSquad;
+public double MinutesAfterJoining;
+public bool JoinedEarlyPhase; // disabled
+public bool JoinedMidPhase; // disabled
+public bool JoinedLatePhase; // disabled
 
-private bool OnWhitelist;
-private bool TopScorers;
-private bool SameClanTagsInSquad;
-private bool ClanTagFetchPending;
-private double MinutesSinceFirstSpawn;
+public double[] EarlyPhaseTicketPercentageToUnstack;
+public double[] MidPhaseTicketPercentageToUnstack;
+public double[] LatePhaseTicketPercentageToUnstack;
+public Speed SpellingOfSpeedNamesReminder;
+public Speed[] EarlyPhaseBalanceSpeed;
+public Speed[] MidPhaseBalanceSpeed;
+public Speed[] LatePhaseBalanceSpeed;
 
-private double LowPopulationTicketPercentageToUnstack;
-private double MediumPopulationTicketPercentageToUnstack;
-private double HighPopulationTicketPercentageToUnstack;
-private BalanceSpeed LowPopulationBalanceSpeed;
-private BalanceSpeed MediumPopulationBalanceSpeed;
-private BalanceSpeed HighPopulationBalanceSpeed;
+public bool OnlyOnNewMaps; // false means scramble every round
+public double OnlyOnFinalTicketPercentage; // 0 means scramble regardless of final score
+public DefineStrong ScrambleBy;
+public bool KeepClanTagsInSameSquad;
+public double DelaySeconds;
 
-private double EarlyPhaseTicketPercentageToUnstack;
-private double MidPhaseTicketPercentageToUnstack;
-private double LatePhaseTicketPercentageToUnstack;
-private BalanceSpeed EarlyPhaseBalanceSpeed;
-private BalanceSpeed MidPhaseBalanceSpeed;
-private BalanceSpeed LatePhaseBalanceSpeed;
+public bool QuietMode;
+public double YellDurationSeconds;
+public String BadBecauseMovedByBalancer;
+public String BadBecauseWinningTeam;
+public String BadBecauseBiggestTeam;
+public String BadBecauseRank;
+public String BadBecauseDispersalList;
+public String ChatMovedForBalance;
+public String YellMovedForBalance;
+public String ChatMovedToUnstack;
+public String YellMovedToUnstack;
+public String ChatDetectedBadTeamSwitch;
+public String YellDetectedBadTeamSwitch;
+public String ChatDetectedGoodTeamSwitch;
+public String YellDetectedGoodTeamSwitch;
+public String ChatAfterUnswitching;
+public String YellAfterUnswitching;
+public String ShowInLog; // command line to show info in plugin.log
+public bool LogChat;
+public bool EnableLoggingOnlyMode;
 
-private String ChatMovedForBalance;
-private String YellMovedForBalance;
-private String ChatMovedToUnstack;
-private String YellMovedToUnstack;
-private String ChatDetectedSwitchToWinningTeam;
-private String YellDetectedSwitchToWinningTeam;
-private String ChatDetectedSwitchToLosingTeam;
-private String YellDetectedSwitchToLosingTeam;
-private String ChatAfterUnswitching;
-private String YellAfterUnswitching;
+public bool EnableImmediateUnswitch;
+public bool ForbidSwitchAfterAutobalance;
+public bool ForbidSwitchToWinningTeam;
+public bool ForbidSwitchToBiggestTeam;
+public bool ForbidSwitchAfterDispersal;
 
-private String ShowInLog; // command line to show info in plugin.log
-private bool LogChat;
+// Properties
+public int TotalPlayerCount {get{lock (fAllPlayers) {return fAllPlayers.Count;}}}
+public String FriendlyMap { 
+    get {
+        if (fServerInfo == null) return "???";
+        String r = null;
+        return (fFriendlyMaps.TryGetValue(fServerInfo.Map, out r)) ? r : fServerInfo.Map;
+    }
+}
+public String FriendlyMode { 
+    get {
+        if (fServerInfo == null) return "???";
+        String r = null;
+        return (fFriendlyModes.TryGetValue(fServerInfo.GameMode, out r)) ? r : fServerInfo.GameMode;
+    }
+}
+
+
 
 /* Constructor */
 
 public MULTIbalancer() {
     /* Private members */
     fIsEnabled = false;
+    fFinalizerActive = false;
+    fPluginState = PluginState.Disabled;
+    fGameState = GameState.Unknown;
+    fServerInfo = null;
+    fGotVersion = false;
+    fServerUptime = 0;
+    fServerCrashed = false;
+    fDebugScramblerBefore = new List<String>[2]{new List<String>(), new List<String>()};
+    fDebugScramblerAfter = new List<String>[2]{new List<String>(), new List<String>()};
+
+    fBalancedRound = 0;
+    fUnstackedRound = 0;
+    fUnswitchedRound = 0;
+    fExcludedRound = 0;
+    fExemptRound = 0;
+    fFailedRound = 0;
+    fTotalRound = 0;
+    fBalanceIsActive = false;
+    fRoundsEnabled = 0;
+    fGrandTotalQuits = 0;
+    fGrandRageQuits = 0;
+    fTotalQuits = 0;
+    fRageQuits = 0;
+
+    fMoveThread = null;
+    fFetchThread = null;
+    fListPlayersThread = null;
+    fScramblerThread = null;
+    
     fModeToSimple = new Dictionary<String,String>();
 
     fEasyTypeDict = new Dictionary<int, Type>();
@@ -230,72 +731,127 @@ public MULTIbalancer() {
     fBoolDict.Add(1, typeof(bool));
 
     fListStrDict = new Dictionary<int, Type>();
-    fListStrDict.Add(0, typeof(List<String>));
-    fListStrDict.Add(1, typeof(List<string>));
+    fListStrDict.Add(0, typeof(String[]));
     
     fPerMode = new Dictionary<String,PerModeSettings>();
+    
+    fAllPlayers = new List<String>();
+    fKnownPlayers = new Dictionary<String, PlayerModel>();
+    fTeam1 = new List<PlayerModel>();
+    fTeam2 = new List<PlayerModel>();
+    fTeam3 = new List<PlayerModel>();
+    fTeam4 = new List<PlayerModel>();
+    fUnassigned = new List<String>();
+    fRoundStartTimestamp = DateTime.MinValue;
+    fListPlayersTimestamp = DateTime.MinValue;
+    fFullUnstackSwapTimestamp = DateTime.MinValue;
+    fListPlayersQ = new Queue<DelayedRequest>();
+
+    fPendingTeamChange = new Dictionary<String,int>();
+    fMoving = new Dictionary<String, MoveInfo>();
+    fMoveQ = new Queue<MoveInfo>();
+    fReassigned = new List<String>();
+    fReservedSlots = new List<String>();
+    fTickets = new int[5]{0,0,0,0,0};
+    fFriendlyMaps = new Dictionary<String,String>();
+    fFriendlyModes = new Dictionary<String,String>();
+    fMaxTickets = -1;
+    fRushMaxTickets = -1;
+    fLastBalancedTimestamp = DateTime.MinValue;
+    fEnabledTimestamp = DateTime.MinValue;
+    fFinalStatus = null;
+    fIsFullRound = false;
+    fUnstackState = UnstackState.Off;
+    fLastMsg = null;
+    fRushStage = 0;
+    fRushAttackerTickets = 0;
+    fMoveStash = new List<MoveInfo>();
+    fLastVersionCheckTimestamp = DateTime.MinValue;
+    fTimeOutOfJoint = 0;
+    fUnstackGroupCount = 0;
+    fFetchQ = new Queue<String>();
+    fIsCacheEnabled = false;
+    fScramblerLock = new DelayedRequest();
+    fWinner = 0;
     
     /* Settings */
 
     /* ===== SECTION 1 - Settings ===== */
 
     DebugLevel = 2;
-    QuietMode = false; // false: chat is global, true: chat is private. Yells are always private
-    MaxSlots = 64;
-    MaxSwitchesStrong = 1;
-    MaxSwitchesWeak = 2;
-    FirstMinutesBalancerDisabled = 5.0;
-    FirstMinutesAnySwitchingAllowed = 5.0;
+    MaximumServerSize = 64;
+    EnableBattlelogRequests = true;
+    MaximumRequestRate = 2; // in 20 seconds
+    WaitTimeout = 30; // seconds
+    MaxTeamSwitchesByStrongPlayers = 1;
+    MaxTeamSwitchesByWeakPlayers = 2;
+    UnlimitedTeamSwitchingDuringFirstMinutesOfRound = 5.0;
     Enable2SlotReserve = false;
-    Enable_recruit_Command = false;
-    EnableExclusionsWhenBalancingNewPlayers = false;
+    EnablerecruitCommand = false;
     EnableWhitelistingOfReservedSlotsList = true;
     Whitelist = new String[] {"[-- name, tag, or EA_GUID --]"};
-    Blacklist = new String[] {"[-- name, tag, or EA_GUID --]"};
+    DisperseEvenlyList = new String[] {"[-- name, tag, or EA_GUID --]"};
     Preset = PresetItems.Standard;
+    SecondsUntilAdaptiveSpeedBecomesFast = 3*60; // 3 minutes default
     
     /* ===== SECTION 2 - Exclusions ===== */
     
     OnWhitelist = true;
     TopScorers = true;
     SameClanTagsInSquad = true;
-    ClanTagFetchPending = true;
-    MinutesSinceFirstSpawn = 5.0;
+    MinutesAfterJoining = 5;
+    JoinedEarlyPhase = true;
+    JoinedMidPhase = true;
+    JoinedLatePhase = false;
 
-    /* ===== SECTION 3 - Server Population ===== */
 
-    LowPopulationTicketPercentageToUnstack = 120.0;
-    MediumPopulationTicketPercentageToUnstack = 120.0;
-    HighPopulationTicketPercentageToUnstack = 120.0;
+    /* ===== SECTION 3 - Round Phase & Population Settings ===== */
 
-    LowPopulationBalanceSpeed = BalanceSpeed.Adaptive;
-    MediumPopulationBalanceSpeed = BalanceSpeed.Adaptive;
-    HighPopulationBalanceSpeed = BalanceSpeed.Slow;
+    EarlyPhaseTicketPercentageToUnstack = new double[3]         {  0,120,120};
+    MidPhaseTicketPercentageToUnstack = new double[3]           {  0,120,120};
+    LatePhaseTicketPercentageToUnstack = new double[3]          {  0,  0,  0};
+    
+    SpellingOfSpeedNamesReminder = Speed.Click_Here_For_Speed_Names;
 
-    /* ===== SECTION 4 - Round Phase Settings ===== */
+    EarlyPhaseBalanceSpeed = new Speed[3]           {     Speed.Fast, Speed.Adaptive, Speed.Adaptive};
+    MidPhaseBalanceSpeed = new Speed[3]             {     Speed.Fast, Speed.Adaptive, Speed.Adaptive};
+    LatePhaseBalanceSpeed = new Speed[3]            {     Speed.Stop,     Speed.Stop,     Speed.Stop};
+    
+    /* ===== SECTION 4 - Scrambler ===== */
 
-    EarlyPhaseTicketPercentageToUnstack = 120.0;
-    MidPhaseTicketPercentageToUnstack = 120.0;
-    LatePhaseTicketPercentageToUnstack = 0.0;
-
-    EarlyPhaseBalanceSpeed = BalanceSpeed.Adaptive;
-    MidPhaseBalanceSpeed = BalanceSpeed.Adaptive;
-    LatePhaseBalanceSpeed = BalanceSpeed.Slow;
+    OnlyOnNewMaps = true; // false means scramble every round
+    OnlyOnFinalTicketPercentage = 120; // 0 means scramble regardless of final score
+    ScrambleBy = DefineStrong.RoundScore;
+    KeepClanTagsInSameSquad = true;
+    DelaySeconds = 30;
 
     /* ===== SECTION 5 - Messages ===== */
     
-    ChatMovedForBalance = "*** MOVED %p_n% for balance ...";
-    YellMovedForBalance = "Moved %p_n% for balance ...";
-    ChatMovedToUnstack = "*** MOVED %p_n% to unstack teams ...";
-    YellMovedToUnstack = "Moved %p_n% to unstack teams ...";
-    ChatDetectedSwitchToWinningTeam = "%p_n%, the %o_t% needs your help, sending you back ...";
-    YellDetectedSwitchToWinningTeam = "The %o_t% needs your help, sending you back!";
-    ChatDetectedSwitchToLosingTeam = "%p_n%, thanks for helping out the %n_t%!";
-    YellDetectedSwitchToLosingTeam = "Thanks for helping out the %n_t%!";
-    ChatAfterUnswitching = "%p_n%, please stay on the %n_t% for the rest of this round";
-    YellAfterUnswitching = "Please stay on the %n_t% for the rest of this round";
+    QuietMode = false; // false: chat is global, true: chat is private. Yells are always private
+    YellDurationSeconds = 10;
+    BadBecauseMovedByBalancer = "autobalance moved you to the %toTeam% team";
+    BadBecauseWinningTeam = "switching to the winning team is not allowed";
+    BadBecauseBiggestTeam = "switching to the biggest team is not allowed";
+    BadBecauseRank = "this server splits Colonel 100's between teams";
+    BadBecauseDispersalList = "you're on the list of players to split between teams";
+    ChatMovedForBalance = "*** MOVED %name% for balance ...";
+    YellMovedForBalance = "Moved %name% for balance ...";
+    ChatMovedToUnstack = "*** MOVED %name% to unstack teams ...";
+    YellMovedToUnstack = "Moved %name% to unstack teams ...";
+    ChatDetectedBadTeamSwitch = "%name%, you can't switch to team %fromTeam%: %reason%, sending you back ...";
+    YellDetectedBadTeamSwitch = "You can't switch to the %fromTeam% team: %reason%, sending you back!";
+    ChatDetectedGoodTeamSwitch = "%name%, thanks for helping out the %toTeam% team!";
+    YellDetectedGoodTeamSwitch = "Thanks for helping out the %toTeam% team!";
+    ChatAfterUnswitching = "%name%, please stay on the %toTeam% team for the rest of this round";
+    YellAfterUnswitching = "Please stay on the %toTeam% team for the rest of this round";
     
-    /* ===== SECTION 6 - TBD ===== */
+    /* ===== SECTION 6 - Unswitcher ===== */
+
+    EnableImmediateUnswitch = true;
+    ForbidSwitchAfterAutobalance = true;
+    ForbidSwitchToWinningTeam = true;
+    ForbidSwitchToBiggestTeam = true;
+    ForbidSwitchAfterDispersal = true;
 
     /* ===== SECTION 7 - TBD ===== */
 
@@ -305,16 +861,4295 @@ public MULTIbalancer() {
 
     ShowInLog = String.Empty;
     LogChat = true;
+    EnableLoggingOnlyMode = false;
 }
 
-/* Types */
+public MULTIbalancer(PresetItems preset) : this() {
+    switch (preset) {
+        case PresetItems.Standard:
+         // EarlyPhaseTicketPercentageToUnstack = new double[3]     {  0,120,120};
+         // MidPhaseTicketPercentageToUnstack = new double[3]       {  0,120,120};
+         // LatePhaseTicketPercentageToUnstack = new double[3]      {  0,  0,  0};
+         // EarlyPhaseBalanceSpeed = new Speed[3]   {     Speed.Fast, Speed.Adaptive, Speed.Adaptive};
+         // MidPhaseBalanceSpeed = new Speed[3]     {     Speed.Fast, Speed.Adaptive, Speed.Adaptive};
+         // LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Stop,     Speed.Stop,     Speed.Stop};
+         // ForbidSwitchAfterAutobalance = true;
+         // ForbidSwitchToWinningTeam = true;
+         // ForbidSwitchToBiggestTeam = true;
+         // ForbidSwitchAfterDispersal = true;
+         // EnableImmediateUnswitch = true;
+         // 
+         // foreach (String mode in fPerMode.Keys) {
+         //      fPerMode[mode].PercentOfTopOfTeamIsStrong = 50;
+         // }
+            break;
 
-public enum MessageType { Warning, Error, Exception, Normal };
+        case PresetItems.Aggressive:
 
-/* Properties */
+            OnWhitelist = true;
+            TopScorers = false;
+            SameClanTagsInSquad = false;
+            MinutesAfterJoining = 0;
+            JoinedEarlyPhase = false;
+            JoinedMidPhase = false;
+            JoinedLatePhase = false;
 
-public String FormatMessage(String msg, MessageType type) {
+            EarlyPhaseTicketPercentageToUnstack = new double[3]     {110,110,110};
+            MidPhaseTicketPercentageToUnstack = new double[3]       {110,110,110};
+            LatePhaseTicketPercentageToUnstack = new double[3]      {110,110,110};
+
+            EarlyPhaseBalanceSpeed = new Speed[3]   {     Speed.Fast,     Speed.Fast,     Speed.Fast};
+            MidPhaseBalanceSpeed = new Speed[3]     {     Speed.Fast,     Speed.Fast,     Speed.Fast};
+            LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Fast,     Speed.Fast,     Speed.Fast};
+
+            ForbidSwitchAfterAutobalance = true;
+            ForbidSwitchToWinningTeam = true;
+            ForbidSwitchToBiggestTeam = true;
+            ForbidSwitchAfterDispersal = true;
+            EnableImmediateUnswitch = true;
+
+            // Does not count for automatic detection of preset
+            foreach (String mode in fPerMode.Keys) {
+                fPerMode[mode].PercentOfTopOfTeamIsStrong = 50;
+            }
+            
+            break;
+
+        case PresetItems.Passive:
+
+            OnWhitelist = true;
+            TopScorers = true;
+            SameClanTagsInSquad = true;
+            MinutesAfterJoining = 15;
+            JoinedEarlyPhase = true;
+            JoinedMidPhase = true;
+            JoinedLatePhase = true;
+
+            EarlyPhaseTicketPercentageToUnstack = new double[3]     {  0,  0,200};
+            MidPhaseTicketPercentageToUnstack = new double[3]       {  0,200,200};
+            LatePhaseTicketPercentageToUnstack = new double[3]      {  0,  0,  0};
+
+            EarlyPhaseBalanceSpeed = new Speed[3]   {     Speed.Slow,     Speed.Slow,     Speed.Slow};
+            MidPhaseBalanceSpeed = new Speed[3]     {     Speed.Slow,     Speed.Slow,     Speed.Slow};
+            LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Stop,     Speed.Stop,     Speed.Stop};
+
+            ForbidSwitchAfterAutobalance = true;
+            ForbidSwitchToWinningTeam = true;
+            ForbidSwitchToBiggestTeam = true;
+            ForbidSwitchAfterDispersal = false;
+            EnableImmediateUnswitch = false;
+
+            // Does not count for automatic detection of preset
+            foreach (String mode in fPerMode.Keys) {
+                fPerMode[mode].PercentOfTopOfTeamIsStrong = 50;
+            }
+            
+            break;
+
+        case PresetItems.Intensify:
+
+            OnWhitelist = true;
+            TopScorers = true;
+            SameClanTagsInSquad = false;
+            MinutesAfterJoining = 0;
+            JoinedEarlyPhase = false;
+            JoinedMidPhase = false;
+            JoinedLatePhase = true;
+
+            EarlyPhaseTicketPercentageToUnstack = new double[3]     {110,120,120};
+            MidPhaseTicketPercentageToUnstack = new double[3]       {120,120,120};
+            LatePhaseTicketPercentageToUnstack = new double[3]      {  0,  0,  0};
+
+            // TBD: Needs Speed.OverBalance (similar to Fast, but puts more players on losing team)
+            EarlyPhaseBalanceSpeed = new Speed[3]   { Speed.Adaptive, Speed.Adaptive, Speed.Adaptive};
+            MidPhaseBalanceSpeed = new Speed[3]     { Speed.Adaptive, Speed.Adaptive, Speed.Adaptive};
+            LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Stop,     Speed.Stop,     Speed.Stop};
+
+            ForbidSwitchAfterAutobalance = true;
+            ForbidSwitchToWinningTeam = true;
+            ForbidSwitchToBiggestTeam = false;
+            ForbidSwitchAfterDispersal = true;
+            EnableImmediateUnswitch = true;
+
+            foreach (String mode in fPerMode.Keys) {
+                fPerMode[mode].PercentOfTopOfTeamIsStrong = 25;
+            }
+            
+            break;
+
+        case PresetItems.Retain:
+
+            OnWhitelist = true;
+            TopScorers = true;
+            SameClanTagsInSquad = true;
+            MinutesAfterJoining = 15;
+            JoinedEarlyPhase = true;
+            JoinedMidPhase = true;
+            JoinedLatePhase = true;
+
+            EarlyPhaseTicketPercentageToUnstack = new double[3]     {  0,  0,150};
+            MidPhaseTicketPercentageToUnstack = new double[3]       {  0,150,200};
+            LatePhaseTicketPercentageToUnstack = new double[3]      {  0,  0,  0};
+
+            EarlyPhaseBalanceSpeed = new Speed[3]   {     Speed.Slow, Speed.Adaptive,     Speed.Slow};
+            MidPhaseBalanceSpeed = new Speed[3]     {     Speed.Slow, Speed.Adaptive,     Speed.Slow};
+            LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Stop,     Speed.Stop,     Speed.Stop};
+
+            ForbidSwitchAfterAutobalance = false;
+            ForbidSwitchToWinningTeam = true;
+            ForbidSwitchToBiggestTeam = false;
+            ForbidSwitchAfterDispersal = false;
+            EnableImmediateUnswitch = true;
+
+            foreach (String mode in fPerMode.Keys) {
+                fPerMode[mode].PercentOfTopOfTeamIsStrong = 5;
+            }
+            
+            break;
+
+        case PresetItems.BalanceOnly:
+
+            OnWhitelist = true;
+            TopScorers = true;
+            SameClanTagsInSquad = true;
+            MinutesAfterJoining = 5;
+            JoinedEarlyPhase = true;
+            JoinedMidPhase = true;
+            JoinedLatePhase = false;
+
+            EarlyPhaseTicketPercentageToUnstack = new double[3]     {  0,  0,  0};
+            MidPhaseTicketPercentageToUnstack = new double[3]       {  0,  0,  0};
+            LatePhaseTicketPercentageToUnstack = new double[3]      {  0,  0,  0};
+
+            EarlyPhaseBalanceSpeed = new Speed[3]   { Speed.Adaptive, Speed.Adaptive, Speed.Adaptive};
+            MidPhaseBalanceSpeed = new Speed[3]     { Speed.Adaptive, Speed.Adaptive, Speed.Adaptive};
+            LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Stop,     Speed.Stop,     Speed.Stop};
+
+            ForbidSwitchAfterAutobalance = true;
+            ForbidSwitchToWinningTeam = false;
+            ForbidSwitchToBiggestTeam = false;
+            ForbidSwitchAfterDispersal = false;
+            EnableImmediateUnswitch = true;
+
+            foreach (String mode in fPerMode.Keys) {
+                fPerMode[mode].PercentOfTopOfTeamIsStrong = 0;
+            }
+            
+            break;
+
+        case PresetItems.UnstackOnly:
+
+            OnWhitelist = true;
+            TopScorers = true;
+            SameClanTagsInSquad = true;
+            MinutesAfterJoining = 5;
+            JoinedEarlyPhase = true;
+            JoinedMidPhase = true;
+            JoinedLatePhase = false;
+
+            EarlyPhaseTicketPercentageToUnstack = new double[3]     {120,120,120};
+            MidPhaseTicketPercentageToUnstack = new double[3]       {120,120,120};
+            LatePhaseTicketPercentageToUnstack = new double[3]      {  0,  0,  0};
+
+            EarlyPhaseBalanceSpeed = new Speed[3]   {     Speed.Unstack,     Speed.Unstack,     Speed.Unstack};
+            MidPhaseBalanceSpeed = new Speed[3]     {     Speed.Unstack,     Speed.Unstack,     Speed.Unstack};
+            LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Unstack,     Speed.Unstack,     Speed.Unstack};
+
+            ForbidSwitchAfterAutobalance = false;
+            ForbidSwitchToWinningTeam = true;
+            ForbidSwitchToBiggestTeam = false;
+            ForbidSwitchAfterDispersal = true;
+            EnableImmediateUnswitch = true;
+
+            // Does not count for automatic detection of preset
+            foreach (String mode in fPerMode.Keys) {
+                fPerMode[mode].PercentOfTopOfTeamIsStrong = 50;
+            }
+            
+            break;
+
+        case PresetItems.None:
+            break;
+        default:
+            break;
+    }
+}
+
+
+public String GetPluginName() {
+    return "MULTIbalancer";
+}
+
+public String GetPluginVersion() {
+    return "1.0.0.0";
+}
+
+public String GetPluginAuthor() {
+    return "PapaCharlie9";
+}
+
+public String GetPluginWebsite() {
+    return "https://github.com/PapaCharlie9/multi-balancer";
+}
+
+public String GetPluginDescription() {
+    return MULTIbalancerUtils.HTML_DOC;
+}
+
+
+
+
+
+
+
+
+
+/* ======================== SETTINGS ============================= */
+
+
+
+
+
+
+
+
+
+public List<CPluginVariable> GetDisplayPluginVariables() {
+
+
+    List<CPluginVariable> lstReturn = new List<CPluginVariable>();
+
+    try {
+        /* ===== SECTION 0 - Presets ===== */
+        
+        UpdatePresetValue();
+
+        String var_name = "0 - Presets|Use Round Phase, Population and Exclusions preset ";
+        String var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(PresetItems))) + ")";
+        
+        lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(PresetItems), Preset)));
+        
+        /* ===== SECTION 1 - Settings ===== */
+        
+        lstReturn.Add(new CPluginVariable("1 - Settings|Debug Level", DebugLevel.GetType(), DebugLevel));
+
+        lstReturn.Add(new CPluginVariable("1 - Settings|Maximum Server Size", MaximumServerSize.GetType(), MaximumServerSize));
+
+        lstReturn.Add(new CPluginVariable("1 - Settings|Enable Battlelog Requests", EnableBattlelogRequests.GetType(), EnableBattlelogRequests));
+
+        if (EnableBattlelogRequests) {
+            lstReturn.Add(new CPluginVariable("1 - Settings|Maximum Request Rate", MaximumRequestRate.GetType(), MaximumRequestRate));
+
+            lstReturn.Add(new CPluginVariable("1 - Settings|Wait Timeout", WaitTimeout.GetType(), WaitTimeout));
+        }
+
+/*
+        lstReturn.Add(new CPluginVariable("1 - Settings|Max Team Switches By Strong Players", MaxTeamSwitchesByStrongPlayers.GetType(), MaxTeamSwitchesByStrongPlayers));
+
+        lstReturn.Add(new CPluginVariable("1 - Settings|Max Team Switches By Weak Players", MaxTeamSwitchesByWeakPlayers.GetType(), MaxTeamSwitchesByWeakPlayers));
+*/
+
+        lstReturn.Add(new CPluginVariable("1 - Settings|Unlimited Team Switching During First Minutes Of Round", UnlimitedTeamSwitchingDuringFirstMinutesOfRound.GetType(), UnlimitedTeamSwitchingDuringFirstMinutesOfRound));
+
+/*
+        lstReturn.Add(new CPluginVariable("1 - Settings|Enable 2 Slot Reserve", Enable2SlotReserve.GetType(), Enable2SlotReserve));
+
+        lstReturn.Add(new CPluginVariable("1 - Settings|Enable @#!recruit Command", EnablerecruitCommand.GetType(), EnablerecruitCommand));
+*/
+
+        lstReturn.Add(new CPluginVariable("1 - Settings|Seconds Until Adaptive Speed Becomes Fast", SecondsUntilAdaptiveSpeedBecomesFast.GetType(), SecondsUntilAdaptiveSpeedBecomesFast));
+        
+        lstReturn.Add(new CPluginVariable("1 - Settings|Enable Whitelisting Of Reserved Slots List", EnableWhitelistingOfReservedSlotsList.GetType(), EnableWhitelistingOfReservedSlotsList));
+
+        lstReturn.Add(new CPluginVariable("1 - Settings|Whitelist", Whitelist.GetType(), Whitelist));
+
+        lstReturn.Add(new CPluginVariable("1 - Settings|Disperse Evenly List", DisperseEvenlyList.GetType(), DisperseEvenlyList));
+        
+        /* ===== SECTION 2 - Exclusions ===== */
+
+        lstReturn.Add(new CPluginVariable("2 - Exclusions|On Whitelist", OnWhitelist.GetType(), OnWhitelist));
+
+        lstReturn.Add(new CPluginVariable("2 - Exclusions|Top Scorers", TopScorers.GetType(), TopScorers));
+
+        lstReturn.Add(new CPluginVariable("2 - Exclusions|Same Clan Tags In Squad", SameClanTagsInSquad.GetType(), SameClanTagsInSquad));
+
+        lstReturn.Add(new CPluginVariable("2 - Exclusions|Minutes After Joining", MinutesAfterJoining.GetType(), MinutesAfterJoining));
+
+        /*
+        lstReturn.Add(new CPluginVariable("2 - Exclusions|Joined Early Phase", JoinedEarlyPhase.GetType(), JoinedEarlyPhase));
+
+        lstReturn.Add(new CPluginVariable("2 - Exclusions|Joined Mid Phase", JoinedMidPhase.GetType(), JoinedMidPhase));
+
+        lstReturn.Add(new CPluginVariable("2 - Exclusions|Joined Late Phase", JoinedLatePhase.GetType(), JoinedLatePhase));
+        */
+
+        /* ===== SECTION 3 - Round Phase & Population Setttings ===== */
+        
+        lstReturn.Add(new CPluginVariable("3 - Round Phase and Population Settings|Early Phase: Ticket Percentage To Unstack (Low, Med, High population)", typeof(String), MULTIbalancerUtils.ArrayToString(EarlyPhaseTicketPercentageToUnstack)));
+
+        lstReturn.Add(new CPluginVariable("3 - Round Phase and Population Settings|Mid Phase: Ticket Percentage To Unstack (Low, Med, High population)", typeof(String), MULTIbalancerUtils.ArrayToString(MidPhaseTicketPercentageToUnstack)));
+
+        lstReturn.Add(new CPluginVariable("3 - Round Phase and Population Settings|Late Phase: Ticket Percentage To Unstack (Low, Med, High population)", typeof(String), MULTIbalancerUtils.ArrayToString(LatePhaseTicketPercentageToUnstack)));
+        
+        var_name = "3 - Round Phase and Population Settings|Spelling Of Speed Names Reminder";
+        var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(Speed))) + ")";
+
+        lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(Speed), SpellingOfSpeedNamesReminder)));
+
+        lstReturn.Add(new CPluginVariable("3 - Round Phase and Population Settings|Early Phase: Balance Speed (Low, Med, High population)", typeof(String), MULTIbalancerUtils.ArrayToString(EarlyPhaseBalanceSpeed)));
+
+        lstReturn.Add(new CPluginVariable("3 - Round Phase and Population Settings|Mid Phase: Balance Speed (Low, Med, High population)", typeof(String), MULTIbalancerUtils.ArrayToString(MidPhaseBalanceSpeed)));
+
+        lstReturn.Add(new CPluginVariable("3 - Round Phase and Population Settings|Late Phase: Balance Speed (Low, Med, High population)", typeof(String), MULTIbalancerUtils.ArrayToString(LatePhaseBalanceSpeed)));
+
+        /* ===== SECTION 4 - Scrambler ===== */
+
+        lstReturn.Add(new CPluginVariable("4 - Scrambler|Only On New Maps", OnlyOnNewMaps.GetType(), OnlyOnNewMaps));
+
+        lstReturn.Add(new CPluginVariable("4 - Scrambler|Only On Final Ticket Percentage >=", OnlyOnFinalTicketPercentage.GetType(), OnlyOnFinalTicketPercentage));
+
+        var_name = "4 - Scrambler|Scramble By";
+        var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(DefineStrong))) + ")";
+        
+        lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(DefineStrong), ScrambleBy)));
+
+        lstReturn.Add(new CPluginVariable("4 - Scrambler|Keep Clan Tags In Same Squad", KeepClanTagsInSameSquad.GetType(), KeepClanTagsInSameSquad));
+
+        lstReturn.Add(new CPluginVariable("4 - Scrambler|Delay Seconds", DelaySeconds.GetType(), DelaySeconds));
+
+        /* ===== SECTION 5 - Messages ===== */
+        
+        lstReturn.Add(new CPluginVariable("5 - Messages|Quiet Mode", QuietMode.GetType(), QuietMode));
+
+        lstReturn.Add(new CPluginVariable("5 - Messages|Yell Duration Seconds", YellDurationSeconds.GetType(), YellDurationSeconds));
+        
+        lstReturn.Add(new CPluginVariable("5 - Messages|Chat: Moved For Balance", ChatMovedForBalance.GetType(), ChatMovedForBalance));
+        
+        lstReturn.Add(new CPluginVariable("5 - Messages|Yell: Moved For Balance", YellMovedForBalance.GetType(), YellMovedForBalance));
+        
+        lstReturn.Add(new CPluginVariable("5 - Messages|Chat: Moved To Unstack", ChatMovedToUnstack.GetType(), ChatMovedToUnstack));
+        
+        lstReturn.Add(new CPluginVariable("5 - Messages|Yell: Moved To Unstack", YellMovedToUnstack.GetType(), YellMovedToUnstack));
+        
+        lstReturn.Add(new CPluginVariable("5 - Messages|Chat: Detected Bad Team Switch", ChatDetectedBadTeamSwitch.GetType(), ChatDetectedBadTeamSwitch));
+        
+        lstReturn.Add(new CPluginVariable("5 - Messages|Yell: Detected Bad Team Switch", YellDetectedBadTeamSwitch.GetType(), YellDetectedBadTeamSwitch));
+
+        lstReturn.Add(new CPluginVariable("5 - Messages|Bad Because: Moved By Balancer", BadBecauseMovedByBalancer.GetType(), BadBecauseMovedByBalancer));
+
+        lstReturn.Add(new CPluginVariable("5 - Messages|Bad Because: Winning Team", BadBecauseWinningTeam.GetType(), BadBecauseWinningTeam));
+
+        lstReturn.Add(new CPluginVariable("5 - Messages|Bad Because: Biggest Team", BadBecauseBiggestTeam.GetType(), BadBecauseBiggestTeam));
+
+        lstReturn.Add(new CPluginVariable("5 - Messages|Bad Because: Rank", BadBecauseRank.GetType(), BadBecauseRank));
+
+        lstReturn.Add(new CPluginVariable("5 - Messages|Bad Because: Dispersal List", BadBecauseDispersalList.GetType(), BadBecauseDispersalList));
+        
+        lstReturn.Add(new CPluginVariable("5 - Messages|Chat: Detected Good Team Switch", ChatDetectedGoodTeamSwitch.GetType(), ChatDetectedGoodTeamSwitch));
+        
+        lstReturn.Add(new CPluginVariable("5 - Messages|Yell: Detected Good Team Switch", YellDetectedGoodTeamSwitch.GetType(), YellDetectedGoodTeamSwitch));
+        
+        lstReturn.Add(new CPluginVariable("5 - Messages|Chat: After Unswitching", ChatAfterUnswitching.GetType(), ChatAfterUnswitching));
+        
+        lstReturn.Add(new CPluginVariable("5 - Messages|Yell: After Unswitching", YellAfterUnswitching.GetType(), YellAfterUnswitching));
+
+
+        /* ===== SECTION 6 - Unswitcher ===== */
+
+        lstReturn.Add(new CPluginVariable("6 - Unswitcher|Forbid Switch After Autobalance", ForbidSwitchAfterAutobalance.GetType(), ForbidSwitchAfterAutobalance));
+
+        lstReturn.Add(new CPluginVariable("6 - Unswitcher|Forbid Switch To Winning Team", ForbidSwitchToWinningTeam.GetType(), ForbidSwitchToWinningTeam)); 
+
+        lstReturn.Add(new CPluginVariable("6 - Unswitcher|Forbid Switch To Biggest Team", ForbidSwitchToBiggestTeam.GetType(), ForbidSwitchToBiggestTeam)); 
+
+        lstReturn.Add(new CPluginVariable("6 - Unswitcher|Forbid Switch After Dispersal", ForbidSwitchAfterDispersal.GetType(), ForbidSwitchAfterDispersal)); 
+
+        lstReturn.Add(new CPluginVariable("6 - Unswitcher|Enable Immediate Unswitch", EnableImmediateUnswitch.GetType(), EnableImmediateUnswitch)); 
+
+        /* ===== SECTION 7 - TBD ===== */
+
+        /* ===== SECTION 8 - Per-Mode Settings ===== */
+
+        List<String> simpleModes = GetSimplifiedModes();
+
+        foreach (String sm in simpleModes) {
+            PerModeSettings oneSet = null;
+            if (!fPerMode.ContainsKey(sm)) {
+                oneSet = new PerModeSettings(sm);
+                fPerMode[sm] = oneSet;
+            } else {
+                oneSet = fPerMode[sm];
+            }
+            
+            bool isCTF = (sm == "CTF");
+            bool isGM = (sm == "Gun Master");
+            bool isRush = (sm.Contains("Rush"));
+            bool isSQDM = (sm == "Squad Deathmatch");
+
+            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Max Players", oneSet.MaxPlayers.GetType(), oneSet.MaxPlayers));
+
+            if (!isGM) {
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Check Team Stacking After First Minutes", oneSet.CheckTeamStackingAfterFirstMinutes.GetType(), oneSet.CheckTeamStackingAfterFirstMinutes));
+
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Max Unstacking Swaps Per Round", oneSet.MaxUnstackingSwapsPerRound.GetType(), oneSet.MaxUnstackingSwapsPerRound));
+
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Number Of Swaps Per Group", oneSet.NumberOfSwapsPerGroup.GetType(), oneSet.NumberOfSwapsPerGroup));
+
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Delay Seconds Between Swap Groups", oneSet.DelaySecondsBetweenSwapGroups.GetType(), oneSet.DelaySecondsBetweenSwapGroups));
+
+                var_name = "8 - Settings for " + sm + "|" + sm + ": " + "Determine Strong Players By";
+                var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(DefineStrong))) + ")";
+
+                lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(DefineStrong), oneSet.DetermineStrongPlayersBy)));
+
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Percent Of Top Of Team Is Strong", oneSet.PercentOfTopOfTeamIsStrong.GetType(), oneSet.PercentOfTopOfTeamIsStrong));
+
+            }
+
+            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Disperse Evenly For Rank >=", oneSet.DisperseEvenlyForRank.GetType(), oneSet.DisperseEvenlyForRank));
+
+            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Enable Disperse Evenly List", oneSet.EnableDisperseEvenlyList.GetType(), oneSet.EnableDisperseEvenlyList));
+
+            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of High Population For Players >=", oneSet.DefinitionOfHighPopulationForPlayers.GetType(), oneSet.DefinitionOfHighPopulationForPlayers));
+
+            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Low Population For Players <=", oneSet.DefinitionOfLowPopulationForPlayers.GetType(), oneSet.DefinitionOfLowPopulationForPlayers));
+
+            if (isCTF) {
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Early Phase As Minutes From Start", oneSet.DefinitionOfEarlyPhaseFromStart.GetType(), oneSet.DefinitionOfEarlyPhaseFromStart));
+
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Late Phase As Minutes From End", oneSet.DefinitionOfLatePhaseFromEnd.GetType(), oneSet.DefinitionOfLatePhaseFromEnd));
+            } else if (!isGM) {
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Early Phase As Tickets From Start", oneSet.DefinitionOfEarlyPhaseFromStart.GetType(), oneSet.DefinitionOfEarlyPhaseFromStart));
+
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Late Phase As Tickets From End", oneSet.DefinitionOfLatePhaseFromEnd.GetType(), oneSet.DefinitionOfLatePhaseFromEnd));
+            }
+
+            if (!isSQDM) {
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Enable Scrambler", oneSet.EnableScrambler.GetType(), oneSet.EnableScrambler));
+            }
+
+            if (isRush) {
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Stage 1 Ticket Percentage To Unstack Adjustment", oneSet.Stage1TicketPercentageToUnstackAdjustment.GetType(), oneSet.Stage1TicketPercentageToUnstackAdjustment));
+
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Stage 2 Ticket Percentage To Unstack Adjustment", oneSet.Stage2TicketPercentageToUnstackAdjustment.GetType(), oneSet.Stage2TicketPercentageToUnstackAdjustment));
+
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Stage 3 Ticket Percentage To Unstack Adjustment", oneSet.Stage3TicketPercentageToUnstackAdjustment.GetType(), oneSet.Stage3TicketPercentageToUnstackAdjustment));
+
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Stage 4 Ticket Percentage To Unstack Adjustment", oneSet.Stage4TicketPercentageToUnstackAdjustment.GetType(), oneSet.Stage4TicketPercentageToUnstackAdjustment));
+
+            }
+
+        }
+
+        /* ===== SECTION 9 - Debug Settings ===== */
+
+        lstReturn.Add(new CPluginVariable("9 - Debugging|Show In Log", ShowInLog.GetType(), ShowInLog));
+
+        lstReturn.Add(new CPluginVariable("9 - Debugging|Log Chat", LogChat.GetType(), LogChat));
+
+        lstReturn.Add(new CPluginVariable("9 - Debugging|Enable Logging Only Mode", EnableLoggingOnlyMode.GetType(), EnableLoggingOnlyMode));
+
+
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+
+    return lstReturn;
+}
+
+public List<CPluginVariable> GetPluginVariables() {
+    return GetDisplayPluginVariables();
+}
+
+public void SetPluginVariable(String strVariable, String strValue) {
+    bool isPresetVar = false;
+    bool isReminderVar = false;
+
+    if (fIsEnabled) DebugWrite(strVariable + " <- " + strValue, 6);
+
+    try {
+        String tmp = strVariable;
+        int pipeIndex = strVariable.IndexOf('|');
+        if (pipeIndex >= 0) {
+            pipeIndex++;
+            tmp = strVariable.Substring(pipeIndex, strVariable.Length - pipeIndex);
+        }
+        if (tmp.Contains("(Low, Med, High population)")) {
+            tmp = tmp.Replace("(Low, Med, High population)", String.Empty);
+        }
+
+        BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+
+        String propertyName = Regex.Replace(tmp, @"[^a-zA-Z_0-9]", String.Empty);
+        
+        if (strVariable.Contains("preset")) propertyName = "Preset";
+
+        FieldInfo field = this.GetType().GetField(propertyName, flags);
+        
+        Type fieldType = null;
+
+
+        if (!strVariable.Contains("Settings for") && field != null) {
+            fieldType = field.GetValue(this).GetType();
+            if (strVariable.Contains("preset")) {
+                fieldType = typeof(PresetItems);
+                try {
+                    Preset = (PresetItems)Enum.Parse(fieldType, strValue);
+                    isPresetVar = true;
+                } catch (Exception e) {
+                    ConsoleException(e);
+                }
+            } else if (tmp.Contains("Spelling Of Speed Names Reminder")) {
+                fieldType = typeof(Speed);
+                try {
+                    field.SetValue(this, (Speed)Enum.Parse(fieldType, strValue));
+                    isReminderVar = true;
+                } catch (Exception e) {
+                    ConsoleException(e);
+                }
+            } else if (tmp.Contains("Balance Speed")) {
+                fieldType = typeof(Speed[]);
+                try {
+                    // Parse the list into an array of enum vals
+                    Speed[] items = MULTIbalancerUtils.ParseSpeedArray(this, strValue); // also validates
+                    field.SetValue(this, items);
+                } catch (Exception e) {
+                    ConsoleException(e);
+                }
+            } else if (tmp.Contains("Ticket Percentage To Unstack")) {
+                fieldType = typeof(double[]);
+                try {
+                    // Parse the list into an array of numbers
+                    double[] nums = MULTIbalancerUtils.ParseNumArray(strValue); // also validates
+                    field.SetValue(this, nums);
+                } catch (Exception e) {
+                    ConsoleException(e);
+                }
+            } else if (tmp.Contains("Scramble By")) {
+                fieldType = typeof(DefineStrong);
+                try {
+                    field.SetValue(this, (DefineStrong)Enum.Parse(fieldType, strValue));
+                } catch (Exception e) {
+                    ConsoleException(e);
+                }
+            } else if (fEasyTypeDict.ContainsValue(fieldType)) {
+                field.SetValue(this, TypeDescriptor.GetConverter(fieldType).ConvertFromString(strValue));
+            } else if (fListStrDict.ContainsValue(fieldType)) {
+                if (DebugLevel >= 8) ConsoleDebug("String array " + propertyName + " <- " + strValue);
+                field.SetValue(this, CPluginVariable.DecodeStringArray(strValue));
+                if (DebugLevel >= 8 && propertyName == "Whitelist") {
+                    String l = "Whitelist: ";
+                    for (int i = 0; i < Whitelist.Length; ++i) {
+                        l = l + Whitelist[i] + ", ";
+                    }
+                    l = l + "end";
+                    ConsoleDebug(l);
+                }
+            } else if (fBoolDict.ContainsValue(fieldType)) {
+                if (fIsEnabled) DebugWrite(propertyName + " strValue = " + strValue, 6);
+                if (Regex.Match(strValue, "true", RegexOptions.IgnoreCase).Success) {
+                    field.SetValue(this, true);
+                } else {
+                    field.SetValue(this, false);
+                }
+            } else {
+                if (DebugLevel >= 8) ConsoleDebug("Unknown var " + propertyName + " with type " + fieldType);
+            }
+        } else {
+            Match m = Regex.Match(tmp, @"([^:]+):\s([^:]+)$");
+            
+            if (m.Success) {
+                String mode = m.Groups[1].Value;
+                String fieldPart = m.Groups[2].Value.Replace(" ","");
+                String perModeSetting = Regex.Replace(fieldPart, @"[^a-zA-Z_0-9]", String.Empty);
+
+                perModeSetting = Regex.Replace(perModeSetting, @"(?:AsTickets|AsMinutes)", String.Empty);
+                
+                if (!fPerMode.ContainsKey(mode)) {
+                    fPerMode[mode] = new PerModeSettings(mode);
+                }
+                PerModeSettings pms = fPerMode[mode];
+                
+                field = pms.GetType().GetField(perModeSetting, flags);
+                
+                if (fIsEnabled) DebugWrite("Mode: " + mode + ", Field: " + perModeSetting + ", Value: " + strValue, 6);
+                
+                if (field != null) {
+                    fieldType = field.GetValue(pms).GetType();
+                    if (fEasyTypeDict.ContainsValue(fieldType)) {
+                        field.SetValue(pms, TypeDescriptor.GetConverter(fieldType).ConvertFromString(strValue));
+                    } else if (fListStrDict.ContainsValue(fieldType)) {
+                        field.SetValue(pms, new List<string>(CPluginVariable.DecodeStringArray(strValue)));
+                    } else if (fBoolDict.ContainsValue(fieldType)) {
+                        if (Regex.Match(strValue, "true", RegexOptions.IgnoreCase).Success) {
+                            field.SetValue(pms, true);
+                        } else {
+                            field.SetValue(pms, false);
+                        }
+                    } else if (strVariable.Contains("Determine Strong")) {
+                        fieldType = typeof(DefineStrong);
+                        try {
+                            field.SetValue(pms, (DefineStrong)Enum.Parse(fieldType, strValue));
+                        } catch (Exception e) {
+                            ConsoleException(e);
+                        }
+                    }
+                } else {
+                    if (fIsEnabled) DebugWrite("field is null", 6);
+                }
+            }
+        }
+    } catch (System.Exception e) {
+        ConsoleException(e);
+    } finally {
+        
+        if (!isReminderVar) {
+            // Reset to show hint
+            SpellingOfSpeedNamesReminder = Speed.Click_Here_For_Speed_Names;
+        }
+        
+        if (isPresetVar) {
+            // Update other settings based on new preset value
+            MULTIbalancerUtils.UpdateSettingsForPreset(this, Preset);
+        } else {
+            // Update Preset value based on current settings
+            UpdatePresetValue();
+        }
+        
+        // Validate all values and correct if needed
+        ValidateSettings(strVariable,  strValue);
+
+        // Handle show in log commands
+        if (!String.IsNullOrEmpty(ShowInLog)) {
+            CommandToLog(ShowInLog);
+            ShowInLog = String.Empty;
+        }
+    }
+}
+
+private bool ValidateSettings(String strVariable, String strValue) {
+    try {
+                
+        /* ===== SECTION 1 - Settings ===== */
+
+        if (strVariable.Contains("Debug Level")) ValidateIntRange(ref DebugLevel, "Debug Level", 0, 9, 2, false);
+        if (strVariable.Contains("Maximum Server Size")) ValidateIntRange(ref MaximumServerSize, "Maximum Server Size", 8, 64, 64, false);
+        if (strVariable.Contains("Maximum Request Rate")) ValidateIntRange(ref MaximumRequestRate, "Maximum Request Rate", 1, 15, 2, true); // in 20 seconds
+        if (strVariable.Contains("Wait Timeout")) ValidateDoubleRange(ref WaitTimeout, "Wait Timeout", 15, 90, 30, false);
+        if (strVariable.Contains("Unlimited Team Switching During First Minutes Of Round")) ValidateDouble(ref UnlimitedTeamSwitchingDuringFirstMinutesOfRound, "Unlimited Team Switching During First Minutes Of Round", 5.0);
+        if (strVariable.Contains("Seconds Until Adaptive Speed Becomes Fast")) ValidateDoubleRange(ref SecondsUntilAdaptiveSpeedBecomesFast, "Seconds Until Adaptive Speed Becomes Fast", MIN_ADAPT_FAST, 999999, 3*60, true); // 3 minutes default
+    
+        /* ===== SECTION 2 - Exclusions ===== */
+    
+        if (strVariable.Contains("Minutes After Joining")) ValidateDouble(ref MinutesAfterJoining, "Minutes After Joining", 5);
+
+        /* ===== SECTION 3 - Round Phase & Population Settings ===== */
+    
+        for (int i = 0; i < EarlyPhaseTicketPercentageToUnstack.Length; ++i) {
+            if (strVariable.Contains("Early Phase: Ticket Percentage To Unstack")) ValidateDoubleRange(ref EarlyPhaseTicketPercentageToUnstack[i], "Early Phase Ticket Percentage To Unstack", 100.0, 1000.0, 120.0, true);
+        }
+        for (int i = 0; i < MidPhaseTicketPercentageToUnstack.Length; ++i) {
+            if (strVariable.Contains("Mid Phase: Ticket Percentage To Unstack")) ValidateDoubleRange(ref MidPhaseTicketPercentageToUnstack[i], "Mid Phase Ticket Percentage To Unstack", 100.0, 1000.0, 120.0, true);
+        }
+        for (int i = 0; i < LatePhaseTicketPercentageToUnstack.Length; ++i) {
+            if (strVariable.Contains("Late Phase: Ticket Percentage To Unstack")) ValidateDoubleRange(ref LatePhaseTicketPercentageToUnstack[i], "Late Phase Ticket Percentage To Unstack", 100.0, 1000.0, 120.0, true);
+        }
+
+        /* ===== SECTION 4 - Scrambler ===== */
+
+        if (strVariable.Contains("Only On Final Ticket Percentage")) ValidateDoubleRange(ref OnlyOnFinalTicketPercentage, "Only On Final Ticket Percentage", 100.0, 1000.0, 120.0, true);
+
+        if (strVariable.Contains("Delay Seconds")) ValidateDoubleRange(ref DelaySeconds, "Delay Seconds", 0, 43, 30, false);
+
+        /* ===== SECTION 5 - Messages ===== */
+    
+        if (strVariable.Contains("Yell Duration Seconds")) ValidateDoubleRange(ref YellDurationSeconds, "Yell Duration Seconds", 1, 20, 10, true);
+
+        if (strVariable.Contains("Chat: Moved For Balance") && ChatMovedForBalance.Contains("%reason%")) {
+            ConsoleWarn(strVariable + ": contains %reason%, which is only recognized in ^bDetected Bad Team Switch^n");
+        }
+        if (strVariable.Contains("Yell: Moved For Balance") && YellMovedForBalance.Contains("%reason%")) {
+            ConsoleWarn(strVariable + ": contains %reason%, which is only recognized in ^bDetected Bad Team Switch^n");
+        }
+        if (strVariable.Contains("Chat: Moved To Unstack") && ChatMovedToUnstack.Contains("%reason%")) {
+            ConsoleWarn(strVariable + ": contains %reason%, which is only recognized in ^bDetected Bad Team Switch^n");
+        }
+        if (strVariable.Contains("Yell: Moved To Unstack") && YellMovedToUnstack.Contains("%reason%")) {
+            ConsoleWarn(strVariable + ": contains %reason%, which is only recognized in ^bDetected Bad Team Switch^n");
+        }
+        if (strVariable.Contains("Chat: Detected Good Team Switch") && ChatDetectedGoodTeamSwitch.Contains("%reason%")) {
+            ConsoleWarn(strVariable + ": contains %reason%, which is only recognized in ^bDetected Bad Team Switch^n");
+        }
+        if (strVariable.Contains("Yell: Detected Good Team Switch") && YellDetectedGoodTeamSwitch.Contains("%reason%")) {
+            ConsoleWarn(strVariable + ": contains %reason%, which is only recognized in ^bDetected Bad Team Switch^n");
+        }
+    
+        /* ===== SECTION 6 - TBD ===== */
+
+        /* ===== SECTION 7 - TBD ===== */
+
+        /* ===== SECTION 8 - Per-Mode Settings ===== */
+
+        foreach (String mode in fPerMode.Keys) {
+            PerModeSettings perMode = fPerMode[mode];
+            PerModeSettings def = new PerModeSettings(mode); // defaults for this mode
+
+            def.MaxPlayers = Math.Min(def.MaxPlayers, MaximumServerSize);
+            if (strVariable.Contains("Max Players")) ValidateIntRange(ref perMode.MaxPlayers, mode + ":" + "Max Players", 8, MaximumServerSize, def.MaxPlayers, false);
+            if (strVariable.Contains("Check Team Stacking After First Minutes")) ValidateDouble(ref perMode.CheckTeamStackingAfterFirstMinutes, mode + ":" + "Check Team Stacking After First Minutes", def.CheckTeamStackingAfterFirstMinutes);
+            if (strVariable.Contains("Max Unstacking Swaps Per Round")) ValidateInt(ref perMode.MaxUnstackingSwapsPerRound, mode + ":" + "Max Unstacking Swaps Per Round", def.MaxUnstackingSwapsPerRound);
+            def.NumberOfSwapsPerGroup = Math.Min(def.NumberOfSwapsPerGroup, perMode.MaxUnstackingSwapsPerRound);
+            if (strVariable.Contains("Number Of Swaps Per Group")) ValidateIntRange(ref perMode.NumberOfSwapsPerGroup, mode + ":" + "Number Of Swaps Per Group", 0, perMode.MaxUnstackingSwapsPerRound, def.NumberOfSwapsPerGroup, false);
+            if (strVariable.Contains("Delay Seconds Between Swap Groups")) ValidateDoubleRange(ref perMode.DelaySecondsBetweenSwapGroups, mode + ":" + "Delay Seconds Between Swap Groups", 60, 24*60*60, def.DelaySecondsBetweenSwapGroups, false);
+            if (strVariable.Contains("Percent Of Top Of Team Is Strong")) ValidateDoubleRange(ref perMode.PercentOfTopOfTeamIsStrong, mode + ":" + "Percent Of Top Of Team Is Strong", 5, 50, def.PercentOfTopOfTeamIsStrong, false);
+            if (strVariable.Contains("Disperse Evenly For Rank")) ValidateInt(ref perMode.DisperseEvenlyForRank, mode + ":" + "Disperse Evenly For Rank", def.DisperseEvenlyForRank);
+            def.DefinitionOfHighPopulationForPlayers = Math.Min(def.DefinitionOfHighPopulationForPlayers, perMode.MaxPlayers);
+            def.DefinitionOfLowPopulationForPlayers = Math.Min(def.DefinitionOfLowPopulationForPlayers, perMode.MaxPlayers);
+            if (strVariable.Contains("Definition Of High Population For Players")) ValidateIntRange(ref perMode.DefinitionOfHighPopulationForPlayers, mode + ":" + "Definition Of High Population For Players", 0, perMode.MaxPlayers, def.DefinitionOfHighPopulationForPlayers, false); 
+            if (strVariable.Contains("Definition Of Low Population For Players")) ValidateIntRange(ref perMode.DefinitionOfLowPopulationForPlayers, mode + ":" + "Definition Of Low Population For Players", 0, perMode.MaxPlayers, def.DefinitionOfLowPopulationForPlayers, false);
+            if (strVariable.Contains("Definition Of Early Phase")) ValidateInt(ref perMode.DefinitionOfEarlyPhaseFromStart, mode + ":" + "Definition Of Early Phase From Start", def.DefinitionOfEarlyPhaseFromStart);
+            if (strVariable.Contains("Definition Of Late Phase")) ValidateInt(ref perMode.DefinitionOfLatePhaseFromEnd, mode + ":" + "Definition Of Late Phase From End", def.DefinitionOfLatePhaseFromEnd);
+            if (mode == "CTF") {
+                int maxMinutes = 20; // TBD, might need to factor in gameModeCounter
+                if (strVariable.Contains("Definition Of Late Phase") && perMode.DefinitionOfLatePhaseFromEnd > maxMinutes) {
+                    ConsoleError("^b" + "Definition Of Late Phase" + "^n must be less than or equal to " + maxMinutes + " minutes, corrected to " + maxMinutes);
+                    perMode.DefinitionOfEarlyPhaseFromStart = 0;
+                }
+                if (strVariable.Contains("Definition Of Early Phase") && perMode.DefinitionOfEarlyPhaseFromStart > (maxMinutes - perMode.DefinitionOfLatePhaseFromEnd)) {
+                    ConsoleError("^b" + "Definition Of Early Phase" + "^n must be less than or equal to " + (maxMinutes - perMode.DefinitionOfLatePhaseFromEnd) + " minutes, corrected to " + (maxMinutes - perMode.DefinitionOfLatePhaseFromEnd));
+                    perMode.DefinitionOfEarlyPhaseFromStart = maxMinutes - perMode.DefinitionOfLatePhaseFromEnd;
+                }
+            }
+        }
+
+        /* ===== SECTION 9 - Debug Settings ===== */
+
+
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+    return true;
+}
+
+private void ResetSettings() {
+    MULTIbalancer rhs = new MULTIbalancer();
+
+    /* ===== SECTION 1 - Settings ===== */
+
+    DebugLevel = rhs.DebugLevel;
+    MaximumServerSize = rhs.MaximumServerSize;
+    EnableBattlelogRequests = rhs.EnableBattlelogRequests;
+    MaximumRequestRate =  rhs.MaximumRequestRate;
+    MaxTeamSwitchesByStrongPlayers = rhs.MaxTeamSwitchesByStrongPlayers;
+    MaxTeamSwitchesByWeakPlayers = rhs.MaxTeamSwitchesByWeakPlayers;
+    UnlimitedTeamSwitchingDuringFirstMinutesOfRound = rhs.UnlimitedTeamSwitchingDuringFirstMinutesOfRound;
+    Enable2SlotReserve = rhs.Enable2SlotReserve;
+    EnablerecruitCommand = rhs.EnablerecruitCommand;
+    EnableWhitelistingOfReservedSlotsList = rhs.EnableWhitelistingOfReservedSlotsList;
+    // Whitelist = rhs.Whitelist; // don't reset the whitelist
+    // DisperseEvenlyList = rhs.DisperseEvenlyList; // don't reset the dispersal list
+    Preset = rhs.Preset;
+    
+    /* ===== SECTION 2 - Exclusions ===== */
+    
+    OnWhitelist = rhs.OnWhitelist;
+    TopScorers = rhs.TopScorers;
+    SameClanTagsInSquad = rhs.SameClanTagsInSquad;
+    MinutesAfterJoining = rhs.MinutesAfterJoining;
+    JoinedEarlyPhase = rhs.JoinedEarlyPhase;
+    JoinedMidPhase = rhs.JoinedMidPhase;
+    JoinedLatePhase = rhs.JoinedLatePhase;
+
+    /* ===== SECTION 3 - Round Phase & Population Settings ===== */
+
+    EarlyPhaseTicketPercentageToUnstack = rhs.EarlyPhaseTicketPercentageToUnstack;
+    MidPhaseTicketPercentageToUnstack = rhs.MidPhaseTicketPercentageToUnstack;
+    LatePhaseTicketPercentageToUnstack = rhs.LatePhaseTicketPercentageToUnstack;
+    
+    SpellingOfSpeedNamesReminder = rhs.SpellingOfSpeedNamesReminder;
+
+    EarlyPhaseBalanceSpeed = rhs.EarlyPhaseBalanceSpeed;
+    MidPhaseBalanceSpeed = rhs.MidPhaseBalanceSpeed;
+    LatePhaseBalanceSpeed = rhs.LatePhaseBalanceSpeed;
+
+    /* ===== SECTION 4 - Scrambler ===== */
+
+    OnlyOnNewMaps = rhs.OnlyOnNewMaps;
+    OnlyOnFinalTicketPercentage = rhs.OnlyOnFinalTicketPercentage;
+    ScrambleBy = rhs.ScrambleBy;
+    KeepClanTagsInSameSquad = rhs.KeepClanTagsInSameSquad;
+    DelaySeconds = rhs.DelaySeconds;
+
+    /* ===== SECTION 5 - Messages ===== */
+    
+    QuietMode =  rhs.QuietMode;
+    YellDurationSeconds = rhs.YellDurationSeconds;
+    BadBecauseMovedByBalancer = rhs.BadBecauseMovedByBalancer;
+    BadBecauseWinningTeam = rhs.BadBecauseWinningTeam;
+    BadBecauseBiggestTeam = rhs.BadBecauseBiggestTeam;
+    BadBecauseRank = rhs.BadBecauseRank;
+    BadBecauseDispersalList = rhs.BadBecauseDispersalList;
+    ChatMovedForBalance = rhs.ChatMovedForBalance;
+    YellMovedForBalance = rhs.YellMovedForBalance;
+    ChatMovedToUnstack = rhs.ChatMovedToUnstack;
+    YellMovedToUnstack = rhs.YellMovedToUnstack;
+    ChatDetectedBadTeamSwitch = rhs.ChatDetectedBadTeamSwitch;
+    YellDetectedBadTeamSwitch = rhs.YellDetectedBadTeamSwitch;
+    ChatDetectedGoodTeamSwitch = rhs.ChatDetectedGoodTeamSwitch;
+    YellDetectedGoodTeamSwitch = rhs.YellDetectedGoodTeamSwitch;
+    ChatAfterUnswitching = rhs.ChatAfterUnswitching;
+    YellAfterUnswitching = rhs.YellAfterUnswitching;
+    
+    /* ===== SECTION 6 - Unswitcher ===== */
+
+    ForbidSwitchAfterAutobalance = rhs.ForbidSwitchAfterAutobalance;
+    ForbidSwitchToWinningTeam = rhs.ForbidSwitchToWinningTeam;
+    ForbidSwitchToBiggestTeam = rhs.ForbidSwitchToBiggestTeam;
+    ForbidSwitchAfterDispersal = rhs.ForbidSwitchAfterDispersal;
+    EnableImmediateUnswitch = rhs.EnableImmediateUnswitch;
+
+    /* ===== SECTION 7 - TBD ===== */
+
+    /* ===== SECTION 8 - Per-Mode Settings ===== */
+
+    List<String> simpleModes = GetSimplifiedModes();
+
+    fPerMode.Clear();
+
+    foreach (String sm in simpleModes) {
+        PerModeSettings oneSet = null;
+        if (!fPerMode.ContainsKey(sm)) {
+            oneSet = new PerModeSettings(sm);
+            fPerMode[sm] = oneSet;
+        }
+    }
+
+    /* ===== SECTION 9 - Debug Settings ===== */
+
+    ShowInLog = rhs.ShowInLog;
+    LogChat = rhs.LogChat;
+    EnableLoggingOnlyMode = rhs.EnableLoggingOnlyMode;
+}
+
+private void CommandToLog(string cmd) {
+    try {
+        Match m = null;
+        ConsoleDump("Command: " + cmd);
+
+        m = Regex.Match(cmd, @"^gen\s+((?:cs|cl|ctf|gm|r|sqdm|sr|s|tdm|u)|[1234569])", RegexOptions.IgnoreCase);
+        if (m.Success) {
+            String what = m.Groups[1].Value;
+            int section = 8;
+            if (!Int32.TryParse(what, out section)) section = 8;
+
+            List<CPluginVariable> vars = GetDisplayPluginVariables();
+
+            String sm = section.ToString() + " -";
+            if (section == 8) {
+                switch (what) {
+                    case "cs": sm = "for Conq Small, Dom, Scav"; break;
+                    case "cl": sm = "for Conquest Large"; break;
+                    case "ctf": sm = "for CTF"; break;
+                    case "gm": sm = "for Gun Master"; break;
+                    case "r": sm = "for Rush"; break;
+                    case "sqdm": sm = "for Squad Deathmatch"; break;
+                    case "sr": sm = "for Squad Rush"; break;
+                    case "s": sm = "for Superiority"; break;
+                    case "tdm": sm = "for Team Deathmatch"; break;
+                    case "u": sm = "for Unknown or New Mode"; break;
+                    default: ConsoleDump("Unknown mode: " + what); return;
+                }
+            }
+
+            foreach (CPluginVariable var in vars) {
+                if (section == 8) {
+                    if (var.Name.Contains(sm)) {
+                        ConsoleDump(var.Name + ": " + var.Value);
+                    }
+                } else {
+                    if (var.Name.Contains(sm)) {
+                        ConsoleDump(var.Name + ": " + var.Value);
+                    }
+                }
+            }
+            return;
+        }
+
+        if (Regex.Match(cmd, @"modes", RegexOptions.IgnoreCase).Success) {
+            List<String> modeList = GetSimplifiedModes();
+            ConsoleDump("modes(" + modeList.Count + "):");
+            foreach (String mode in modeList) {
+                ConsoleDump(mode);
+            }
+            return;
+        }
+
+        if (Regex.Match(cmd, @"rage", RegexOptions.IgnoreCase).Success) {
+            ConsoleDump("Rage stats: " + fGrandRageQuits + " rage of " + fGrandTotalQuits + " total, this round " + fRageQuits + " rage of " + fTotalQuits + " total"); 
+            return;
+        }
+        
+        if (Regex.Match(cmd, @"reset settings", RegexOptions.IgnoreCase).Success) {
+            ConsoleDump("^8^bRESETTING ALL PLUGIN SETTINGS (except Whitelist and Dispersal list) TO DEFAULT!");
+            ResetSettings();
+            return;
+        }
+
+        if (Regex.Match(cmd, @"scramble[d]?", RegexOptions.IgnoreCase).Success) {
+            if (fDebugScramblerBefore[0].Count == 0
+              || fDebugScramblerBefore[1].Count == 0
+              || fDebugScramblerAfter[0].Count == 0
+              || fDebugScramblerAfter[1].Count == 0) {
+                ConsoleDump("No scrambler data available");
+                return;
+            }
+            ConsoleDump("===== BEFORE =====");
+            ListSideBySide(fDebugScramblerBefore[0], fDebugScramblerBefore[1]);
+            ConsoleDump("===== AFTER =====");
+            ListSideBySide(fDebugScramblerAfter[0], fDebugScramblerAfter[1]);
+            ConsoleDump("===== END =====");
+            return;
+        }
+
+        if (Regex.Match(cmd, @"size[s]?", RegexOptions.IgnoreCase).Success) {
+            int kp = fKnownPlayers.Count;
+            int ap = fAllPlayers.Count;
+            int old = 0;
+            int validTags = 0;
+            lock (fKnownPlayers) {
+                // count player records more than 12 hours old
+                foreach (String name in fKnownPlayers.Keys) {
+                    PlayerModel p = fKnownPlayers[name];
+                    if (DateTime.Now.Subtract(p.LastSeenTimestamp).TotalMinutes > 12*60) {
+                        if (!IsKnownPlayer(name)) {
+                            ++old;
+                        } 
+                    }
+                    if (p.TagVerified) ++validTags;
+                }
+            }
+            ConsoleDump("Plugin has been enabled for " + fRoundsEnabled + " rounds");
+            ConsoleDump("fKnownPlayers.Count = " + kp + ", not playing = " + (kp-ap) + ", more than 12 hours old = " + old);
+            ConsoleDump("fFetchQ.Count = " + fFetchQ.Count + ", verified tags = " + validTags);
+            ConsoleDump("MULTIbalancerUtils.HTML_DOC.Length = " + MULTIbalancerUtils.HTML_DOC.Length);
+        }
+
+        m = Regex.Match(cmd, @"^sort\s+([1-4])\s+(score|spm|kills|kdr|rank)", RegexOptions.IgnoreCase);
+        if (m.Success) {
+            String teamID = m.Groups[1].Value;
+            String propID = m.Groups[2].Value;
+
+            int team = 0;
+            if (!Int32.TryParse(teamID, out team) || team < 1 || team > 4) {
+                ConsoleDump("Invalid team: " + teamID);
+                return;
+            }
+            List<PlayerModel> fromList = GetTeam(team);
+            if (fromList == null || fromList.Count < 3) {
+                ConsoleDump("Invalid team or not enough players in team: " + team);
+                return;
+            }
+            switch (propID.ToLower()) {
+                case "score":
+                    fromList.Sort(DescendingRoundScore);
+                    break;
+                case "spm":
+                    fromList.Sort(DescendingRoundSPM);
+                    break;
+                case "kills":
+                    fromList.Sort(DescendingRoundKills);
+                   break;
+                case "kdr":
+                    fromList.Sort(DescendingRoundKDR);
+                    break;
+                case "rank":
+                    fromList.Sort(DescendingPlayerRank);
+                    break;
+                default:
+                    fromList.Sort(DescendingRoundScore);
+                    break;
+            }
+            int n = 1;
+            foreach (PlayerModel p in fromList) {
+                switch (propID.ToLower()) {
+                    case "score":
+                        ConsoleDump("#" + String.Format("{0,2}", n) + ") Score: " + String.Format("{0:F0,6}", p.ScoreRound) + ", ^b" + p.FullName);
+                        break;
+                    case "spm":
+                        ConsoleDump("#" + String.Format("{0,2}", n) + ") SPM: " + String.Format("{0:F0,6}", p.SPMRound) + ", ^b" + p.FullName);
+                        break;
+                    case "kills":
+                        ConsoleDump("#" + String.Format("{0,2}", n) + ") Kills: " + String.Format("{0:F0,6}", p.KillsRound) + ", ^b" + p.FullName);
+                       break;
+                    case "kdr":
+                        ConsoleDump("#" + String.Format("{0,2}", n) + ") KDR: " + String.Format("{0:F1,6}", p.KDRRound) + ", ^b" + p.FullName);
+                        break;
+                    case "rank":
+                        ConsoleDump("#" + String.Format("{0,2}", n) + ") Rank: " + String.Format("{0:F0,6}", p.Rank) + ", ^b" + p.FullName);
+                        break;
+                    default:
+                        ConsoleDump("#" + String.Format("{0,2}", n) + ") Score: " + String.Format("{0:F0,6}", p.ScoreRound) + ", ^b" + p.FullName);
+                        break;
+                }
+                n = n + 1;
+            }
+            return;
+        }
+
+        if (Regex.Match(cmd, @"tags?", RegexOptions.IgnoreCase).Success) {
+            Dictionary<String,List<PlayerModel>> byTag = new Dictionary<String,List<PlayerModel>>();
+
+            lock (fAllPlayers) {
+                foreach (String name in fAllPlayers) {
+                    PlayerModel player = GetPlayer(name);
+                    if (player == null || player.Team < 1 || player.Team > 2) continue;
+                    String tag = ExtractTag(player);
+                    if (String.IsNullOrEmpty(tag)) continue;
+                    if (!byTag.ContainsKey(tag)) {
+                        byTag[tag] = new List<PlayerModel>();
+                    }
+                    byTag[tag].Add(player);
+                }
+            }
+
+            List<String> tags = new List<String>();
+            foreach (String t in byTag.Keys) {
+                tags.Add(t);
+                byTag[t].Sort(delegate(PlayerModel lhs, PlayerModel rhs) { // ascending by team/squad
+                    if (lhs == null && rhs == null) return 0;
+                    if (lhs == null) return -1;
+                    if (rhs == null) return 1;
+
+                    // by team, then by squad
+                    if (lhs.Team < rhs.Team) return -1;
+                    if (lhs.Team > rhs.Team) return 1;
+                    if (lhs.Team == rhs.Team) {
+                        if (lhs.Squad < 1 || rhs.Squad < 1) return 0;
+                        if (lhs.Squad < rhs.Squad) return -1;
+                        if (lhs.Squad > rhs.Squad) return 1;
+                    }
+                    return 0;
+                });
+            }
+            tags.Sort();
+
+            foreach (String t in tags) {
+                ConsoleDump("Tag [" + t + "]:");
+                List<PlayerModel> clan = byTag[t];
+                foreach (PlayerModel p in clan) {
+                    ConsoleDump(String.Format("        {0}, {1}, {2}",
+                        p.Name,
+                        GetTeamName(p.Team),
+                        (p.Squad < 0 || p.Squad > SQUAD_NAMES.Length) ? "None" : SQUAD_NAMES[p.Squad]
+                    ));
+                }
+            }
+            ConsoleDump(" === END OF TAGS === ");
+            return;
+        }
+
+        if (Regex.Match(cmd, @"help", RegexOptions.IgnoreCase).Success || !String.IsNullOrEmpty(cmd)) {
+            ConsoleDump("^1^bgen^n ^imode^n^0: Generate settings listing for ^imode^n (one of: cs, cl, ctf, gm, r, sqdm, sr, s, tdm, u)");
+            ConsoleDump("^1^bgen^n ^isection^n^0: Generate settings listing for ^isection^n (1-6,9)");
+            ConsoleDump("^1^bmodes^n^0: Examine the known game modes");
+            ConsoleDump("^1^brage^n^0: Examine rage quit statistics");
+            ConsoleDump("^1^breset settings^n^0: Reset all plugin settings to default, except for ^bWhitelist^n and ^bDisperse Evenly List^n");
+            ConsoleDump("^1^bscrambled^n^0: Examine list of players before and after last successful scramble");
+            ConsoleDump("^1^bsizes^n^0: Examine the sizes of various data structures");
+            ConsoleDump("^1^bsort^n ^iteam^n ^itype^n^0: Examine sorted ^iteam^n (1-4) by ^itype^n (one of: score, spm, kills, kdr, rank)");
+            ConsoleDump("^1^btags^n^0: Examine list of players sorted by clan tags");
+            return;
+        }
+
+            
+
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+}
+
+
+
+
+
+
+
+
+
+/* ======================== OVERRIDES ============================= */
+
+
+
+
+
+
+
+
+
+
+public void OnPluginLoaded(String strHostName, String strPort, String strPRoConVersion) {
+    this.RegisterEvents(this.GetType().Name, 
+        "OnVersion",
+        "OnServerInfo",
+        //"OnResponseError",
+        "OnListPlayers",
+        //"OnPlayerJoin",
+        "OnPlayerLeft",
+        "OnPlayerKilled",
+        "OnPlayerSpawned",
+        "OnPlayerTeamChange",
+        "OnPlayerSquadChange",
+        //"OnGlobalChat",
+        //"OnTeamChat",
+        //"OnSquadChat",
+        "OnRoundOverPlayers",
+        "OnRoundOver",
+        "OnRoundOverTeamScores",
+        "OnLevelLoaded",
+        "OnPlayerKilledByAdmin",
+        "OnPlayerMovedByAdmin",
+        "OnPlayerIsAlive",
+        "OnReservedSlotsList",
+        "OnEndRound",
+        "OnRunNextLevel"
+    );
+}
+
+
+public void OnPluginEnable() {
+    if (fFinalizerActive) {
+        ConsoleWarn("Not done disabling, try again in 10 seconds!");
+        return;
+    }
+    fIsEnabled = true;
+    fPluginState = PluginState.JustEnabled;
+    fGameState = GameState.Unknown;
+    fEnabledTimestamp = DateTime.Now;
+    fRoundStartTimestamp = DateTime.Now;
+
+    ConsoleWrite("^bEnabled!^n Version = " + GetPluginVersion());
+    DebugWrite("^b^3State = " + fPluginState, 6);
+    DebugWrite("^b^3Game state = " + fGameState, 6);
+
+    GatherProconGoodies();
+
+    StartThreads();
+
+    ServerCommand("reservedSlotsList.list");
+    ServerCommand("serverInfo");
+    ServerCommand("admin.listPlayers", "all");
+
+    CheckForPluginUpdate();
+
+    fIsCacheEnabled = IsCacheEnabled(true);
+}
+
+
+public void OnPluginDisable() {
+    fIsEnabled = false;
+
+    try {
+        fEnabledTimestamp = DateTime.MinValue;
+
+        StopThreads();
+
+        Reset();
+    
+        ConsoleWrite("^bDisabling, stopping threads ...^n");
+        fPluginState = PluginState.Disabled;
+        fGameState = GameState.Unknown;
+        DebugWrite("^b^3State = " + fPluginState, 6);
+        DebugWrite("^b^3Game state = " + fGameState, 6);
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+}
+
+
+public override void OnVersion(String type, String ver) {
+    if (!fIsEnabled) return;
+    
+    DebugWrite("Got ^bOnVersion^n: " + type + " " + ver, 7);
+    try {
+        fGotVersion = true;
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+}
+
+//public override void OnPlayerJoin(String soldierName) { }
+
+public override void OnPlayerLeft(CPlayerInfo playerInfo) {
+    if (!fIsEnabled) return;
+    
+    DebugWrite("^9^bGot OnPlayerLeft:^n " + playerInfo.SoldierName, 8);
+
+    try {
+        if (IsKnownPlayer(playerInfo.SoldierName)) {
+            CheckRageQuit(playerInfo.SoldierName);
+            ValidateMove(playerInfo.SoldierName);
+            RemovePlayer(playerInfo.SoldierName);
+        }
+    
+        DebugWrite("Player left: ^b" + playerInfo.SoldierName, 4);
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+}
+
+public override void OnPlayerSquadChange(String soldierName, int teamId, int squadId) {
+    if (!fIsEnabled) return;
+
+    if (squadId == 0) return;
+    
+    DebugWrite("^9^bGot OnPlayerSquadChange^n: " + soldierName + " " + teamId + " " + squadId, 7);
+}
+
+
+public override void OnPlayerTeamChange(String soldierName, int teamId, int squadId) {
+    if (!fIsEnabled) return;
+    
+    DebugWrite("^9^bGot OnPlayerTeamChange^n: " + soldierName + " " + teamId + " " + squadId, 7);
+
+    if (fPluginState == PluginState.Disabled || fPluginState == PluginState.Error) return;
+
+    try {
+        // Only teamId is valid for BF3, squad change is sent on separate event
+
+        // Handle team change event
+        if (fReassigned.Contains(soldierName)) {
+            // We reassigned this new player
+            fReassigned.Remove(soldierName);
+            IncrementTotal();
+            fReassignedRound = fReassignedRound + 1;
+            AddNewPlayer(soldierName, teamId);
+            UpdateTeams();
+            DebugWrite("^4New player^0: ^b" + soldierName + "^n, reassigned to " + GetTeamName(teamId) + " team by " + GetPluginName(), 4);
+       } else if (!IsKnownPlayer(soldierName)) {
+            int diff = 0;
+            bool mustMove = false;
+            int reassignTo = ToTeam(soldierName, teamId, true, out diff, ref mustMove);
+            if (reassignTo == 0 || reassignTo == teamId) {
+                // New player was going to the right team anyway
+                IncrementTotal(); // no matching stat, reflects non-reassigment joins
+                AddNewPlayer(soldierName, teamId);
+                UpdateTeams();
+                DebugWrite("^4New player^0: ^b" + soldierName + "^n, assigned to " + GetTeamName(teamId) + " team by game server", 4);
+            } else {
+                Reassign(soldierName, teamId, reassignTo, diff);
+            }
+        } else if (fGameState == GameState.Playing) {
+
+            // If this was an MB move, finish it
+            bool wasPluginMove = FinishMove(soldierName, teamId);
+
+            /*
+             * We need to determine if this team change was instigated by a player or by an admin (plugin).
+             * We want to ignore moves by admin. This is tricky due to the events possibly being 
+             * in reverse order (team change first, then moved by admin). Use player.isAlive
+             * to force a round trip with the game server, to insure that we get the admin move
+             * event, if it exists.
+             */
+            if (fPendingTeamChange.ContainsKey(soldierName)) {
+                // This is an admin move in correct order, do not treat it as a team switch
+                fPendingTeamChange.Remove(soldierName);
+                DebugWrite("Moved by admin: ^b" + soldierName + "^n to team " + teamId, 6);
+                ConditionalIncrementMoves(soldierName);
+                if (!wasPluginMove) {
+                    // Some other admin.movePlayer, so update to account for it
+                    UpdatePlayerTeam(soldierName, teamId);
+                    UpdateTeams();
+                }
+                return;
+            }
+
+            // Remember the pending move in a table
+            fPendingTeamChange[soldierName] = teamId;
+
+            // Admin move event may still be on its way, so do a round-trip to check
+            ServerCommand("player.isAlive", soldierName);
+        } else if (fGameState == GameState.RoundStarting || fGameState == GameState.RoundEnding) {
+            UpdatePlayerTeam(soldierName, teamId);
+            UpdateTeams();
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+}
+
+public override void OnPlayerIsAlive(string soldierName, bool isAlive) {
+    if (!fIsEnabled) return;
+
+    DebugWrite("^9^bGot OnPlayerIsAlive^n: " + soldierName + " " + isAlive, 7);
+
+    try {
+        if (fPluginState != PluginState.Active) return;
+        /*
+        This may be the return leg of the round-trip to insure that
+        an admin move event, if any, has been processed. If the player's
+        name is still in fPendingTeamChange, it's a real player instigated move
+        */
+        if (fPendingTeamChange.ContainsKey(soldierName)) {
+            int team = fPendingTeamChange[soldierName];
+            fPendingTeamChange.Remove(soldierName);
+
+            // Check if player is allowed to switch teams
+            // Unswitch is handled in CheckTeamSwitch
+            if (CheckTeamSwitch(soldierName, team)) {
+                UpdatePlayerTeam(soldierName, team);
+                UpdateTeams();        
+                IncrementTotal(); // No matching stat, reflects allowed team switches
+            }
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+}
+
+public override void OnPlayerMovedByAdmin(string soldierName, int destinationTeamId, int destinationSquadId, bool forceKilled) {
+    if (!fIsEnabled) return;
+
+    DebugWrite("^9^bGot OnPlayerMovedByAdmin^n: " + soldierName + " " + destinationTeamId + " " + destinationSquadId + " " + forceKilled, 7);
+
+    try {
+        if (fPluginState == PluginState.Active && fGameState == GameState.Playing) {
+            if (fPendingTeamChange.ContainsKey(soldierName)) {
+                // this is an admin move in reversed order, clear from pending table and ignore the move
+                fPendingTeamChange.Remove(soldierName);
+                DebugWrite("(REVERSED) Moved by admin: ^b" + soldierName + "^n to team " + destinationTeamId, 6);
+                // Already handled updates in preceding team change event
+                /*
+                ConditionalIncrementMoves(soldierName);
+                // Some other admin.movePlayer, so update to account for it
+                UpdatePlayerTeam(soldierName, destinationTeamId);
+                UpdateTeams();
+                */
+            } else if (!fUnassigned.Contains(soldierName)) {
+                // this is an admin move in correct order, add to pending table and let OnPlayerTeamChange handle it
+                fPendingTeamChange[soldierName] = destinationTeamId;
+            }
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+}
+
+/*
+public override void OnSquadListPlayers(int teamId, int squadId, int playerCount, List<string> playersInSquad) {
+    if (!fIsEnabled) return;
+    
+    DebugWrite("Got ^bOnSquadListPlayers^n: " + teamId + "/" + squadId + " has " + playerCount, 7);
+
+    try {
+        if (playersInSquad == null || playersInSquad.Count == 0) return;
+
+        // Logging
+        if (DebugLevel >= 6) {
+            String ss = "Squad (";
+            int t = Math.Max(0, Math.Min(teamId, TEAM_NAMES.Length-1));
+            int s = Math.Max(0, Math.Min(squadId, SQUAD_NAMES.Length-1));
+
+            ss = ss + TEAM_NAMES[t] + "/" + SQUAD_NAMES[s] + "): ";
+
+            bool first = true;
+            foreach (String grunt in playersInSquad) {
+                if (first) {
+                    ss = ss + grunt;
+                    first = false;
+                } else {
+                    ss = ss + ", " + grunt;
+                }
+            }
+
+            ConsoleWrite("^9" + ss);
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+}
+*/
+
+
+public override void OnPlayerKilled(Kill kKillerVictimDetails) {
+    if (!fIsEnabled) return;
+
+    String killer = kKillerVictimDetails.Killer.SoldierName;
+    String victim = kKillerVictimDetails.Victim.SoldierName;
+    String weapon = kKillerVictimDetails.DamageType;
+    
+    bool isAdminKill = false;
+    if (String.IsNullOrEmpty(killer)) {
+        killer = victim;
+        isAdminKill = (weapon == "Death");
+    }
+    
+    DebugWrite("^9^bGot OnPlayerKilled^n: " + killer  + " -> " + victim + " (" + weapon + ")", 8);
+    if (isAdminKill) DebugWrite("^9OnPlayerKilled: admin kill: ^b" + victim + "^n (" + weapon + ")", 7);
+
+    try {
+    
+        if (fGameState == GameState.Unknown || fGameState == GameState.Warmup) {
+            bool wasUnknown = (fGameState == GameState.Unknown);
+            fGameState = (TotalPlayerCount < 4) ? GameState.Warmup : GameState.Playing;
+            if (wasUnknown || fGameState == GameState.Playing) DebugWrite("OnPlayerKilled: ^b^3Game state = " + fGameState, 6);  
+        }
+    
+        if (!isAdminKill) {
+            KillUpdate(killer, victim);
+    
+            if (fPluginState == PluginState.Active && fGameState == GameState.Playing) {
+                if (!IsModelInSync()) {
+                    if (fTimeOutOfJoint == 0) {
+                        // If a move or reassign takes too long, abort it, checked in OnListPlayers
+                        fTimeOutOfJoint = GetTimeInRoundMinutes();
+                    }
+                } else {
+                    fTimeOutOfJoint = 0;
+                    BalanceAndUnstack(victim);
+                }
+            }
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+}
+
+public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subset) {
+    if (!fIsEnabled) return;
+    
+    DebugWrite("^9^bGot OnListPlayers^n", 8);
+
+    try {
+        if (subset.Subset != CPlayerSubset.PlayerSubsetType.All) return;
+
+        lock (fListPlayersQ) {
+            fListPlayersTimestamp = DateTime.Now;
+            Monitor.Pulse(fListPlayersQ);
+        }
+
+        /*
+        Check if server crashed or Blaze dumped players or model invalid for too long.
+        Detected by: last recorded server uptime is greater than zero and less than new uptime,
+        or a player model timed out while still being on the all players list,
+        or got a version command response, which is used in connection initialization for Procon,
+        or the current list of players is more than CRASH_COUNT_HEURISTIC players less than the last
+        recorded count, or the last known player count is greater than the maximum server size,
+        or more than 3 minutes have elapsed since a move/reassign was started.
+        Since these detections are not completely reliable, do a minimal  amount of recovery,
+        don't do a full reset
+        */
+        if (fServerCrashed 
+        || fGotVersion 
+        || (TotalPlayerCount >= 16 
+            && TotalPlayerCount > players.Count 
+            && (TotalPlayerCount - players.Count) >= Math.Min(CRASH_COUNT_HEURISTIC, TotalPlayerCount)) 
+        || TotalPlayerCount > MaximumServerSize
+        || (fTimeOutOfJoint > 0 && GetTimeInRoundMinutes() - fTimeOutOfJoint > 3.0))  {
+            fServerCrashed = false;
+            fGotVersion = false;
+            fTimeOutOfJoint = 0;
+            ValidateModel(players);
+        } else {
+            fUnassigned.Clear();
+    
+            foreach (CPlayerInfo p in players) {
+                try {
+                    UpdatePlayerModel(p.SoldierName, p.TeamID, p.SquadID, p.GUID, p.Score, p.Kills, p.Deaths, p.Rank);
+                } catch (Exception e) {
+                    ConsoleException(e);
+                    continue;
+                }
+            }
+        }
+
+        GarbageCollectKnownPlayers(); // also resets LastMoveTo
+ 
+        UpdateTeams();
+
+        LogStatus(false);
+    
+        /* Special handling for JustEnabled state */
+        if (fPluginState == PluginState.JustEnabled) {
+            fPluginState = PluginState.Active;
+            fRoundStartTimestamp = DateTime.Now;
+            DebugWrite("^b^3State = " + fPluginState, 6);  
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+}
+
+
+public override void OnServerInfo(CServerInfo serverInfo) {
+    if (!fIsEnabled || serverInfo == null) return;
+
+    DebugWrite("^9^bGot OnServerInfo^n: Debug level = " + DebugLevel, 8);
+    
+    try {
+        // Update game state if just enabled (as of R38, CTF TeamScores may be null, does not mean round end)
+        if (fGameState == GameState.Unknown && serverInfo.GameMode != "CaptureTheFlag0") {
+            if (serverInfo.TeamScores == null || serverInfo.TeamScores.Count < 2) {
+                fGameState = GameState.RoundEnding;
+                DebugWrite("OnServerInfo: ^b^3Game state = " + fGameState, 6);  
+            }
+        }
+
+        // Show final status 
+        if (fFinalStatus != null) {
+            try {
+                DebugWrite("^bFINAL STATUS FOR PREVIOUS ROUND:^n", 2);
+                foreach (TeamScore ts in fFinalStatus) {
+                    if (ts.TeamID >= fTickets.Length) break;
+                    fTickets[ts.TeamID] = (ts.Score == 1) ? 0 : ts.Score; // fix rounding
+                }
+                LogStatus(true);
+                DebugWrite("+------------------------------------------------+", 2);
+            } catch (Exception) {}
+            fFinalStatus = null;
+        }
+
+        if (fServerInfo == null || fServerInfo.GameMode != serverInfo.GameMode || fServerInfo.Map != serverInfo.Map) {
+            DebugWrite("ServerInfo update: " + serverInfo.Map + "/" + serverInfo.GameMode, 4);
+        }
+    
+        // Check for server crash
+        if (fServerUptime > 0 && fServerUptime > serverInfo.ServerUptime + 2) { // +2 secs for rounding error in server!
+            fServerCrashed = true;
+        }
+        fServerInfo = serverInfo;
+        fServerUptime = serverInfo.ServerUptime;
+
+        // Update max tickets
+        bool isRush = IsRush();
+        double minTickets = Double.MaxValue;
+        double maxTickets = 0;
+        double attacker = 0;
+        double defender = 0;
+        if (fServerInfo.TeamScores == null)  return;
+        foreach (TeamScore ts in fServerInfo.TeamScores) {
+            if (ts.TeamID >= fTickets.Length) break;
+            fTickets[ts.TeamID] = ts.Score;
+            if (ts.Score > maxTickets) maxTickets = ts.Score;
+            if (ts.Score < minTickets) minTickets = ts.Score;
+        }
+
+        if (isRush) {
+            attacker = fServerInfo.TeamScores[0].Score;
+            defender = fServerInfo.TeamScores[1].Score;
+            DebugWrite("^7serverInfo: Rush attacker = " + attacker + ", was = " + fRushAttackerTickets + ", defender = " + defender, 7); 
+        }
+
+        if (fMaxTickets == -1) {
+            if (!isRush) {
+                fMaxTickets = maxTickets;
+                DebugWrite("ServerInfo update: fMaxTickets = " + fMaxTickets.ToString("F0"), 4);
+            } else if (fServerInfo.TeamScores.Count == 2) {
+                fRushMaxTickets = defender;
+                fMaxTickets = attacker;
+                fRushStage = 1;
+                fRushAttackerTickets = attacker;
+                DebugWrite("ServerInfo update: fMaxTickets = " + fMaxTickets.ToString("F0") + ", fRushMaxTickets = " + fRushMaxTickets + ", fRushStage = " + fRushStage, 4);
+            }
+        }
+
+        // Rush heuristic: if attacker tickets are higher than last check, new stage started
+        if (isRush) {
+            if (attacker > fRushAttackerTickets) {
+                fRushMaxTickets = defender;
+                fMaxTickets = attacker;
+                fRushStage = fRushStage + 1;
+                DebugWrite(".................................... ^b^1New rush stage detected^0^n ....................................", 3);
+                DebugBalance("Rush Stage " + fRushStage + " of 4");
+            }
+            // update last known attacker ticket value
+            fRushAttackerTickets = attacker;
+        }
+
+        // Check for plugin updates periodically
+        if (fLastVersionCheckTimestamp != DateTime.MinValue 
+        && DateTime.Now.Subtract(fLastVersionCheckTimestamp).TotalMinutes > CHECK_FOR_UPDATES_MINS) {
+            CheckForPluginUpdate();
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+}
+
+//public override void OnResponseError(List<String> requestWords, String error) { }
+
+//public override void OnGlobalChat(String speaker, String message) { }
+
+//public override void OnTeamChat(String speaker, String message, int teamId) { }
+
+//public override void OnSquadChat(String speaker, String message, int teamId, int squadId) { }
+
+public override void OnRoundOverPlayers(List<CPlayerInfo> players) {
+    if (!fIsEnabled) return;
+    
+    DebugWrite("^9^bGot OnRoundOverPlayers^n", 7);
+
+    try {
+        // TBD
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+}
+
+public override void OnRoundOverTeamScores(List<TeamScore> teamScores) {
+    if (!fIsEnabled) return;
+    
+    DebugWrite("^9^bGot OnRoundOverTeamScores^n", 7);
+
+    try {
+        fFinalStatus = teamScores;
+        ServerCommand("serverInfo"); // get info for final status report
+        Scrambler(teamScores);
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+}
+
+public override void OnRoundOver(int winningTeamId) {
+    if (!fIsEnabled) return;
+    
+    DebugWrite("^9^bGot OnRoundOver^n: winner " + winningTeamId, 7);
+    fWinner = winningTeamId;
+
+    try {
+        DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1Round over detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
+    
+        if (fGameState == GameState.Playing || fGameState == GameState.Unknown) {
+            fGameState = GameState.RoundEnding;
+            DebugWrite("OnRoundOver: ^b^3Game state = " + fGameState, 6);
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+}
+
+public override void OnLevelLoaded(String mapFileName, String Gamemode, int roundsPlayed, int roundsTotal) {
+    if (!fIsEnabled) return;
+    
+    DebugWrite("^9^bGot OnLevelLoaded^n: " + mapFileName + " " + Gamemode + " " + roundsPlayed + "/" + roundsTotal, 7);
+
+    try {
+        DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1Level loaded detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
+
+        if (fGameState == GameState.RoundEnding || fGameState == GameState.Unknown) {
+            fGameState = GameState.RoundStarting;
+            DebugWrite("OnLevelLoaded: ^b^3Game state = " + fGameState, 6);  
+        }
+
+        fMaxTickets = -1; // flag to pay attention to next serverInfo
+        ServerCommand("serverInfo");
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+}
+
+public override void OnPlayerSpawned(String soldierName, Inventory spawnedInventory) {
+    if (!fIsEnabled) return;
+    
+    DebugWrite("^9^bGot OnPlayerSpawned: ^n" + soldierName, 8);
+    
+    try {
+        if (fGameState == GameState.Unknown || fGameState == GameState.Warmup) {
+            bool wasUnknown = (fGameState == GameState.Unknown);
+            fGameState = (TotalPlayerCount < 4) ? GameState.Warmup : GameState.Playing;
+            if (wasUnknown || fGameState == GameState.Playing) DebugWrite("OnPlayerSpawned: ^b^3Game state = " + fGameState, 6);  
+        } else if (fGameState == GameState.RoundStarting) {
+            // First spawn after Level Loaded is the official start of a round
+            DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1First spawn detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
+
+            fGameState = (TotalPlayerCount < 4) ? GameState.Warmup : GameState.Playing;
+            DebugWrite("OnPlayerSpawned: ^b^3Game state = " + fGameState, 6);
+
+            ResetRound();
+            fIsFullRound = true;
+            ServerCommand("serverInfo");
+            ScheduleListPlayers(2);
+        }
+    
+        if (fPluginState == PluginState.Active) {
+            ValidateMove(soldierName);
+            if (fGameState != GameState.RoundEnding) {
+                SpawnUpdate(soldierName);
+                FireMessages(soldierName);
+                CheckDelayedMove(soldierName);
+            }
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+}
+
+
+public override void OnPlayerKilledByAdmin(string soldierName) {
+    if (!fIsEnabled) return;
+    
+    DebugWrite("^9^bGot OnPlayerKilledByAdmin^n: " + soldierName, 7);
+}
+
+public override void OnReservedSlotsList(List<String> lstSoldierNames) {
+    //if (!fIsEnabled) return; // do this always
+    
+    DebugWrite("^9^bGot OnReservedSlotsList^n", 7);
+    fReservedSlots = lstSoldierNames;
+}
+
+public override void OnEndRound(int iWinningTeamID) {
+    if (!fIsEnabled) return;
+    
+    DebugWrite("^9^bGot OnEndRound^n: " + iWinningTeamID, 7);
+}
+
+public override void OnRunNextLevel() {
+    if (!fIsEnabled) return;
+    
+    DebugWrite("^9^bGot OnRunNextLevel^n", 7);
+}
+
+
+
+
+
+
+
+
+/* ======================== CORE ENGINE ============================= */
+
+
+
+
+
+
+
+
+
+private void BalanceAndUnstack(String name) {
+
+    /* Useful variables */
+
+    PlayerModel player = null;
+    String simpleMode = String.Empty;
+    PerModeSettings perMode = null;
+    bool isStrong = false; // this player
+    int winningTeam = 0;
+    int losingTeam = 0;
+    int biggestTeam = 0;
+    int smallestTeam = 0;
+    int[] ascendingSize = null;
+    int[] descendingTickets = null;
+    String strongMsg = String.Empty;
+    int diff = 0;
+    DateTime now = DateTime.Now;
+    bool needsBalancing = false;
+    bool loggedStats = false;
+    bool isSQDM = IsSQDM();
+    String log = String.Empty;
+
+    /* Sanity checks */
+
+    if (fServerInfo == null) {
+        return;
+    }
+
+    int totalPlayerCount = TotalPlayerCount;
+
+    if (totalPlayerCount >= (MaximumServerSize-1)) {
+        if (DebugLevel >= 7) DebugBalance("Server is full, no balancing or unstacking will be attempted!");
+        IncrementTotal(); // no matching stat, reflect total deaths handled
+        CheckDeativateBalancer("Full");
+        return;
+    }
+
+    if (totalPlayerCount > 0) {
+        AnalyzeTeams(out diff, out ascendingSize, out descendingTickets, out biggestTeam, out smallestTeam, out winningTeam, out losingTeam);
+    } else {
+        CheckDeativateBalancer("Empty");
+        return;
+    }
+
+
+    /* Pre-conditions */
+
+    player = GetPlayer(name);
+    if (player == null) {
+        CheckDeativateBalancer("Unknown player " + name);
+        return;
+    }
+
+    if (!fModeToSimple.TryGetValue(fServerInfo.GameMode, out simpleMode)) {
+        DebugBalance("Unknown game mode: " + fServerInfo.GameMode);
+        simpleMode = fServerInfo.GameMode;
+    }
+    if (String.IsNullOrEmpty(simpleMode)) {
+        DebugBalance("Simple mode is null: " + fServerInfo.GameMode);
+        CheckDeativateBalancer("Unknown mode");
+        return;
+    }
+    if (!fPerMode.TryGetValue(simpleMode, out perMode)) {
+        DebugBalance("No per-mode settings for " + simpleMode + ", using defaults");
+        perMode = new PerModeSettings();
+    }
+    if (perMode == null) {
+        DebugBalance("Per-mode settings null for " + simpleMode + ", using defaults");
+        perMode = new PerModeSettings();
+    }
+
+    /* Per-mode and player info */
+
+    String extractedTag = ExtractTag(player);
+    Speed balanceSpeed = GetBalanceSpeed(perMode);
+    double unstackTicketRatio = GetUnstackTicketRatio(perMode);
+    int lastMoveFrom = player.LastMoveFrom;
+
+    if (totalPlayerCount >= (perMode.MaxPlayers-1)) {
+        if (DebugLevel >= 7) DebugBalance("Server is full by per-mode Max Players, no balancing or unstacking will be attempted!");
+        IncrementTotal(); // no matching stat, reflect total deaths handled
+        CheckDeativateBalancer("Full per-mode");
+        return;
+    }
+
+    /* Check dispersals */
+    
+    bool mustMove = false;
+    bool isDisperseByRank = IsRankDispersal(player);
+    bool isDisperseByList = IsDispersal(player);
+    if (isDisperseByRank) {
+        DebugBalance("ON MUST MOVE LIST ^b" + name + "^n T:" + player.Team + ", Rank " + player.Rank + " >= " + perMode.DisperseEvenlyForRank);
+        mustMove = true;
+    } else if (isDisperseByList) {
+        DebugBalance("ON MUST MOVE LIST ^b" + player.FullName + "^n T:" + player.Team + ", disperse evenly enabled");
+        mustMove = true;
+    }
+
+    /* Check if balancing is needed */
+
+    if (diff > MaxDiff()) {
+        int floorPlayers = 6;
+        if (totalPlayerCount < floorPlayers) {
+            if (DebugLevel >= 7) DebugBalance("Not enough players in server, minimum is " + floorPlayers);
+            CheckDeativateBalancer("Not enough players");
+            return;
+        }
+
+        if (!mustMove && fUnassigned.Count >= (diff - MaxDiff())) {
+            DebugBalance("Wait for " + fUnassigned.Count + " unassigned players to be assigned before activating autobalance");
+            IncrementTotal(); // no matching stat, reflect total deaths handled
+            return;
+        }
+
+        needsBalancing = true; // needs balancing set to true, unless speed is Unstack only
+
+        if (balanceSpeed == Speed.Unstack) {
+            DebugBalance("Needs balancing, but balance speed is set to Unstack, so no balancing will be done");
+            needsBalancing = false;
+        }
+    }
+
+    /* Per-mode settings */
+
+    // Adjust for duration of balance active
+    if (needsBalancing && fBalanceIsActive && balanceSpeed == Speed.Adaptive && fLastBalancedTimestamp != DateTime.MinValue) {
+        double secs = now.Subtract(fLastBalancedTimestamp).TotalSeconds;
+        if (secs > SecondsUntilAdaptiveSpeedBecomesFast) {
+            DebugBalance("^8^bBalancing taking too long (" + secs.ToString("F0") + " secs)!^n^0 Forcing to Fast balance speed.");
+            balanceSpeed = Speed.Fast;
+        }
+    }
+    String andSlow = (balanceSpeed == Speed.Slow) ? " and speed is Slow" : String.Empty;
+
+    /* Activation check */
+
+    if (balanceSpeed != Speed.Stop && needsBalancing) {
+        if (!fBalanceIsActive) {
+            DebugBalance("^2^bActivating autobalance!");
+            fLastBalancedTimestamp = now;
+        }
+        fBalanceIsActive = true;
+    } else {
+        CheckDeativateBalancer("Deactiving autobalance");
+    }
+
+    /* Exclusions */
+
+    // Exclude if on Whitelist or Reserved Slots if enabled
+    if (OnWhitelist || (needsBalancing && balanceSpeed == Speed.Slow)) {
+        List<String> vip = new List<String>(Whitelist);
+        if (EnableWhitelistingOfReservedSlotsList) vip.AddRange(fReservedSlots);
+        /*
+        while (vip.Contains(String.Empty)) {
+            vip.Remove(String.Empty);
+        }
+        */
+        if (vip.Contains(name) 
+        || (!String.IsNullOrEmpty(extractedTag) && vip.Contains(extractedTag))
+        || vip.Contains(player.EAGUID)) {
+            DebugBalance("Excluding ^b" + player.FullName + "^n: whitelisted" + andSlow);
+            fExcludedRound = fExcludedRound + 1;
+            IncrementTotal();
+            return;
+        }
+    }
+
+    // Sort player's team by the strong method
+    List<PlayerModel> fromList = GetTeam(player.Team);
+    if (fromList == null) {
+        DebugBalance("Unknown team " + player.Team + " for player ^b" + player.Name);
+        return;
+    }
+    switch (perMode.DetermineStrongPlayersBy) {
+        case DefineStrong.RoundScore:
+            fromList.Sort(DescendingRoundScore);
+            strongMsg = "Determing strong by: Round Score";
+            break;
+        case DefineStrong.RoundSPM:
+            fromList.Sort(DescendingRoundSPM);
+            strongMsg = "Determing strong by: Round SPM";
+            break;
+        case DefineStrong.RoundKills:
+            fromList.Sort(DescendingRoundKills);
+            strongMsg = "Determing strong by: Round Kills";
+            break;
+        case DefineStrong.RoundKDR:
+            fromList.Sort(DescendingRoundKDR);
+            strongMsg = "Determing strong by: Round KDR";
+            break;
+        case DefineStrong.PlayerRank:
+            fromList.Sort(DescendingPlayerRank);
+            strongMsg = "Determing strong by: Player Rank";
+            break;
+        default:
+            fromList.Sort(DescendingRoundScore);
+            strongMsg = "Determing strong by: Round Score";
+            break;
+    }
+
+    double above = ((fromList.Count * perMode.PercentOfTopOfTeamIsStrong) / 100.0) + 0.5;
+    int strongest = Math.Max(0, Convert.ToInt32(above));
+    int playerIndex = 0;
+    int minPlayers = (isSQDM) ? 5 : fromList.Count; // for SQDM, apply top/strong/weak only if team has 5 or more players
+
+    // Exclude if TopScorers enabled and a top scorer on the team
+    int topPlayersPerTeam = 0;
+    if (balanceSpeed != Speed.Fast && (TopScorers || balanceSpeed == Speed.Slow)) {
+        if (isSQDM) {
+            int maxCount = fromList.Count;
+            if (maxCount < 5) {
+                topPlayersPerTeam = 0;
+            } else if (maxCount < 8) {
+                topPlayersPerTeam = 1;
+            } else if (totalPlayerCount < 16) {
+                topPlayersPerTeam = 2;
+            } else {
+                topPlayersPerTeam = 3;
+            }
+        } else {
+            if (totalPlayerCount < 22) {
+                topPlayersPerTeam = 1;
+            } else if (totalPlayerCount > 42) {
+                topPlayersPerTeam = 3;
+            } else {
+                topPlayersPerTeam = 2;
+            }
+        }
+    }
+    for (int i = 0; i < fromList.Count; ++i) {
+        if (fromList[i].Name == player.Name) {
+            if (!mustMove 
+            && needsBalancing 
+            && balanceSpeed != Speed.Fast 
+            && fromList.Count >= minPlayers 
+            && topPlayersPerTeam != 0 
+            && i < topPlayersPerTeam) {
+                String why = (balanceSpeed == Speed.Slow) ? "Speed is slow, excluding top scorers" : "Top Scorers enabled";
+                if (!loggedStats) {
+                    DebugBalance(GetPlayerStatsString(name));
+                    loggedStats = true;
+                }
+                DebugBalance("Excluding ^b" + player.FullName + "^n: " + why + " and this player is #" + (i+1) + " on team " + GetTeamName(player.Team));
+                fExcludedRound = fExcludedRound + 1;
+                IncrementTotal();
+                return;
+            } else {
+                playerIndex = i;
+                break;
+            }
+        }
+    }
+    isStrong = (playerIndex < strongest);
+
+    // Exclude if player joined less than MinutesAfterJoining
+    double joinedMinutesAgo = GetPlayerJoinedTimeSpan(player).TotalMinutes;
+    double enabledForMinutes = now.Subtract(fEnabledTimestamp).TotalMinutes;
+    if (!mustMove 
+    && needsBalancing 
+    && (enabledForMinutes > MinutesAfterJoining) 
+    && balanceSpeed != Speed.Fast 
+    && (joinedMinutesAgo < MinutesAfterJoining)) {
+        if (!loggedStats) {
+            DebugBalance(GetPlayerStatsString(name));
+            loggedStats = true;
+        }
+        DebugBalance("Excluding ^b" + player.FullName + "^n: joined less than " + MinutesAfterJoining.ToString("F1") + " minutes ago (" + joinedMinutesAgo.ToString("F1") + ")");
+        fExcludedRound = fExcludedRound + 1;
+        IncrementTotal();
+        return;   
+    }
+
+    /* Balance */
+
+    int toTeamDiff = 0;
+    int toTeam = ToTeam(name, player.Team, false, out toTeamDiff, ref mustMove); // take into account dispersal by Rank, etc.
+
+    if (toTeam == 0 || toTeam == player.Team) {
+        if (needsBalancing || mustMove) {
+            if (DebugLevel >= 7) DebugBalance("Exempting ^b" + name + "^n, target team selected is same or zero");
+            fExemptRound = fExemptRound + 1;
+            IncrementTotal();
+            return;
+        }
+    }
+
+    int numTeams = 2; //(isSQDM) ? 4 : 2; // TBD, what is max squad size for SQDM?
+    int maxTeamSlots = (MaximumServerSize/numTeams);
+    int maxTeamPerMode = (perMode.MaxPlayers/numTeams);
+    List<PlayerModel> lt = GetTeam(toTeam);
+    int toTeamSize = (lt == null) ? 0 : lt.Count;
+
+    if (toTeamSize == maxTeamSlots || toTeamSize == maxTeamPerMode) {
+        if (DebugLevel >= 7) DebugBalance("Exempting ^b" + name + "^n, target team is full " + toTeamSize);
+        fExemptRound = fExemptRound + 1;
+        IncrementTotal();
+        return;
+    }
+
+    if (mustMove) DebugBalance("^4MUST MOVE^0 ^b" + name + "^n from " + GetTeamName(player.Team) + " to " + GetTeamName(toTeam));
+
+    if (!mustMove && needsBalancing && toTeamDiff <= MaxDiff()) {
+        DebugBalance("Exempting ^b" + name + "^n, difference between " + GetTeamName(player.Team) + " team and " + GetTeamName(toTeam) + " team is only " + toTeamDiff);
+        fExemptRound = fExemptRound + 1;
+        IncrementTotal();
+        return;
+    }
+
+
+    if ((fBalanceIsActive || mustMove) && toTeam != 0) {
+        String ts = null;
+        if (isSQDM) {
+            ts = fTeam1.Count + "(A) vs " + fTeam2.Count + "(B) vs " + fTeam3.Count + "(C) vs " + fTeam4.Count + "(D)";
+        } else {
+            ts = fTeam1.Count + "(US) vs " + fTeam2.Count + "(RU)";
+        }
+        if (mustMove) {
+            DebugBalance("Autobalancing because ^b" + name + "^n must be moved");
+        } else {
+            DebugBalance("Autobalancing because difference of " + diff + " is greater than " + MaxDiff() + ", [" + ts + "]");
+        }
+        double abTime = now.Subtract(fLastBalancedTimestamp).TotalSeconds;
+        if (abTime > 0) {
+            DebugBalance("^2^bAutobalance has been active for " + abTime.ToString("F1") + " seconds!");
+        }
+
+        if (!loggedStats) {
+            DebugBalance(GetPlayerStatsString(name));
+            loggedStats = true;
+        }
+
+        /* Exemptions */
+
+        // Already on the smallest team
+        if (!mustMove && player.Team == smallestTeam) {
+            DebugBalance("Exempting ^b" + name + "^n, already on the smallest team");
+            fExemptRound = fExemptRound + 1;
+            IncrementTotal();
+            return;
+        }
+
+        // Has this player already been moved for balance or unstacking?
+        if (!mustMove && player.MovesRound >= 1) {
+            DebugBalance("Exempting ^b" + name + "^n, already moved this round");
+            fExemptRound = fExemptRound + 1;
+            IncrementTotal();
+            return;
+        }
+
+        // SQDM, not on the biggest team
+        if (isSQDM && !mustMove && balanceSpeed != Speed.Fast && player.Team != biggestTeam) {
+            // Make sure player's team isn't the same size as biggest
+            List<PlayerModel> aTeam = GetTeam(player.Team);
+            List<PlayerModel> bigTeam = GetTeam(biggestTeam);
+            if (aTeam == null || bigTeam == null || (aTeam != null && bigTeam != null && aTeam.Count < bigTeam.Count)) {
+                DebugBalance("Exempting ^b" + name + "^n, not on the biggest team");
+                fExemptRound = fExemptRound + 1;
+                IncrementTotal();
+                return;
+            }
+        }
+
+        // Strong/Weak exemptions and clan tag
+        if (!mustMove && balanceSpeed != Speed.Fast && fromList.Count >= minPlayers) {
+            if (DebugLevel > 5) DebugBalance(strongMsg);
+            // don't move weak player to losing team
+            if (!isStrong  && toTeam == losingTeam) {
+                DebugBalance("Exempting ^b" + name + "^n, don't move weak player to losing team (#" + (playerIndex+1) + " of " + fromList.Count + ", top " + (strongest) + ")");
+                fExemptRound = fExemptRound + 1;
+                IncrementTotal();
+                return;
+            }
+
+            // don't move strong player to winning team
+            if (isStrong && toTeam == winningTeam) {
+                DebugBalance("Exempting ^b" + name + "^n, don't move strong player to winning team (#" + (playerIndex+1) + " of " + fromList.Count + ", median " + (strongest) + ")");
+                fExemptRound = fExemptRound + 1;
+                IncrementTotal();
+                return;
+            }
+
+            // Don't move to same team
+            if (player.Team == toTeam) {
+                if (DebugLevel >= 7) DebugBalance("Exempting ^b" + name + "^n, don't move player to his own team!");
+                IncrementTotal(); // no matching stat, reflect total deaths handled
+                return;
+            }
+
+            // Don't move if in squad with same tags
+            if (SameClanTagsInSquad) {
+                int cmt =  CountMatchingTags(player);
+                if (cmt >= 2) {
+                    String et = ExtractTag(player);
+                    DebugBalance("Exempting ^b" + name + "^n, " + cmt + " players in squad with tag [" + et + "]");
+                    fExemptRound = fExemptRound + 1;
+                    IncrementTotal();
+                }
+            }
+        }
+
+        /* Move for balance */
+
+        int origTeam = player.Team;
+        String origName = GetTeamName(player.Team);
+
+        if (lastMoveFrom != 0) {
+            origTeam = lastMoveFrom;
+            origName = GetTeamName(origTeam);
+        }
+        
+        MoveInfo move = new MoveInfo(name, player.Tag, origTeam, origName, toTeam, GetTeamName(toTeam));
+        move.For = MoveType.Balance;
+        move.Format(this, ChatMovedForBalance, false, false);
+        move.Format(this, YellMovedForBalance, true, false);
+        String why = (mustMove) ? "to disperse evenly" : ("because difference is " + diff);
+        log = "^4^bBALANCE^n^0 moving ^b" + name + "^n from " + move.SourceName + " team to " + move.DestinationName + " team " + why;
+        log = (EnableLoggingOnlyMode) ? "^9(SIMULATING)^0 " + log : log;
+        DebugWrite(log, 3);
+
+        DebugWrite("^9" + move, 8);
+
+        player.LastMoveFrom = player.Team;
+        StartMoveImmediate(move, false);
+
+        if (EnableLoggingOnlyMode) {
+            // Simulate completion of move
+            OnPlayerTeamChange(name, toTeam, 0);
+            OnPlayerMovedByAdmin(name, toTeam, 0, false); // simulate reverse order
+        }
+        // no increment total, handled later when move is processed
+        return;
+    }
+
+    if (!fBalanceIsActive) {
+        fLastBalancedTimestamp = now;
+        if (DebugLevel >= 8) ConsoleDebug("fLastBalancedTimestamp = " + fLastBalancedTimestamp.ToString("HH:mm:ss"));
+    }
+
+    /* Unstack */
+
+    if (winningTeam <= 0 || winningTeam >= fTickets.Length || losingTeam <= 0 || losingTeam >= fTickets.Length || balanceSpeed == Speed.Stop) {
+        if (DebugLevel >= 5) DebugBalance("Skipping unstack for ^b" + name +"^n: winning = " + winningTeam + ", losingTeam = " + losingTeam + ", speed = " + balanceSpeed);
+        IncrementTotal(); // no matching stat, reflect total deaths handled
+        return;
+    }
+
+    if (totalPlayerCount > (MaximumServerSize-2) || totalPlayerCount > (perMode.MaxPlayers-2)) {
+        // TBD - kick idle players?
+        if (DebugLevel >= 7) DebugBalance("No room to swap players for unstacking");
+        IncrementTotal(); // no matching stat, reflect total deaths handled
+        return;
+    }
+
+    if (perMode.CheckTeamStackingAfterFirstMinutes == 0) {
+        if (DebugLevel >= 5) DebugBalance("Unstacking has been disabled, Check Team Stacking After First Minutes set to zero");
+        IncrementTotal(); // no matching stat, reflect total deaths handled
+        return;
+    }
+
+    double tirMins = GetTimeInRoundMinutes();
+
+    if (tirMins < perMode.CheckTeamStackingAfterFirstMinutes) {
+        DebugBalance("Too early to check for unstacking, skipping ^b" + name + "^n");
+        fExemptRound = fExemptRound + 1;
+        IncrementTotal();
+        return;
+    }
+
+    if ((fUnstackedRound/2) >= perMode.MaxUnstackingSwapsPerRound) {
+        if (DebugLevel >= 7) DebugBalance("Maximum swaps have already occurred this round (" + (fUnstackedRound/2) + ")");
+        fUnstackState = UnstackState.Off;
+        IncrementTotal(); // no matching stat, reflect total deaths handled
+        return;
+    }
+
+    double ratio = 1;
+    double usPoints = 0;
+    double ruPoints = 0;
+    if (IsCTF()) {
+        // Use team points, not tickets
+        usPoints = GetTeamPoints(1);
+        ruPoints = GetTeamPoints(2);
+        if (usPoints <= 0) usPoints = 1;
+        if (ruPoints <= 0) ruPoints = 1;
+        ratio = (usPoints > ruPoints) ? (usPoints/ruPoints) : (ruPoints/usPoints);
+    } else {
+        // Otherwise use ticket ratio
+        if (fTickets[losingTeam] >= 1) {
+            if (IsRush()) {
+                // normalize Rush ticket ratio
+                double attackers = fTickets[1];
+                double defenders = fMaxTickets - (fRushMaxTickets - fTickets[2]);
+                defenders = Math.Max(defenders, attackers/2);
+                ratio = (attackers > defenders) ? (attackers/defenders) : (defenders/attackers);
+            } else {
+                ratio = Convert.ToDouble(fTickets[winningTeam]) / Convert.ToDouble(fTickets[losingTeam]);
+            }
+        }
+    }
+
+    String um = "Ticket ratio " + (ratio*100.0).ToString("F0") + " vs. unstack ratio of " + (unstackTicketRatio*100.0).ToString("F0");
+
+    if (unstackTicketRatio == 0 || ratio < unstackTicketRatio) {
+        if (DebugLevel >= 7) DebugBalance("No unstacking needed: " + um);
+        IncrementTotal(); // no matching stat, reflect total deaths handled
+        return;
+    }
+
+    /*
+    Cases:
+    1) Never unstacked before, timer is 0 and group count is 0
+    2) Within a group, timer is 0 and group count is > 0 but < max
+    3) Between groups, timer is > 0 and group count is 0
+    */
+
+    double nsis = NextSwapGroupInSeconds(perMode); // returns 0 for case 1 and case 2
+
+    if (nsis > 0) {
+        if (DebugLevel >= 7) DebugBalance("Too soon to do another unstack swap group, wait another " + nsis.ToString("F1") + " seconds!");
+        IncrementTotal(); // no matching stat, reflect total deaths handled
+        return;
+    } else {
+        fFullUnstackSwapTimestamp = DateTime.MinValue; // turn off timer
+    }
+
+    // Are the minimum number of players present to decide strong vs weak?
+    if (!mustMove && balanceSpeed != Speed.Fast && fromList.Count < minPlayers) {
+        DebugBalance("Not enough players in team to determine strong vs weak, skipping ^b" + name + "^n, ");
+        fExemptRound = fExemptRound + 1;
+        IncrementTotal();
+        return;
+    }
+
+    // Has this player already been moved for balance or unstacking?
+    if (!mustMove && player.MovesRound >= 1) {
+        DebugBalance("Already moved this round, skipping ^b" + name + "^n, ");
+        fExemptRound = fExemptRound + 1;
+        IncrementTotal();
+        return;
+    }
+
+    // Otherwise, unstack!
+    DebugBalance("^6Unstacking!^0 " + um);
+
+    if (DebugLevel >= 6) {
+        if (isStrong) {
+            DebugBalance("Player ^b" + player.Name + "^n is strong: #" + (playerIndex+1) + " of " + fromList.Count + ", above #" + strongest + " at " + perMode.PercentOfTopOfTeamIsStrong.ToString("F0") + "%");
+        } else {
+            DebugBalance("Player ^b" + player.Name + "^n is weak: #" + (playerIndex+1) + " of " + fromList.Count + ", equal or below #" + strongest + " at " + perMode.PercentOfTopOfTeamIsStrong.ToString("F0") + "%");
+        }
+    }
+
+    if (!loggedStats) {
+        DebugBalance(GetPlayerStatsString(name));
+        loggedStats = true;
+    }
+
+    MoveInfo moveUnstack = null;
+
+    
+    int origUnTeam = player.Team;
+    String origUnName = GetTeamName(player.Team);
+
+    if (lastMoveFrom != 0) {
+        origUnTeam = lastMoveFrom;
+        origUnName = GetTeamName(origUnTeam);
+    }
+
+    if (fUnstackState == UnstackState.Off) {
+        // First swap
+        DebugBalance("For ^b" + name + "^n, first swap of " + perMode.NumberOfSwapsPerGroup);
+        fUnstackState = UnstackState.SwappedWeak;
+    }
+
+    switch (fUnstackState) {
+        case UnstackState.SwappedWeak:
+            // Swap strong to losing team
+            if (isStrong) {
+                // Don't move to same team
+                if (player.Team == losingTeam) {
+                    if (DebugLevel >= 7) DebugBalance("Skipping strong ^b" + name + "^n, don't move player to his own team!");
+                    fExemptRound = fExemptRound + 1;
+                    IncrementTotal();
+                    return;
+                }
+                DebugBalance("Sending strong player ^0^b" + player.FullName + "^n^9 to losing team " + GetTeamName(losingTeam));
+                moveUnstack = new MoveInfo(name, player.Tag, origUnTeam, origUnName, losingTeam, GetTeamName(losingTeam));
+                toTeam = losingTeam;
+                fUnstackState = UnstackState.SwappedStrong;
+            } else {
+                DebugBalance("Skipping ^b" + name + "^n, don't move weak player to losing team (#" + (playerIndex+1) + " of " + fromList.Count + ", median " + (strongest) + ")");
+                fExemptRound = fExemptRound + 1;
+                IncrementTotal();
+                return;
+            }
+            break;
+        case UnstackState.SwappedStrong:
+            // Swap weak to winning team
+            if (!isStrong) {
+                // Don't move to same team
+                if (player.Team == winningTeam) {
+                    if (DebugLevel >= 7) DebugBalance("Skipping weak ^b" + name + "^n, don't move player to his own team!");
+                    fExemptRound = fExemptRound + 1;
+                    IncrementTotal();
+                    return;
+                }
+                DebugBalance("Sending weak player ^0^b" + player.FullName + "^n^9 to winning team " + GetTeamName(winningTeam));
+                moveUnstack = new MoveInfo(name, player.Tag, origUnTeam, origUnName, winningTeam, GetTeamName(winningTeam));
+                toTeam = winningTeam;
+                fUnstackState = UnstackState.SwappedWeak;
+                FinishedFullSwap(name, perMode); // updates group count
+            } else {
+                DebugBalance("Skipping ^b" + name + "^n, don't move strong player to winning team (#" + (playerIndex+1) + " of " + fromList.Count + ", median " + (strongest) + ")");
+                fExemptRound = fExemptRound + 1;
+                IncrementTotal();
+                return;
+            }
+            break;
+        case UnstackState.Off:
+            // fall thru
+        default: return;
+    }
+
+    /* Move for unstacking */
+    
+    log = "^4^bUNSTACK^n^0 moving ^b" + name + "^n from " + moveUnstack.SourceName + " to " + moveUnstack.DestinationName + " because: " + um;
+    log = (EnableLoggingOnlyMode) ? "^9(SIMULATING)^0 " + log : log;
+    DebugWrite(log, 3);
+    moveUnstack.For = MoveType.Unstack;
+    moveUnstack.Format(this, ChatMovedToUnstack, false, false);
+    moveUnstack.Format(this, YellMovedToUnstack, true, false);
+
+    DebugWrite("^9" + moveUnstack, 7);
+
+    if (player.LastMoveFrom == 0) player.LastMoveFrom = player.Team;
+    StartMoveImmediate(moveUnstack, false);
+
+    if (EnableLoggingOnlyMode) {
+        // Simulate completion of move
+        OnPlayerTeamChange(name, toTeam, 0);
+        OnPlayerMovedByAdmin(name, toTeam, 0, false); // simulate reverse order
+    }
+    // no increment total, handled by unstacking move
+}
+
+private bool IsKnownPlayer(String name) {
+    bool check = false;
+    lock (fAllPlayers) {
+        check = fAllPlayers.Contains(name);
+    }
+    return check;
+}
+
+private bool AddNewPlayer(String name, int team) {
+    bool known = false;
+    bool needsFetch = false;
+    lock (fKnownPlayers) {
+        PlayerModel player = null;
+        if (!fKnownPlayers.ContainsKey(name)) {
+            player = new PlayerModel(name, team);
+            fKnownPlayers[name] = player;
+            needsFetch = true;
+        } else {
+            player = fKnownPlayers[name];
+            player.Team = team;
+            known = true;
+            needsFetch = !player.TagVerified;
+        }
+        if (player != null) player.LastSeenTimestamp = DateTime.Now;
+    }
+    lock (fAllPlayers) {
+        if (!fAllPlayers.Contains(name)) fAllPlayers.Add(name);
+    }
+    if (needsFetch) {
+        AddPlayerFetch(name);
+    }
+    return known;
+}
+
+private void RemovePlayer(String name) {
+    bool gameChange = false;
+    bool removeFetch = false;
+    lock (fKnownPlayers) {
+        if (fKnownPlayers.ContainsKey(name)) {
+            // Keep around for MODEL_TIMEOUT minutes, in case player rejoins
+            PlayerModel m = fKnownPlayers[name];
+            m.ResetRound();
+            m.LastSeenTimestamp = DateTime.Now;
+            removeFetch = true;
+        }
+    }
+    if (removeFetch) RemovePlayerFetch(name);
+    lock (fAllPlayers) {
+        if (fAllPlayers.Contains(name)) fAllPlayers.Remove(name);
+    
+        if (fAllPlayers.Count < 4) {
+            if (fGameState != GameState.Warmup) {
+                fGameState = GameState.Warmup;
+                gameChange = true;
+            }
+        }
+    }
+    if (gameChange) {
+        DebugWrite("RemovePlayer: ^b^3Game state = " + fGameState, 6);
+    }
+}
+
+
+private void UpdatePlayerModel(String name, int team, int squad, String eaGUID, int score, int kills, int deaths, int rank) {
+    bool known = false;
+    if (!IsKnownPlayer(name)) {
+        switch (fPluginState) {
+            case PluginState.JustEnabled:
+            case PluginState.Reconnected:
+                String state = (fPluginState == PluginState.JustEnabled) ? "JustEnabled" : "Reconnected";
+                if (team != 0) {
+                    known = AddNewPlayer(name, team);
+                    String verb = (known) ? "^6renewing^0" : "^4adding^0";
+                    DebugWrite(state + " state, " + verb + " new player: ^b" + name, 4);
+                } else {
+                    DebugWrite(state + " state, unassigned player: ^b" + name, 4);
+                    if (!fUnassigned.Contains(name)) fUnassigned.Add(name);
+                    return;
+                }
+                break;
+            case PluginState.Active:
+                DebugWrite("Update waiting for ^b" + name + "^n to be assigned a team", 4);
+                if (!fUnassigned.Contains(name)) fUnassigned.Add(name);
+                return;
+            case PluginState.Error:
+                DebugWrite("Error state, adding new player: ^b" + name, 4);
+                AddNewPlayer(name, team);
+                break;
+            default:
+                return;
+        }          
+    }
+    
+    if (!fKnownPlayers.ContainsKey(name)) {
+        ConsoleDebug("UpdatePlayerModel: player ^b" + name + "^n not in master table!");
+        return;
+    }
+    
+    int unTeam = -2;
+    
+    lock (fKnownPlayers) {
+    
+        PlayerModel m = fKnownPlayers[name];
+    
+        if (m.Team != team) {
+            unTeam = m.Team;
+            m.Team = team;
+        }
+        m.Squad = squad;
+        m.EAGUID = eaGUID;
+        m.ScoreRound = score;
+        m.KillsRound = kills;
+        m.DeathsRound = deaths;
+        m.Rank = rank;
+
+        m.LastSeenTimestamp = DateTime.Now;
+
+        // Computed
+        m.KDRRound = m.KillsRound / Math.Max(1, m.DeathsRound);
+        double mins = (m.FirstSpawnTimestamp == DateTime.MinValue) ? 1 : Math.Max(1, DateTime.Now.Subtract(m.FirstSpawnTimestamp).TotalMinutes);
+        m.SPMRound = m.ScoreRound / mins;
+
+        // Accumulated
+        // TBD
+    }
+
+    if (!EnableLoggingOnlyMode && unTeam != -2 && !fPendingTeamChange.ContainsKey(name)) {
+        ConsoleDebug("UpdatePlayerModel:^b" + name + "^n has team " + unTeam + " but update says " + team + "!");
+    }
+}
+
+
+private void UpdatePlayerTeam(String name, int team) {
+    bool isKnown = IsKnownPlayer(name);
+    if (!isKnown) {
+        lock (fKnownPlayers) {
+            isKnown = fKnownPlayers.ContainsKey(name);
+        }
+        if (!isKnown) {
+            ConsoleDebug("UpdatePlayerTeam(" + name + ", " + team + ") not known!");
+            return;
+        }
+        lock (fAllPlayers) {
+            fAllPlayers.Add(name);
+        }
+    }
+    
+    PlayerModel m = GetPlayer(name);
+    if (m == null) return;
+    
+    m.LastMoveFrom = 0; // reset
+
+    if (m.Team != team) {
+        if (m.Team == 0) {
+            DebugWrite("Assigning ^b" + name + "^n to " + team, 4);
+        } else {
+            DebugWrite("Update player ^b" + name + "^n team from " + m.Team + " to " + team, 7);
+            m.Team = team;
+        }
+        m.LastSeenTimestamp = DateTime.Now;
+    }
+}
+
+private void ValidateModel(List<CPlayerInfo> players) {
+    // forget the active list, might be incorrect
+    lock (fAllPlayers) {
+        fAllPlayers.Clear();
+    }
+    fUnassigned.Clear();
+
+    if (players.Count == 0) {
+        // no players, so waiting state
+        fGameState = GameState.Warmup;
+    } else {
+        // cancel moves
+        // rebuild the data model
+        fPluginState = PluginState.Reconnected;
+        DebugWrite("ValidateModel: ^b^3State = " + fPluginState, 6);  
+        foreach (CPlayerInfo p in players) {
+            try {
+                UpdatePlayerModel(p.SoldierName, p.TeamID, p.SquadID, p.GUID, p.Score, p.Kills, p.Deaths, p.Rank);
+                CheckAbortMove(p.SoldierName);
+            } catch (Exception e) {
+                ConsoleException(e);
+            }
+        }
+        fMoving.Clear();
+        fReassigned.Clear();
+        /* Special handling for Reconnected state */
+        fGameState = (TotalPlayerCount < 4) ? GameState.Warmup : GameState.Unknown;
+        fRoundStartTimestamp = DateTime.Now;
+        UpdateTeams();
+    }
+    fPluginState = PluginState.Active;
+    DebugWrite("ValidateModel: ^b^3State = " + fPluginState, 6);  
+    DebugWrite("ValidateModel: ^b^3Game state = " + fGameState, 6);
+}
+
+
+private bool CheckTeamSwitch(String name, int toTeam) {
+
+    if (fPluginState != PluginState.Active || fGameState != GameState.Playing) return false;
+
+    // Get model
+    PlayerModel player = GetPlayer(name);
+    if (player == null) return false;
+    bool bogusMove = false;
+    int lastMoveTo = 0;
+    int lastMoveFrom = player.LastMoveFrom;
+
+    // Same team?
+    if (toTeam == player.Team) {
+        /*
+        This could happen with the following sequence of actions:
+        + Player died and was moved from 1 to 2 for balance immediately, spawn messages set
+        + While still dead, player switches himself back to 1 before respawning
+        + All of this happens before a listPlayers refresh, so the model still thinks he is in team 1
+        We have to detect that the switch is not to the intended team and fix everything up.
+        */
+        if (player.LastMoveTo != 0 && player.LastMoveTo != toTeam) {
+            DebugUnswitch("Player team switch: ^b" + name + "^n trying to switch to " + GetTeamName(toTeam) + " during a plugin move to " + GetTeamName(player.LastMoveTo));
+            bogusMove = true;
+            lastMoveTo = player.LastMoveTo;
+            player.LastMoveTo = 0;
+            DebugUnswitch("Ovewriting previous chat message for ^b" + name + "^n: " + player.SpawnChatMessage);
+            player.SpawnChatMessage = String.Empty;
+            player.SpawnYellMessage = String.Empty;
+        } else {
+            DebugUnswitch("Player team switch: ^b" + name + "^n, player model already updated to " + GetTeamName(toTeam) + " team");
+            return true;
+        }
+    } else {
+        DebugUnswitch("Player team switch: ^b" + name + "^n from " + GetTeamName(player.Team) + " team to " + GetTeamName(toTeam) + " team");
+    }
+
+    // Check if move already in progress for this player and abort it
+    bool sendAbortMessage = false;
+    lock (fMoveStash) {
+        if (fMoveStash.Count > 0) {
+             // list only ever has one item
+            if (fMoveStash[0].Name == name) {
+                fMoveStash.Clear();
+            }
+        }
+    }
+    if (sendAbortMessage) {
+        DebugUnswitch("ABORTED (by move stash): abort previous move by ^b" + name);
+        sendAbortMessage = false;
+    }
+    
+    // Whitelisted?
+    if (OnWhitelist) {
+        List<String> vip = new List<String>(Whitelist);
+        if (EnableWhitelistingOfReservedSlotsList) vip.AddRange(fReservedSlots);
+        /*
+        while (vip.Contains(String.Empty)) {
+            vip.Remove(String.Empty);
+        }
+        */
+        if (vip.Contains(name) || vip.Contains(ExtractTag(player)) || vip.Contains(player.EAGUID)) {
+            DebugUnswitch("ALLOWED: On whitelist: ^b" + name);
+            SetSpawnMessages(name, String.Empty, String.Empty, false);
+            CheckAbortMove(name);
+            return true;
+        }
+    }
+
+    // Check forbidden cases
+    PerModeSettings perMode = GetPerModeSettings();
+    bool isSQDM = IsSQDM();
+    bool isDispersal = IsDispersal(player);
+    bool isRank = IsRankDispersal(player);
+    bool forbidden = (((isDispersal || isRank) && ForbidSwitchAfterDispersal) || (player.MovedByMB && !isSQDM && ForbidSwitchAfterAutobalance));
+
+    // Unlimited time?
+    if (!forbidden && UnlimitedTeamSwitchingDuringFirstMinutesOfRound > 0 && GetTimeInRoundMinutes() < UnlimitedTeamSwitchingDuringFirstMinutesOfRound) {
+        DebugUnswitch("ALLOWED: Time in round " + GetTimeInRoundMinutes().ToString("F0") + " < " + UnlimitedTeamSwitchingDuringFirstMinutesOfRound.ToString("F0"));
+        SetSpawnMessages(name, String.Empty, String.Empty, false);
+        CheckAbortMove(name);
+        return true;
+    }
+
+    // Helps?
+    int diff = 0;
+    int biggestTeam = 0;
+    int smallestTeam = 0;
+    int winningTeam = 0;
+    int losingTeam = 0;
+    int[] ascendingSize = null;
+    int[] descendingTickets = null;
+    int fromTeam = player.Team;
+    MoveInfo move = null;
+    bool toLosing = false;
+    bool toSmallest = false;
+
+    /*
+    A player that was previously moved by the plugin is forbidden from moving to any
+    other team by their own initiative for the rest of the round, unless this is
+    SQDM mode. In SQDM, if a player is moved from A to B and then later decides
+    to move to C, the losing team, that is allowed. Even in SQDM, though, no player
+    is allowed to move to the winning team.
+    
+    All dispersal players are forbidden from moving themselves.
+    */
+
+    AnalyzeTeams(out diff, out ascendingSize, out descendingTickets, out biggestTeam, out smallestTeam, out winningTeam, out losingTeam);
+
+    int iFrom = 0;
+    int iTo = 0;
+
+    if (isSQDM) {
+        // Moving to any team with fewer tickets is encouraged
+        for (int i = 0; i < descendingTickets.Length; ++i) {
+            if (fromTeam == descendingTickets[i]) iFrom = i;
+            if (toTeam == descendingTickets[i]) iTo = i;
+        }
+        toLosing = (iTo > iFrom);
+    } else {
+        toLosing = (toTeam == losingTeam);
+    }
+
+    // Trying to switch to losing team?
+    if (!forbidden && toLosing && toTeam != biggestTeam) {
+        move = new MoveInfo(player.Name, player.Tag, fromTeam, GetTeamName(fromTeam), toTeam, GetTeamName(toTeam));
+        move.Format(this, ChatDetectedGoodTeamSwitch, false, true);
+        move.Format(this, YellDetectedGoodTeamSwitch, true, true);
+        DebugUnswitch("ALLOWED: Team switch to losing team ^b: " + name);
+        SetSpawnMessages(name, move.ChatBefore, move.YellBefore, false);
+        CheckAbortMove(name);
+        return true;
+    }
+
+    if (isSQDM) {
+        // Moving to any team with fewer players is encouraged
+        for (int i = 0; i < ascendingSize.Length; ++i) {
+            if (fromTeam == ascendingSize[i]) iFrom = i;
+            if (toTeam == ascendingSize[i]) iTo = i;
+        }
+        toSmallest = (iTo < iFrom);
+    } else {
+        toSmallest = (toTeam == smallestTeam);
+    }
+
+    // Trying to switch to smallest team?
+    if (!forbidden && toSmallest && toTeam != winningTeam) {
+        move = new MoveInfo(player.Name, player.Tag, fromTeam, GetTeamName(fromTeam), toTeam, GetTeamName(toTeam));
+        move.Format(this, ChatDetectedGoodTeamSwitch, false, true);
+        move.Format(this, YellDetectedGoodTeamSwitch, true, true);
+        DebugUnswitch("ALLOWED: Team switch to smallest team ^b: " + name);
+        SetSpawnMessages(name, move.ChatBefore, move.YellBefore, false);
+        CheckAbortMove(name);
+        return true;
+    }
+
+    // Adjust for SQDM
+    if (isSQDM && fServerInfo != null) {
+        if (GetPopulation(perMode, true) == Population.Low) {
+            // Allow team switch to any team except biggest and winning
+            if (!forbidden && toTeam != biggestTeam && toTeam != winningTeam) {
+                DebugUnswitch("ALLOWED: SQDM Low population and not switching to biggest or winning team: ^b" + name);
+                SetSpawnMessages(name, String.Empty, String.Empty, false);
+                CheckAbortMove(name);
+                return true;
+            }
+        }
+    }
+
+    // Allow if ticket/point difference is less than allowed margin
+    double win = 0;
+    double lose = 0;
+    double margin = 100;
+    if (IsCTF()) {
+        win = GetTeamPoints(winningTeam);
+        if (win == 0) win = 1;
+        lose = GetTeamPoints(losingTeam);
+        if (lose == 0) lose = 1;
+        margin = ((win > lose) ? win/lose : lose/win);
+        // margin is 110%
+        if (!forbidden && (margin * 100) <= 110) {
+            DebugUnswitch("ALLOWED: CTF move by ^b" + name + "^n because margin is only " + (margin*100).ToString("F0") + "%");
+            SetSpawnMessages(name, String.Empty, String.Empty, false);
+            CheckAbortMove(name);
+            return true;
+        }
+    } else {
+        win = fTickets[winningTeam];
+        if (win == 0) win = 1;
+        lose = fTickets[losingTeam];
+        if (lose == 0) lose = 1;
+        margin = ((win > lose) ? win/lose : lose/win);
+        // margin is 105%
+        if (!forbidden && (margin * 100) <= 105) {
+            DebugUnswitch("ALLOWED: move by ^b" + name + "^n because margin is only " + (margin*100).ToString("F0") + "%");
+            SetSpawnMessages(name, String.Empty, String.Empty, false);
+            CheckAbortMove(name);
+            return true;
+        }
+    }
+    
+
+    // Otherwise, do not allow the team switch
+    int origTeam = player.Team;
+    String origName = GetTeamName(player.Team);
+
+    if (lastMoveFrom != 0 && toTeam != lastMoveFrom) {
+        DebugUnswitch("Setting toTeam from " + GetTeamName(toTeam) + " to original LastMoveFrom = " + GetTeamName(lastMoveFrom));
+        toTeam = lastMoveFrom;
+    }
+
+    if (bogusMove) {
+        origTeam = lastMoveTo;
+        origName = GetTeamName(lastMoveTo);
+    }
+
+    // select forbidden message from: moved by autobalance, moved to unstack, dispersal, ...
+    String badChat = ChatDetectedBadTeamSwitch;
+    String badYell = YellDetectedBadTeamSwitch;
+
+    ForbidBecause why = ForbidBecause.None;
+
+    if (player.MovedByMB && !isSQDM) {
+        why = ForbidBecause.MovedByBalancer;
+        if (!ForbidSwitchAfterAutobalance) {
+            DebugUnswitch("ALLOWED: move by ^b" + name + "^n because ^bForbid Switch After Autobalance^n is False");
+            SetSpawnMessages(name, String.Empty, String.Empty, false);
+            CheckAbortMove(name);
+            return true;
+        }
+    } else if (toTeam == winningTeam) {
+        why = ForbidBecause.ToWinning;
+        if (!ForbidSwitchToWinningTeam) {
+            DebugUnswitch("ALLOWED: move by ^b" + name + "^n because ^bForbid Switch To Winning Team^n is False");
+            SetSpawnMessages(name, String.Empty, String.Empty, false);
+            CheckAbortMove(name);
+            return true;
+        }
+    } else if (toTeam == biggestTeam) {
+        why = ForbidBecause.ToBiggest;
+        if (!ForbidSwitchToBiggestTeam) {
+            DebugUnswitch("ALLOWED: move by ^b" + name + "^n because ^bForbid Switch To Biggest Team^n is False");
+            SetSpawnMessages(name, String.Empty, String.Empty, false);
+            CheckAbortMove(name);
+            return true;
+        }
+    } else if (isDispersal) {
+        why = ForbidBecause.DisperseByList;
+        if (!ForbidSwitchAfterDispersal) {
+            DebugUnswitch("ALLOWED: move by ^b" + name + "^n because ^bForbid Switch After Dispersal^n is False");
+            SetSpawnMessages(name, String.Empty, String.Empty, false);
+            CheckAbortMove(name);
+            return true;
+        }
+    } else if (isRank) {
+        why = ForbidBecause.DisperseByRank;
+        if (!ForbidSwitchAfterDispersal) {
+            DebugUnswitch("ALLOWED: move by ^b" + name + "^n because ^bForbid Switch After Dispersal^n is False");
+            SetSpawnMessages(name, String.Empty, String.Empty, false);
+            CheckAbortMove(name);
+            return true;
+        }
+    }
+
+    if (toTeam == origTeam) {
+        ConsoleDebug("CheckTeamSwitch: ^b" + name + "^n, can't forbid unswitch to same team " + GetTeamName(toTeam) + "?");
+        return true;
+    }
+
+    // Tried to switch toTeam from origTeam, so moving from toTeam back to origTeam
+    move = new MoveInfo(name, player.Tag, toTeam, GetTeamName(toTeam), origTeam, origName);
+    move.For = MoveType.Unswitch;
+    move.Because = why;
+    move.Format(this, badChat, false, true);
+    move.Format(this, badYell, true, true);
+    move.Format(this, ChatAfterUnswitching, false, false);
+    move.Format(this, YellAfterUnswitching, true, false);
+    player.LastMoveFrom = 0;
+
+    if (DebugLevel >= 8) DebugUnswitch(move.ToString());
+
+    if (isSQDM || !EnableImmediateUnswitch) {
+        // Delay action until after the player spawns
+        DebugUnswitch("FORBIDDEN: delaying unswitch action until spawn of ^b" + name + "^n from " + move.SourceName + " back to " + move.DestinationName);
+
+        if (player.DelayedMove != null) {
+            CheckAbortMove(name);
+        }
+        player.DelayedMove = move;
+
+        if (!String.IsNullOrEmpty(player.SpawnChatMessage)) {
+            DebugUnswitch("IGNORED: previously delayed spawn message for ^b" + name + "^n: " + player.SpawnChatMessage);
+            SetSpawnMessages(name, String.Empty, String.Empty, false);
+        }
+    } else {
+        // Do the move immediately
+        DebugUnswitch("FORBIDDEN: immediately unswitch ^b" + name + "^n from " + move.SourceName + " back to " + move.DestinationName);
+        String log = "^4^bUNSWITCHING^n^0 ^b" + name + "^n from " + move.SourceName + " back to " + move.DestinationName;
+        log = (EnableLoggingOnlyMode) ? "^9(SIMULATING)^0 " + log : log;
+        DebugWrite(log, 3);
+        StartMoveImmediate(move, true);
+    }
+
+    return false;
+}
+
+private void CheckAbortMove(String name) {
+    lock (fMoveQ) {
+        if (fMoveQ.Count > 0) {
+            bool foundAbort = false;
+            foreach (MoveInfo mi in fMoveQ) {
+                if (mi.Name == name) {
+                    mi.aborted = true;
+                    foundAbort = true;
+                }
+            }
+            if (foundAbort) Monitor.Pulse(fMoveQ);
+        }
+    }
+    
+    PlayerModel player = GetPlayer(name);
+    if (player == null) return;
+
+    if (player.DelayedMove != null) {
+        DebugUnswitch("IGNORED: abort delayed move of ^b" + name + "^n to " + player.DelayedMove.DestinationName);
+        player.DelayedMove = null;
+    }
+}
+
+private void SpawnUpdate(String name) {
+    bool ok = false;
+    bool updated = false;
+    DateTime now = DateTime.Now;
+    lock (fKnownPlayers) {
+        PlayerModel m = null;
+        if (fKnownPlayers.TryGetValue(name, out m)) {
+            ok = true;
+            // If first spawn timestamp is earlier than round start, update it
+            if (m.FirstSpawnTimestamp == DateTime.MinValue || DateTime.Compare(m.FirstSpawnTimestamp, fRoundStartTimestamp) < 0) {
+                m.FirstSpawnTimestamp = now;
+                updated = true;
+            }
+            m.LastSeenTimestamp = now;
+            m.IsDeployed = true;
+        }
+    }    
+
+    if (!ok) {
+        ConsoleDebug("player " + name + " spawned, but not a known player!");
+    }
+
+    if (updated) {
+        DebugWrite("^9Spawn: ^b" + name + "^n @ " + now.ToString("HH:mm:ss"), 6);
+    }
+}
+
+
+private void KillUpdate(String killer, String victim) {
+    if (fPluginState != PluginState.Active) return;
+    bool okVictim = false;
+    bool okKiller = false;
+    DateTime now = DateTime.Now;
+    TimeSpan tir = TimeSpan.FromSeconds(0); // Time In Round
+    lock (fKnownPlayers) {
+        PlayerModel m = null;
+        if (killer != victim && fKnownPlayers.TryGetValue(killer, out m)) {
+            okKiller = true;
+            m.LastSeenTimestamp = now;
+            m.IsDeployed = true;
+        } else if (killer == victim) {
+            okKiller = true;
+        }
+        if (fKnownPlayers.TryGetValue(victim, out m)) {
+            okVictim = true;
+            m.LastSeenTimestamp = now;
+            m.IsDeployed = false;
+            tir = now.Subtract((m.FirstSpawnTimestamp != DateTime.MinValue) ? m.FirstSpawnTimestamp : now);
+        }
+    }
+
+    if (!okKiller) {
+        ConsoleDebug("player ^b" + killer + "^n is a killer, but not a known player!");
+    }
+    
+    if (!okVictim) {
+        ConsoleDebug("player ^b" + victim + "^n is a victim, but not a known player!");
+    }
+}
+
+
+private void StartMoveImmediate(MoveInfo move, bool sendMessages) {
+    // Do an immediate move, also used by the move thread
+    if (!fIsEnabled || fPluginState != PluginState.Active) {
+        ConsoleDebug("StartMoveImmediate called while fIsEnabled is " + fIsEnabled + " or fPluginState is "  + fPluginState);
+        return;
+    }
+
+    // Send before messages?
+    if (sendMessages) {
+        Yell(move.Name, move.YellBefore);
+        Chat(move.Name, move.ChatBefore, move.For == MoveType.Unswitch); // player only if unswitch
+    }
+
+    lock (fMoving) {
+        if (!fMoving.ContainsKey(move.Name)) fMoving[move.Name] = move;
+    }
+    // Do the move
+    if (!EnableLoggingOnlyMode) {
+        int toSquad = ToSquad(move.Name, move.Destination);
+        ServerCommand("admin.movePlayer", move.Name, move.Destination.ToString(), toSquad.ToString(), "false");
+        ScheduleListPlayers(10);
+    }
+
+    // Remember move
+    PlayerModel player = GetPlayer(move.Name);
+    if (player != null) {
+        if (player.LastMoveTo != 0) ConsoleDebug("StartMoveImmediate: ^b" + move.Name + "^n player.LastMoveTo != 0, " + player.LastMoveTo);
+        player.LastMoveTo = move.Destination;
+    }
+
+    // Log move
+    String r = null;
+    switch (move.For) {
+        case MoveType.Balance: r = " for balance"; break;
+        case MoveType.Unstack: r = " to unstack teams"; break;
+        case MoveType.Unswitch: r = " to unswitch player"; break;
+        default: r = " for ???"; break;
+    }
+    String doing = (EnableLoggingOnlyMode) ? "^9(SIMULATING) ^b^1MOVING^0 " : "^b^1MOVING^0 ";
+    DebugWrite(doing + move.Name + "^n from " + move.SourceName + " to " + move.DestinationName + r, 4);
+}
+
+private bool FinishMove(String name, int team) {
+    // If this is an MB move, handle it
+    MoveInfo move = null;
+    lock (fMoving) {
+        if (fMoving.ContainsKey(name)) {
+            move = fMoving[name];
+            fMoving.Remove(name);
+            try {
+                UpdatePlayerTeam(name, team);
+                UpdateTeams();
+                if (move.For == MoveType.Balance) {++fBalancedRound; IncrementMoves(name); IncrementTotal();}
+                else if (move.For == MoveType.Unstack) {++fUnstackedRound; IncrementMoves(name); IncrementTotal();}
+                else if (move.For == MoveType.Unswitch) {++fUnswitchedRound; UpdateMoveTime(name); IncrementTotal();}
+            } catch (Exception e) {
+                ConsoleException(e);
+            }
+        }
+    }
+    if (move != null) {
+        // MB move for balance/unstacking/unswitching
+        SetSpawnMessages(move.Name, move.ChatAfter, move.YellAfter, move.For == MoveType.Unswitch);
+    }
+    return (move != null);
+}
+
+private void KillAndMoveAsync(MoveInfo move) {
+    lock (fMoveQ) {
+        fMoveQ.Enqueue(move);
+        Monitor.Pulse(fMoveQ);
+    }
+}
+
+public void MoveLoop() {
+    try {
+        while (fIsEnabled) {
+            MoveInfo move = null;
+            lock (fMoveQ) {
+                while (fMoveQ.Count == 0) {
+                    Monitor.Wait(fMoveQ);
+                    if (!fIsEnabled) return;
+                }
+                move = fMoveQ.Dequeue();
+            }
+
+            // Check abort flag
+            if (move.aborted) {
+                DebugUnswitch("ABORTING original move for ^b" + move.Name + "^n to " + move.DestinationName + ", newer move in progress");
+                continue;
+            }
+
+            // Sending before messages
+            Yell(move.Name, move.YellBefore);
+            Chat(move.Name, move.ChatBefore, move.For == MoveType.Unswitch); // player only if unswitching
+
+            // Stash for check later
+            lock (fMoveStash) {
+                fMoveStash.Clear();
+                fMoveStash.Add(move);
+            }
+
+            // Pause
+            Thread.Sleep(Convert.ToInt32(YellDurationSeconds*1000));
+            if (!fIsEnabled) return;
+
+            // Player may have started another move during the delay, check and abort
+            lock (fMoveStash) {
+                if (fMoveStash.Count == 0) {
+                    DebugUnswitch("ABORTING original move for ^b" + move.Name + "^n to " + move.DestinationName + ", new move pending");
+                    continue;
+                }
+                fMoveStash.Clear();
+            }
+            lock (fMoveQ) {
+                foreach (MoveInfo mi in fMoveQ) {
+                    if (mi.Name == move.Name) {
+                        DebugUnswitch("ABORTING original move for ^b" + move.Name + "^n to " + move.DestinationName + ", now moving to " + mi.DestinationName);
+                        continue;
+                    }
+                }
+            }
+
+            // Make sure player is dead
+            if (!EnableLoggingOnlyMode) {
+                ServerCommand("admin.killPlayer", move.Name);
+                DebugWrite("^b^1ADMIN KILL^0 " + move.Name, 4);
+            } else {
+                DebugWrite("^9(SIMULATING) ^b^1ADMIN KILL^0 " + move.Name, 4);
+            }
+
+            // Pause
+            Thread.Sleep(1*1000);
+            if (!fIsEnabled) return;
+
+            // Move player
+            StartMoveImmediate(move, false);
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
+    } finally {
+        ConsoleWrite("^bMoveLoop^n thread stopped");
+    }
+}
+
+
+private void Reassign(String name, int fromTeam, int toTeam, int diff) {
+    // This is not a known player yet, so not PlayerModel to use
+    // Just do a raw move as quickly as possible, not messages, just logging
+    String doing = (EnableLoggingOnlyMode) ? "^9(SIMULATING) ^b^4REASSIGNING^0^n new player ^b" : "^b^4REASSIGNING^0^n new player ^b";
+    DebugWrite(doing + name + "^n from " + GetTeamName(fromTeam) + " team to " + GetTeamName(toTeam) + " team because difference is " + diff, 3);
+    int toSquad = ToSquad(name, toTeam);
+    if (!EnableLoggingOnlyMode) {
+        fReassigned.Add(name);
+        ServerCommand("admin.movePlayer", name, toTeam.ToString(), toSquad.ToString(), "false");
+        ScheduleListPlayers(1);
+    } else {
+        // Simulate reassignment
+        fReassigned.Add(name);
+        ScheduleListPlayers(1);
+        OnPlayerTeamChange(name, toTeam, toSquad);
+    }
+}
+
+private bool IsModelInSync() {
+    lock (fMoving) {
+        return (fMoving.Count == 0 && fReassigned.Count == 0);
+    }
+}
+
+private void ValidateMove(String name) {
+    /*
+    This may be the return leg of the round-trip to insure that
+    a move for balance MB has completed. If fMoving still
+    contains the player's name, the move failed.
+    */
+    bool completedMove = true;
+    lock (fMoving) {
+        if (fMoving.ContainsKey(name)) {
+            completedMove = false;
+            fMoving.Remove(name);
+        }
+    }
+    if (!completedMove) {
+        ConsoleDebug("Move of ^b" + name + "^n failed!");
+        IncrementTotal();
+        fFailedRound = fFailedRound + 1;
+        return;
+    }
+    /*
+    This may be the return leg of the round-trip to insure that
+    a reassignment of a player by MB has completed. If fReassigned still
+    contains the player's name, the move failed.
+    */
+    bool completedReassign = true;
+    lock (fReassigned) {
+        if (fReassigned.Contains(name)) {
+            completedReassign = false;
+            fReassigned.Remove(name);
+        }
+    }
+    if (!completedReassign) {
+        ConsoleDebug("Reassign of ^b" + name + "^n failed!");
+        fFailedRound = fFailedRound + 1;
+        IncrementTotal();
+        AddNewPlayer(name, 0);
+        UpdateTeams();
+        return;
+    }
+}
+
+private void Chat(String who, String what) {
+    Chat(who, what, QuietMode);
+}
+
+private void Chat(String who, String what, bool quiet) {
+    String doing = null;
+    if (quiet) {
+        if (!EnableLoggingOnlyMode) {
+            ServerCommand("admin.say", what, "player", who); // chat player only
+        }
+        ProconChatPlayer(who, what);
+        doing = (EnableLoggingOnlyMode) ? "^9(SIMULATING) ^b^1CHAT^0^n to ^b" : "^b^1CHAT^0^n to ^b";
+        DebugWrite(doing + who + "^n: " + what, 4);
+    } else {
+        if (!EnableLoggingOnlyMode) {
+            ServerCommand("admin.say", what, "all"); // chat all
+        }
+        ProconChat(what);
+        doing = (EnableLoggingOnlyMode) ? "^9(SIMULATING) ^b^1CHAT^0^n to all: " : "^b^1CHAT^0^n to all: ";
+        DebugWrite(doing + what, 4);
+    }
+}
+
+private void Yell(String who, String what) {
+    String doing = null;
+    if (!EnableLoggingOnlyMode) {
+        ServerCommand("admin.yell", what, YellDurationSeconds.ToString("F0"), "player", who); // yell to player
+    }
+    doing = (EnableLoggingOnlyMode) ? "^9(SIMULATING) ^b^1YELL^0^n to ^b" : "^b^1YELL^0^n to ^b";
+    DebugWrite(doing + who + "^n: " + what, 4);
+}
+
+private void ProconChat(String what) {
+    if (EnableLoggingOnlyMode) what = "(SIMULATING) " + what;
+    if (LogChat) ExecuteCommand("procon.protected.chat.write", "MB > All: " + what);
+}
+
+private void ProconChatPlayer(String who, String what) {
+    if (EnableLoggingOnlyMode) what = "(SIMULATING) " + what;
+    if (LogChat) ExecuteCommand("procon.protected.chat.write", "MB > " + who + ": " + what);
+}
+
+private void GarbageCollectKnownPlayers()
+{
+    int n = 0;
+    bool revalidate = false;
+    lock (fKnownPlayers) {
+        List<String> garbage = new List<String>();
+
+        // collect up garbage
+        foreach (String name in fKnownPlayers.Keys) {
+            PlayerModel m = fKnownPlayers[name];
+            m.LastMoveTo = 0; // reset this value while we are here
+            if (DateTime.Now.Subtract(m.LastSeenTimestamp).TotalMinutes > MODEL_TIMEOUT) {
+                if (IsKnownPlayer(name)) {
+                    ConsoleDebug("^b" + name + "^n has timed out and is still on active players list, idling?");
+                    // Revalidate the data model
+                    revalidate = true;
+                } else {
+                    garbage.Add(name);
+                }
+            }
+        }
+
+        // remove garbage
+        if (garbage.Count > 0) foreach (String name in garbage) {
+            fKnownPlayers.Remove(name);
+            n = n + 1;
+        }
+    }
+
+    if (revalidate) {
+        lock (fAllPlayers) {
+            fAllPlayers.Clear();
+            ScheduleListPlayers(1);
+        }
+    }
+
+    if (n > 0) {
+        DebugWrite("^9Garbage collected " + n + " old players from known players table", 6);
+    }
+}
+
+private Phase GetPhase(PerModeSettings perMode, bool verbose) {
+    if (perMode == null) return Phase.Mid;
+    // earlyTickets relative to max for count down, 0 for count up
+    // lateTickets relative to 0 for count down, max for count up
+    double earlyTickets = perMode.DefinitionOfEarlyPhaseFromStart;
+    double lateTickets = perMode.DefinitionOfLatePhaseFromEnd;
+    Phase phase = Phase.Mid;
+
+    if (fServerInfo == null) return phase;
+
+    // Special handling for CTF mode
+    if (IsCTF()) {
+        if (fRoundStartTimestamp == DateTime.MinValue) return Phase.Early;
+
+        double earlyMinutes = earlyTickets;
+        double lateMinutes = lateTickets;
+
+        // TBD - assume max round time is 20 minutes
+        double maxMinutes = 20;
+        //double totalRoundMins = DateTime.Now.Subtract(fRoundStartTimestamp).TotalMinutes;
+        double totalRoundMins = GetTimeInRoundMinutes();
+
+        /* moved to ValidateSettings, keep here for reference
+        // Late is higher priority than early
+        if (lateMinutes > maxMinutes) {earlyMinutes = 0; lateMinutes = maxMinutes;}
+        if (earlyMinutes > (maxMinutes - lateMinutes)) {earlyMinutes = maxMinutes - lateMinutes;}
+        */
+
+        if (totalRoundMins <= earlyMinutes) {
+            phase = Phase.Early;
+        } else if (totalRoundMins >= (maxMinutes - lateMinutes)) {
+            phase = Phase.Late;
+        } else {
+            phase = Phase.Mid;
+        }
+
+        if (verbose && DebugLevel >= 8) ConsoleDebug("Phase: " + phase + " (" + totalRoundMins.ToString("F0") + " mins [" + earlyMinutes.ToString("F0") + " - " + (maxMinutes - lateMinutes).ToString("F0") + "])");
+        return phase;
+    }
+    
+    if (fServerInfo.TeamScores == null || fServerInfo.TeamScores.Count == 0) return Phase.Mid;
+
+    double tickets = -1;
+    double goal = 0;
+    bool countDown = true;
+
+    if (fMaxTickets == -1) return Phase.Early;
+
+    if (Regex.Match(fServerInfo.GameMode, @"(?:TeamDeathMatch|SquadDeathMatch)").Success) {
+        countDown = false;
+        goal = fServerInfo.TeamScores[0].WinningScore;
+    }
+
+    // Find ticket count closest to end
+    foreach (TeamScore ts in fServerInfo.TeamScores) {
+        if (tickets == -1) {
+            tickets = ts.Score;
+        } else {
+            if (countDown) {
+                if (ts.Score < tickets) {
+                    tickets = ts.Score;
+                }
+            } else {
+                if (ts.Score > tickets) {
+                    tickets = ts.Score;
+                }
+            }
+        }
+    }
+
+    if (countDown) {
+        // Late takes priority over early
+        if (lateTickets > fMaxTickets) {earlyTickets = 0; lateTickets = fMaxTickets;}
+        if (lateTickets > (fMaxTickets - earlyTickets)) {earlyTickets = fMaxTickets - lateTickets;}
+
+        if (tickets <= lateTickets) {
+            phase = Phase.Late;
+        } else if (fIsFullRound && (earlyTickets < fMaxTickets) && tickets >= (fMaxTickets - earlyTickets)) {
+            phase = Phase.Early;
+        } else {
+            phase = Phase.Mid;
+        }
+    } else {
+        // count up
+        // Late takes priority over early
+        if (lateTickets > goal) {earlyTickets = 0; lateTickets = goal;}
+        if (earlyTickets > (goal - lateTickets)) {earlyTickets = goal - lateTickets;}
+
+        if (lateTickets < goal && tickets >= (goal - lateTickets)) {
+            phase = Phase.Late;
+        } else if (tickets <= earlyTickets) {
+            phase = Phase.Early;
+        } else {
+            phase = Phase.Mid;
+        }
+    }
+
+    if (verbose && DebugLevel >= 8) ConsoleDebug("Phase: " + phase + " (" + tickets + " of " + fMaxTickets + " to " + goal + ", " + RemainingTicketPercent(tickets, goal).ToString("F0") + "%)");
+
+    return phase;
+}
+
+private Population GetPopulation(PerModeSettings perMode, bool verbose) {
+    if (fServerInfo == null) return Population.Medium;
+
+    int highPop = perMode.DefinitionOfHighPopulationForPlayers;
+    int lowPop = perMode.DefinitionOfLowPopulationForPlayers;
+    Population pop = Population.Low;
+
+    int totalPop = TotalPlayerCount;
+
+    if (totalPop <= lowPop) {
+        pop = Population.Low;
+    } else if (totalPop >= highPop) {
+        pop = Population.High;
+    } else {
+        pop = Population.Medium;
+    }
+
+    if (verbose && DebugLevel >= 8) ConsoleDebug("Population: " + pop + " (" + totalPop + " [" + lowPop + " - " + highPop + "])");
+
+    return pop;
+}
+
+private double GetUnstackTicketRatio(PerModeSettings perMode) {
+    Phase phase = GetPhase(perMode, false);
+    Population pop = GetPopulation(perMode, false);
+    double unstackTicketRatio = 0;
+
+    if (perMode.CheckTeamStackingAfterFirstMinutes == 0) return 0;
+
+    switch (phase) {
+        case Phase.Early:
+            switch (pop) {
+                case Population.Low: unstackTicketRatio = EarlyPhaseTicketPercentageToUnstack[0]; break;
+                case Population.Medium: unstackTicketRatio = EarlyPhaseTicketPercentageToUnstack[1]; break;
+                case Population.High: unstackTicketRatio = EarlyPhaseTicketPercentageToUnstack[2]; break;
+                default: break;
+            }
+            break;
+        case Phase.Mid:
+            switch (pop) {
+                case Population.Low: unstackTicketRatio = MidPhaseTicketPercentageToUnstack[0]; break;
+                case Population.Medium: unstackTicketRatio = MidPhaseTicketPercentageToUnstack[1]; break;
+                case Population.High: unstackTicketRatio = MidPhaseTicketPercentageToUnstack[2]; break;
+                default: break;
+            }
+            break;
+        case Phase.Late:
+            switch (pop) {
+                case Population.Low: unstackTicketRatio = LatePhaseTicketPercentageToUnstack[0]; break;
+                case Population.Medium: unstackTicketRatio = LatePhaseTicketPercentageToUnstack[1]; break;
+                case Population.High: unstackTicketRatio = LatePhaseTicketPercentageToUnstack[2]; break;
+                default: break;
+            }
+            break;
+        default: break;
+    }
+
+    // apply rush adjustment
+    if (IsRush() && fRushStage > 0 && fRushStage <= 4 && unstackTicketRatio > 100) {
+        double adj = 0;
+        switch (fRushStage) {
+            case 1: adj = perMode.Stage1TicketPercentageToUnstackAdjustment; break;
+            case 2: adj = perMode.Stage2TicketPercentageToUnstackAdjustment; break;
+            case 3: adj = perMode.Stage3TicketPercentageToUnstackAdjustment; break;
+            case 4: adj = perMode.Stage4TicketPercentageToUnstackAdjustment; break;
+            default: break;
+        }
+        if (adj != 0) unstackTicketRatio = unstackTicketRatio + adj;
+    }
+    
+    if (unstackTicketRatio <= 100) unstackTicketRatio = 0;
+
+    return (unstackTicketRatio/100.0);
+}
+
+private Speed GetBalanceSpeed(PerModeSettings perMode) {
+    Phase phase = GetPhase(perMode, true);
+    Population pop = GetPopulation(perMode, true);
+    Speed speed = Speed.Adaptive;
+
+    switch (phase) {
+        case Phase.Early:
+            switch (pop) {
+                case Population.Low: speed = EarlyPhaseBalanceSpeed[0]; break;
+                case Population.Medium: speed = EarlyPhaseBalanceSpeed[1]; break;
+                case Population.High: speed = EarlyPhaseBalanceSpeed[2]; break;
+                default: break;
+            }
+            break;
+        case Phase.Mid:
+            switch (pop) {
+                case Population.Low: speed = MidPhaseBalanceSpeed[0]; break;
+                case Population.Medium: speed = MidPhaseBalanceSpeed[1]; break;
+                case Population.High: speed = MidPhaseBalanceSpeed[2]; break;
+                default: break;
+            }
+            break;
+        case Phase.Late:
+            switch (pop) {
+                case Population.Low: speed = LatePhaseBalanceSpeed[0]; break;
+                case Population.Medium: speed = LatePhaseBalanceSpeed[1]; break;
+                case Population.High: speed = LatePhaseBalanceSpeed[2]; break;
+                default: break;
+            }
+            break;
+        default: break;
+    }
+    return speed;
+}
+
+private void SetTag(PlayerModel player, Hashtable data) {
+    if (data == null) {
+        ConsoleDebug("SetTag ^b" + player.Name + "^n data = null");
+        return;
+    }
+
+    if (!data.ContainsKey("clanTag") || ((String)data["clanTag"] == null)) {
+        DebugFetch("Request clanTag(^b" + player.Name + "^n), no clanTag key in data");
+        return;
+    }
+
+    player.Tag = (String)data["clanTag"];
+    player.TagVerified = true;
+}
+
+
+private void Scrambler(List<TeamScore> teamScores) {
+    // Check all the reasons not to scramble
+    if (fServerInfo == null) return;
+
+    try {
+        fDebugScramblerBefore[0].Clear();
+        fDebugScramblerBefore[1].Clear();
+        fDebugScramblerAfter[0].Clear();
+        fDebugScramblerAfter[1].Clear();
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+
+    PerModeSettings perMode = GetPerModeSettings();
+
+    if (!perMode.EnableScrambler) return;
+
+    int current = fServerInfo.CurrentRound + 1; // zero based index
+    if (OnlyOnNewMaps && current < fServerInfo.TotalRounds) {
+        DebugScrambler("Only scrambling new maps and this is only round " + current + " of " + fServerInfo.TotalRounds);
+        return;
+    }
+
+    if (IsSQDM()) {
+        DebugScrambler("SQDM can't be scrambled");
+        return;
+    }
+
+    if (!IsCTF() && OnlyOnFinalTicketPercentage > 100) {
+        if (teamScores == null || teamScores.Count != 2) {
+            DebugScrambler("DEBUG: no final team scores");
+            return;
+        }
+        bool countDown = true;
+
+        if (fMaxTickets == -1) return;
+
+        double goal = fMaxTickets;
+        double a = teamScores[0].Score;
+        double b = teamScores[1].Score;
+
+        
+        if (IsRush()) {
+            // normalize Rush ticket ratio
+            b = fMaxTickets - (fRushMaxTickets - b);
+            b = Math.Max(b, 1);
+        }
+
+        if (Regex.Match(fServerInfo.GameMode, @"(?:TeamDeathMatch|SquadDeathMatch)").Success) {
+            countDown = false;
+            goal = teamScores[0].WinningScore;
+        }
+
+        double ratio = 0;
+        if (countDown) {
+            // ratio of difference from max
+            if (a < b) {
+                ratio = (goal - a) / Math.Max(1, (goal - b)); 
+                DebugScrambler("Ratio us/ru: " + a + " vs " + b + " <- [" + goal + "]: " + (goal-a) + "/" + Math.Max(1, (goal-b)) + " = " + ratio.ToString("F2"));
+            } else {
+                ratio = (goal - b) / Math.Max(1, (goal - a));
+                DebugScrambler("Ratio ru/us: " + a + " vs " + b + " <- [" + goal + "]: " + (goal-b) + "/" + Math.Max(1, (goal-a)) + " = " + ratio.ToString("F2"));
+            }
+        } else {
+            // direct ratio
+            if (a > b) {
+                ratio = a / Math.Max(1, b);
+                DebugScrambler("Ratio us/ru: " + a + " vs " + b + " -> [" + goal + "]: " + a + "/" + Math.Max(1, b) + " = " + ratio.ToString("F2"));
+            } else {
+                ratio = b / Math.Max(1, a);
+                DebugScrambler("Ratio ru/us: " + a + " vs " + b + " -> [" + goal + "]: " + b + "/" + Math.Max(1, a) + " = " + ratio.ToString("F2"));
+            }
+        } 
+        if ((ratio * 100) < OnlyOnFinalTicketPercentage) {
+            DebugScrambler("Only On Final Ticket Percentage >= " + OnlyOnFinalTicketPercentage.ToString("F0") + "%, but ratio is only " + (ratio * 100).ToString("F0") + "%");
+            return;
+        } else {
+            DebugScrambler("Only On Final Ticket Percentage >= " + OnlyOnFinalTicketPercentage.ToString("F0") + "% and ratio is " + (ratio * 100).ToString("F0") + "%");
+        }
+    }
+
+    DebugScrambler("Scrambling teams by " + ScrambleBy + " in " + DelaySeconds.ToString("F0") + " seconds");
+
+    // Activate the scrambler thread
+    lock (fScramblerLock) {
+        fScramblerLock.MaxDelay = DelaySeconds;
+        fScramblerLock.LastUpdate = DateTime.Now;
+        Monitor.Pulse(fScramblerLock);
+    }
+}
+
+private void ScramblerLoop () {
+    /*
+    Strategy: Scan each team and leave behind any players who are exempt. Everyone
+    else goes into a pool of players to be distributed across two teams. The pool is
+    sorted according to the ScrambleBy setting. After adjusting for exempted players,
+    players are assigned to teams in round-robin fashion, strongest to weakest.
+    Finally, each member of the new team is checked and if they need to be moved,
+    a move command is issued.  Since this is between rounds, a special move command
+    that bypasses all move tracking is used.
+    */
+    try {
+        DateTime last = DateTime.Now;
+        while (fIsEnabled) {
+            double delay = 0;
+            DateTime since = DateTime.MinValue;
+            lock (fScramblerLock) {
+                while (fScramblerLock.MaxDelay == 0) {
+                    Monitor.Wait(fScramblerLock);
+                    if (!fIsEnabled) return;
+                }
+                delay = fScramblerLock.MaxDelay;
+                since = fScramblerLock.LastUpdate;
+                fScramblerLock.MaxDelay = 0;
+                fScramblerLock.LastUpdate = DateTime.MinValue;
+            }
+
+            if (since == DateTime.MinValue) continue;
+
+            if (DateTime.Now.Subtract(last).TotalMinutes < 5) {
+                DebugScrambler("^0Last scramble was less than 5 minutes ago, skipping!");
+                continue;
+            }
+
+            try {
+
+                PerModeSettings perMode = GetPerModeSettings();
+
+                // wait specified number of seconds
+                if (delay > 0) {
+                    while (DateTime.Now.Subtract(since).TotalSeconds < delay) {
+                        Thread.Sleep(1000); // 1 second
+                        if (!fIsEnabled) return;
+                    }
+                }
+
+                DebugScrambler("Starting scramble of " + TotalPlayerCount + " players, winner was " + GetTeamName(fWinner));
+                last = DateTime.Now;
+
+                // Build a filtered list
+                List<String> toScramble = new List<String>();
+                List<String> exempt = new List<String>();
+                PlayerModel player = null;
+
+                lock (fAllPlayers) {
+                    foreach (String egg in fAllPlayers) {
+                        try {
+                            player = GetPlayer(egg);
+                            if (player == null) continue;
+
+                            // For debugging
+                            if (player.Team > 0 && player.Team <= 2) {
+                                String xt = ExtractTag(player);
+                                String fullName = (String.IsNullOrEmpty(xt)) ? player.Name : "[" + xt + "]" + player.Name;
+                                fDebugScramblerBefore[player.Team-1].Add(fullName);
+                            }
+
+                            // Skip Whitelisted
+                            if (OnWhitelist) {
+                                List<String> vip = new List<String>(Whitelist);
+                                if (EnableWhitelistingOfReservedSlotsList) vip.AddRange(fReservedSlots);
+                                if (vip.Contains(egg) || vip.Contains(ExtractTag(player)) || vip.Contains(player.EAGUID)) {
+                                    exempt.Add(egg);
+                                    DebugScrambler("Exempting ^b" + egg + "^n, whitelisted");
+                                    continue;
+                                }
+                            }
+
+                            // Skip if on squad with clan tags
+                            if (KeepClanTagsInSameSquad && CountMatchingTags(player) >= 2) {
+                                exempt.Add(egg);
+                                DebugScrambler("Exempting ^b" + egg + "^n, in same squad with tag [" + ExtractTag(player) + "]");
+                                continue;
+                            }
+
+                            // Add this player to list of scramblers
+                            toScramble.Add(egg);
+                        } catch (Exception e) {
+                            if (DebugLevel >= 8) ConsoleException(e);
+                        }
+                    }
+                }
+
+                if (toScramble.Count == 0) continue;
+
+                // Merge into a single list
+                List<PlayerModel> all = new List<PlayerModel>();
+
+                foreach (String egg in toScramble) {
+                    try {
+                        if (!IsKnownPlayer(egg)) continue; // might have left while we were working
+                        player = GetPlayer(egg);
+                        if (player == null) continue;
+                        all.Add(player);
+                    } catch (Exception e) {
+                        if (DebugLevel >= 8) ConsoleException(e);
+                    }
+                }
+
+                if (all.Count == 0) continue;
+
+                // Sort lists by specified metric
+                switch (ScrambleBy) {
+                    case DefineStrong.RoundScore:
+                        all.Sort(DescendingRoundScore);
+                        break;
+                    case DefineStrong.RoundSPM:
+                        all.Sort(DescendingRoundSPM);
+                        break;
+                    case DefineStrong.RoundKills:
+                        all.Sort(DescendingRoundKills);
+                        break;
+                    case DefineStrong.RoundKDR:
+                        all.Sort(DescendingRoundKDR);
+                        break;
+                    case DefineStrong.PlayerRank:
+                        all.Sort(DescendingPlayerRank);
+                        break;
+                    default:
+                        all.Sort(DescendingRoundScore);
+                        break;
+                }
+
+            
+                // Prepare the new team lists
+                List<PlayerModel> usScrambled = new List<PlayerModel>();
+                List<PlayerModel> ruScrambled = new List<PlayerModel>();
+
+                foreach (String egg in exempt) {
+                    try {
+                        if (!IsKnownPlayer(egg)) continue; // might have left while we were working
+                        player = GetPlayer(egg);
+                        if (player == null) continue;
+                        if (player.Team == 1) {
+                            usScrambled.Add(player);
+                        } else if (player.Team == 2) {
+                            ruScrambled.Add(player);
+                        }
+                    } catch (Exception e) {
+                        if (DebugLevel >= 8) ConsoleException(e);
+                    }
+                }
+
+                DebugScrambler("Before adjusting: " + all.Count + " to scramble, exempt US count = " + usScrambled.Count + ", RU count = " + ruScrambled.Count);
+
+                // If teams are uneven, fill in
+                int target = Math.Max(usScrambled.Count, ruScrambled.Count);
+
+                while (usScrambled.Count < target) {
+                    if (all.Count == 0) break;
+                    if (fWinner == 0 || fWinner == 1) {
+                        player = all[all.Count-1]; // weak if US won
+                    } else {
+                        player = all[0]; // strong if US lost
+                    }
+                    all.Remove(player);
+                    usScrambled.Add(player);
+                }
+
+                while (ruScrambled.Count < target) {
+                    if (all.Count == 0) break;
+                    if (fWinner == 0 || fWinner == 2) {
+                        player = all[all.Count-1]; // weak if RU won
+                    } else {
+                        player = all[0]; // strong if RU lost
+                    }
+                    all.Remove(player);
+                    ruScrambled.Add(player);
+                }
+            
+                DebugScrambler("After adjusting: " + all.Count + " to scramble, US count = " + usScrambled.Count + ", RU count = " + ruScrambled.Count);
+
+                // Now dole out strong players to each team round robin, loser first
+                String ff = null;
+                int na = all.Count;
+            
+                foreach (PlayerModel p in all) {
+                    player = p;
+                    --na;
+                    ff = "^b" + player.Name + "^n (" + na + " left)";
+                    if (!IsKnownPlayer(player.Name)) continue; // might have left
+                    if (usScrambled.Count < ruScrambled.Count && usScrambled.Count <= (perMode.MaxPlayers/2)) {
+                        usScrambled.Add(player);
+                        DebugScrambler(ff + " to US (" + usScrambled.Count + ")");
+                    } else if (ruScrambled.Count < usScrambled.Count && ruScrambled.Count <= (perMode.MaxPlayers/2)) {
+                        ruScrambled.Add(player);
+                        DebugScrambler(ff + " to RU (" + ruScrambled.Count + ")");
+                    } else {
+                        if (fWinner == 1 && ruScrambled.Count <= (perMode.MaxPlayers/2)) { // US won, so give to RU first
+                            ruScrambled.Add(player);
+                            DebugScrambler(ff + " to RU (" + ruScrambled.Count + ")");
+                        } else if (fWinner == 2 && usScrambled.Count <= (perMode.MaxPlayers/2)) { // RU won, so give to US first
+                            usScrambled.Add(player);
+                            DebugScrambler(ff + " to US (" + usScrambled.Count + ")");
+                        }
+                    }
+                }
+
+                if (!fIsEnabled) return;
+
+                // Now run through each list and move any players that need moving
+                ScrambleMove(usScrambled, 1);
+                ScrambleMove(ruScrambled, 2);
+
+                ScheduleListPlayers(1); // refresh
+
+                // For debugging
+                foreach (PlayerModel dude in usScrambled) {
+                    String xt = ExtractTag(dude);
+                    String fullName = (String.IsNullOrEmpty(xt)) ? dude.Name : "[" + xt + "]" + dude.Name;
+                    fDebugScramblerAfter[0].Add(fullName);
+                }
+                foreach (PlayerModel dude in ruScrambled) {
+                    String xt = ExtractTag(dude);
+                    String fullName = (String.IsNullOrEmpty(xt)) ? dude.Name : "[" + xt + "]" + dude.Name;
+                    fDebugScramblerAfter[1].Add(fullName);
+                }
+
+                DebugScrambler("DONE!");
+            } catch (Exception e) {
+                ConsoleException(e);
+            }
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
+    } finally {
+        ConsoleWrite("^bScramblerLoop^n thread stopped");
+    }
+}
+
+private void ScrambleMove(List<PlayerModel> scrambled, int where) {
+    int toSquad = 0;
+    int[] squads = new int[SQUAD_NAMES.Length];
+    for (int i = 0; i < squads.Length; ++i) {squads[i] = 0;}
+
+    // Get squad counts
+    foreach (PlayerModel dude in scrambled) {
+        if (!IsKnownPlayer(dude.Name)) continue; // might have left
+        if (dude.Team == where && dude.Squad > 0 && dude.Squad < squads.Length) {
+            squads[dude.Squad] = squads[dude.Squad] + 1;
+        }
+    }
+
+    // Move to available squad
+    foreach (PlayerModel dude in scrambled) {
+        if (!IsKnownPlayer(dude.Name)) continue; // might have left
+        if (dude.Team != where) {
+            toSquad = 1;
+            while (toSquad < squads.Length && squads[toSquad] == 4) ++toSquad; // pick a squad with less than 4 players
+            if (toSquad >= squads.Length) toSquad = 0;
+                    
+            // Do the move
+            if (!EnableLoggingOnlyMode) {
+                DebugScrambler("^1^bMOVE^n^0 ^b" + dude.Name + "^n to " + GetTeamName(where) + " team, squad " + SQUAD_NAMES[toSquad]);
+                ServerCommand("admin.movePlayer", dude.Name, where.ToString(), toSquad.ToString(), "false");
+                Thread.Sleep(20);
+            } else {
+                DebugScrambler("^9(SIMULATED) ^1^bMOVE^n^0 ^b" + dude.Name + "^n to " + GetTeamName(where) + " team, squad " + SQUAD_NAMES[toSquad]);
+            }
+            squads[toSquad] = squads[toSquad] + 1;
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* ======================== BATTLELOG ============================= */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+private void AddPlayerFetch(String name) {
+    if (!EnableBattlelogRequests) return;
+    if (String.IsNullOrEmpty(name)) return;
+    PlayerModel player = GetPlayer(name);
+    if (player == null) return;
+    player.FetchStatus.State = FetchState.InQueue;
+    lock (fFetchQ) {
+        if (!fFetchQ.Contains(name)) {
+            fFetchQ.Enqueue(name);
+            Monitor.Pulse(fFetchQ);
+        }
+    }
+}
+
+private void RemovePlayerFetch(String name) {
+    if (String.IsNullOrEmpty(name)) return;
+    PlayerModel player = GetPlayer(name);
+    if (player == null) return;
+    lock (fFetchQ) {
+        if (fFetchQ.Contains(name)) {
+            player.FetchStatus.State = FetchState.Aborted;
+        }
+    }
+}
+
+public void FetchLoop() {
+    try {
+        DateTime since = DateTime.MinValue;
+        int requests = 1;
+
+        while (fIsEnabled) {
+            String name = null;
+            int n = 0;
+            lock (fFetchQ) {
+                while (fFetchQ.Count == 0) {
+                    Monitor.Wait(fFetchQ);
+                    if (!fIsEnabled) return;
+                }
+                name = fFetchQ.Dequeue();
+                n = fFetchQ.Count;
+            }
+
+            if (since == DateTime.MinValue) since = DateTime.Now;
+
+            String msg = n.ToString() + " player" + ((n > 1) ? "s" : "") + " in clan tag fetch queue";
+            if (n == 0) msg = "no more players in clan tag fetch queue";
+            DebugFetch("^0" + msg);
+
+            PlayerModel player = GetPlayer(name);
+            if (player == null) continue;
+            if (player.FetchStatus.State == FetchState.Aborted) {
+                if (DebugLevel >= 8) ConsoleDebug("FetchLoop: fetch for ^b" + name + "^n was aborted!");
+                continue;
+            }
+
+            if (++requests > MaximumRequestRate) {
+                // Wait remainder of 20 seconds before continuing
+                int delay = 20 - Convert.ToInt32(DateTime.Now.Subtract(since).TotalSeconds);
+                if (delay > 0) {
+                    DebugFetch("Sleeping remaining " + delay + " seconds before sending next request");
+                    while (delay > 0) {
+                        Thread.Sleep(1000);
+                        if (!fIsEnabled) return;
+                        --delay;
+                    }
+                }
+                requests = 1; // reset
+                since = DateTime.Now;
+            }
+
+            if (fIsCacheEnabled) {
+                SendCacheRequest(name, "clanTag"); // only getting clan tag for now
+            } else {
+                SendBattlelogRequest(name, "clanTag");
+            }
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
+    } finally {
+        ConsoleWrite("^bFetchLoop^n thread stopped");
+    }
+}
+
+private void SendBattlelogRequest(String name, String requestType) {
+    try {
+        String result = String.Empty;
+        String personaId = String.Empty;
+
+        PlayerModel player = GetPlayer(name);
+        if (player == null) return;
+        FetchInfo status = player.FetchStatus;
+        status.State = FetchState.Requesting;
+        status.Since = DateTime.Now;
+        status.RequestType = requestType;
+        DebugFetch("Fetching from Battlelog " + requestType + "(^b" + name + "^n)");
+
+        // Get the main page
+        if (!fIsEnabled) return;
+        bool ok = FetchWebPage(ref result, "http://battlelog.battlefield.com/bf3/user/" + name);
+        if (!fIsEnabled) return;
+
+        if (!ok) {
+            status.State = FetchState.Failed;
+            return;
+        }
+
+        /*
+        // Extract the personaId
+        MatchCollection pid = Regex.Matches(result, @"bf3/soldier/" + name + @"/stats/(\d+)(['""]|/\s*['""]|/[^/'""]+)", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+        foreach (Match match in pid) {
+            if (match.Success && !Regex.Match(match.Groups[2].Value.Trim(), @"(ps3|xbox)", RegexOptions.IgnoreCase).Success) {
+                personaId = match.Groups[1].Value.Trim();
+                break;
+            }
+        }
+
+        if (String.IsNullOrEmpty(personaId)) {
+            DebugFetch("Request for ^b" + name +"^n failed, could not find persona-id!");
+            return;
+        }
+        */
+
+        // Extract the player tag
+        Match tag = Regex.Match(result, @"\[\s*([a-zA-Z0-9]+)\s*\]\s*" + name, RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        if (tag.Success) {
+            Hashtable data = new Hashtable();
+            data["clanTag"] = tag.Groups[1].Value;
+            player.FetchStatus.State = FetchState.Succeeded;
+            SetTag(player, data);
+            DebugFetch("Player tag updated: ^b" + player.FullName);
+        } else {
+            // No tag
+            player.TagVerified = true;
+            player.FetchStatus.State = FetchState.Succeeded;
+            DebugFetch("Battlelog says ^b" + player.Name + "^n has no tag");
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+}
+
+
+public bool IsCacheEnabled(bool verbose) {
+    List<MatchCommand> registered = this.GetRegisteredCommands();
+    foreach (MatchCommand command in registered) {
+        if (command.RegisteredClassname.CompareTo("CBattlelogCache") == 0 && command.RegisteredMethodName.CompareTo("PlayerLookup") == 0) {
+            if (verbose) DebugFetch("^bBattlelog Cache^n plugin will be used for stats fetching!");
+            return true;
+        } else {
+            DebugFetch("Registered P: " + command.RegisteredClassname + ", M: " + command.RegisteredMethodName);
+        }
+    }
+    if (verbose) DebugWrite("^1^bBattlelog Cache^n plugin is disabled; installing/updating and enabling the plugin is recommended for use with " + GetPluginName() + "!", 3);
+    return false;
+}
+
+private void SendCacheRequest(String name, String requestType) {
+    try {
+        /* 
+        Called in the FetchLoop thread
+        */
+        Hashtable request = new Hashtable();
+        request["playerName"] = name;
+        request["pluginName"] = GetPluginName();
+        request["pluginMethod"] = "CacheResponse";
+        request["requestType"] = requestType;
+
+        // Set up response entry
+        PlayerModel player = GetPlayer(name);
+        if (player == null) return;
+        FetchInfo status = player.FetchStatus;
+        status.State = FetchState.Requesting;
+        status.Since = DateTime.Now;
+        status.RequestType = requestType;
+        DebugFetch("Sending cache request " + requestType + "(^b" + name + "^n)");
+
+        // Send request
+        if (!fIsEnabled) return;
+        this.ExecuteCommand("procon.protected.plugins.call", "CBattlelogCache", "PlayerLookup", JSON.JsonEncode(request));
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+}
+
+public void CacheResponse(params String[] response) {
+    try {
+        /*
+        Called from the Battlelog Cache plugin Response thread
+        */
+        String val = null;
+        if (DebugLevel >= 8) {
+            DebugFetch("CacheResponse called with " + response.Length + " parameters");
+            for (int i = 0; i < response.Length; ++i) {
+                DebugFetch("#" + i + ") Length: " + response[i].Length);
+                val = response[i];
+                if (val.Length > 100) val = val.Substring(0, 100) + " ... ";
+                if (val.Contains("{")) val = val.Replace('{', '<').Replace('}', '>'); // ConsoleWrite doesn't like messages with "{" in it
+                DebugFetch("#" + i + ") Value: " + val);
+            }
+        }
+
+        String name = response[0]; // Player's name
+        val = response[1]; // JSON string
+
+        Hashtable header = (Hashtable)JSON.JsonDecode(val);
+
+        if (header == null) {
+            DebugFetch("Request for ^b" + name +"^n failed!");
+            return;
+        }
+
+        String result = (String)header["type"];
+        double fetchTime = -1;
+        Double.TryParse((String)header["fetchTime"], out fetchTime);
+        double age = -1;
+        Double.TryParse((String)header["age"], out age);
+
+        PlayerModel player = GetPlayer(name);
+        FetchInfo status = player.FetchStatus;
+        String err = String.Empty;
+
+        if (CheckSuccess(header, out err)) {
+            player.FetchStatus.State = FetchState.Succeeded;
+            if (fetchTime > 0) {
+                DebugFetch("Request " + status.RequestType + "(^b" + name + "^n) succeeded, cache refreshed from Battlelog, took ^2" + fetchTime.ToString("F1") + " seconds");
+            } else if (age > 0) {
+                TimeSpan a = TimeSpan.FromSeconds(age);
+                DebugFetch("Request " + status.RequestType + "(^b" + name + "^n) succeeded, cached stats used, age is " + a.ToString().Substring(0, 8));
+            }
+        
+            Hashtable d = null;
+            if (!header.ContainsKey("data") || (d = (Hashtable)header["data"]) == null) {
+                ConsoleDebug("CacheResponse header does not contain data field!");
+                player.FetchStatus.State = FetchState.Failed;
+                return;
+            }
+
+            // Apply the result to the player
+            switch (status.RequestType) {
+                case "clanTag":
+                    SetTag(player, d);
+                    if (String.IsNullOrEmpty(player.Tag)) {
+                        DebugFetch("Battlelog Cache says ^b" + player.Name + "^n has no tag");
+                    } else {
+                        DebugFetch("Player tag updated: ^b" + player.FullName);
+                    }
+                    break;
+                default:
+                    break;
+            }
+        } else {
+            player.FetchStatus.State = FetchState.Failed;
+            DebugFetch("Request " + status.RequestType + "(^b" + name + "^n): " + err);
+        }
+        DebugFetch("^2^bTIME^n took " + DateTime.Now.Subtract(status.Since).TotalSeconds.ToString("F2") + " secs, cache lookup for ^b" + name);
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+}
+
+
+private bool CheckSuccess(Hashtable json, out String err) {
+
+    if (json == null) {
+        err = "JSON response is null!";
+        return false;
+    }
+
+    if (!json.ContainsKey("type")) {
+        err = "JSON response malformed: does not contain 'type'!";
+        return false;
+    }
+
+    String type = (String)json["type"];
+
+    if (type == null) {
+        err = "JSON response malformed: 'type' is null!";
+        return false;
+    }
+
+    if (Regex.Match(type, @"success", RegexOptions.IgnoreCase).Success) {
+        err = null;
+        return true;
+    }
+
+    if (!json.ContainsKey("message")) {
+        err = "JSON response malformed: does not contain 'message'!";
+        return false;
+    }
+
+    String message = (String)json["message"];
+
+    if (message == null) {
+        err = "JSON response malformed: 'message' is null!";
+        return false;
+    }
+
+    err = "Cache fetch failed (type: " + type + ", message: " + message + ")!";
+    return false;
+}
+
+private bool FetchWebPage(ref String result, String url) {
+    bool ret = false;
+    try {
+
+        WebClient client = new WebClient();
+        String ua = "Mozilla/5.0 (compatible; PRoCon 1; MULTIbalancer)";
+        // XXX String ua = "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64; Trident/5.0; .NET CLR 3.5.30729)";
+        if (DebugLevel >= 8) DebugFetch("Using user-agent: " + ua);
+        client.Headers.Add("user-agent", ua);
+
+        DateTime since = DateTime.Now;
+
+        result = client.DownloadString(url);
+
+        /* TESTS
+        String testUrl = "http://status.savanttools.com/?code=";
+        html_data = client.DownloadString(testUrl + "429%20Too%20Many%20Requests");
+        //html_data = client.DownloadString(testUrl + "509%20Bandwidth%20Limit%20Exceeded");
+        //html_data = client.DownloadString(testUrl + "408%20Request%20Timeout");
+        //html_data = client.DownloadString(testUrl + "404%20Not%20Found");
+        */
+
+        DebugFetch("^2^bTIME^n took " + DateTime.Now.Subtract(since).TotalSeconds.ToString("F2") + " secs, url: " + url);
+
+        if (Regex.Match(result, @"that\s+page\s+doesn't\s+exist", RegexOptions.IgnoreCase | RegexOptions.Singleline).Success) {
+            DebugFetch("^b" + url + "^n does not exist");
+            result = String.Empty;
+            return false;
+        }
+
+        ret = true;
+    } catch (WebException e) {
+        if (e.Status.Equals(WebExceptionStatus.Timeout)) {
+            if (DebugLevel >= 5) DebugFetch("EXCEPTION: HTTP request timed-out");
+        } else {
+            if (DebugLevel >= 5) DebugFetch("EXCEPTION: " + e.Message);
+        }
+        ret = false;
+    } catch (Exception ae) {
+        if (DebugLevel >= 5) DebugFetch("EXCEPTION: " + ae.Message);
+        ret = false;
+    }
+    return ret;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* ======================== SUPPORT FUNCTIONS ============================= */
+
+
+
+
+
+
+
+
+
+
+
+
+private String FormatMessage(String msg, MessageType type) {
     String prefix = "[^b" + GetPluginName() + "^n] ";
+
+    if (Thread.CurrentThread.Name != null) prefix += "Thread(^b" + Thread.CurrentThread.Name + "^n): ";
 
     if (type.Equals(MessageType.Warning))
         prefix += "^1^bWARNING^0^n: ";
@@ -322,6 +5157,8 @@ public String FormatMessage(String msg, MessageType type) {
         prefix += "^1^bERROR^0^n: ";
     else if (type.Equals(MessageType.Exception))
         prefix += "^1^bEXCEPTION^0^n: ";
+    else if (type.Equals(MessageType.Debug))
+        prefix += "^9^bDEBUG^n: ";
 
     return prefix + msg;
 }
@@ -352,9 +5189,9 @@ public void ConsoleError(String msg)
     ConsoleWrite(msg, MessageType.Error);
 }
 
-public void ConsoleException(String msg)
+public void ConsoleException(Exception e)
 {
-    ConsoleWrite(msg, MessageType.Exception);
+    if (DebugLevel >= 3) ConsoleWrite(e.ToString(), MessageType.Exception);
 }
 
 public void DebugWrite(String msg, int level)
@@ -362,8 +5199,18 @@ public void DebugWrite(String msg, int level)
     if (DebugLevel >= level) ConsoleWrite(msg, MessageType.Normal);
 }
 
+public void ConsoleDebug(String msg)
+{
+    if (DebugLevel >= 4) ConsoleWrite(msg, MessageType.Debug);
+}
 
-public void ServerCommand(params String[] args)
+public void ConsoleDump(String msg)
+{
+    ConsoleWrite("^b[Show In Log]^n ^1" + msg);
+}
+
+
+private void ServerCommand(params String[] args)
 {
     List<String> list = new List<String>();
     list.Add("procon.protected.send");
@@ -371,447 +5218,50 @@ public void ServerCommand(params String[] args)
     this.ExecuteCommand(list.ToArray());
 }
 
-
-public String GetPluginName() {
-    return "MULTIbalancer";
-}
-
-public String GetPluginVersion() {
-    return "0.0.0.2";
-}
-
-public String GetPluginAuthor() {
-    return "PapaCharlie9";
-}
-
-public String GetPluginWebsite() {
-    return "TBD";
-}
-
-public String GetPluginDescription() {
-    return HTML_DOC;
+private void TaskbarNotify(String title, String msg) {
+    this.ExecuteCommand("procon.protected.notification.write", title, msg);
 }
 
 
 
-
-public List<CPluginVariable> GetDisplayPluginVariables() {
-
-
-    List<CPluginVariable> lstReturn = new List<CPluginVariable>();
-
-    try {
-        /* ===== SECTION 1 - Settings ===== */
-        
-        lstReturn.Add(new CPluginVariable("1 - Settings|Debug Level", DebugLevel.GetType(), DebugLevel));
-
-        lstReturn.Add(new CPluginVariable("1 - Settings|Quiet Mode", QuietMode.GetType(), QuietMode));
-
-        lstReturn.Add(new CPluginVariable("1 - Settings|Max Slots", MaxSlots.GetType(), MaxSlots));
-
-        lstReturn.Add(new CPluginVariable("1 - Settings|Max Switches: Strong", MaxSwitchesStrong.GetType(), MaxSwitchesStrong));
-
-        lstReturn.Add(new CPluginVariable("1 - Settings|Max Switches: Weak", MaxSwitchesWeak.GetType(), MaxSwitchesWeak));
-
-        lstReturn.Add(new CPluginVariable("1 - Settings|First Minutes Balancer Disabled", FirstMinutesBalancerDisabled.GetType(), FirstMinutesBalancerDisabled));
-
-        lstReturn.Add(new CPluginVariable("1 - Settings|First Minutes Any Switching Allowed", FirstMinutesAnySwitchingAllowed.GetType(), FirstMinutesAnySwitchingAllowed));
-
-        lstReturn.Add(new CPluginVariable("1 - Settings|Enable 2 Slot Reserve", Enable2SlotReserve.GetType(), Enable2SlotReserve));
-
-        lstReturn.Add(new CPluginVariable("1 - Settings|Enable _recruit_ Command", Enable_recruit_Command.GetType(), Enable_recruit_Command));
-
-        lstReturn.Add(new CPluginVariable("1 - Settings|Enable Exclusions When Balancing New Players", EnableExclusionsWhenBalancingNewPlayers.GetType(), EnableExclusionsWhenBalancingNewPlayers));
-
-        lstReturn.Add(new CPluginVariable("1 - Settings|Enable Whitelisting Of Reserved Slots List", EnableWhitelistingOfReservedSlotsList.GetType(), EnableWhitelistingOfReservedSlotsList));
-
-        lstReturn.Add(new CPluginVariable("1 - Settings|Whitelist", Whitelist.GetType(), Whitelist));
-
-        lstReturn.Add(new CPluginVariable("1 - Settings|Blacklist", Blacklist.GetType(), Blacklist));
-
-        String var_name = "1 - Settings|Preset";
-        String var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(PresetItems))) + ")";
-        
-        lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(PresetItems), Preset)));
-
-        /* ===== SECTION 2 - Exclusions ===== */
-
-        lstReturn.Add(new CPluginVariable("2 - Exclusions|On Whitelist", OnWhitelist.GetType(), OnWhitelist));
-
-        lstReturn.Add(new CPluginVariable("2 - Exclusions|Top Scorers", TopScorers.GetType(), TopScorers));
-
-        lstReturn.Add(new CPluginVariable("2 - Exclusions|Same Clan Tags In Squad", SameClanTagsInSquad.GetType(), SameClanTagsInSquad));
-
-        lstReturn.Add(new CPluginVariable("2 - Exclusions|Clan Tag Fetch Pending", ClanTagFetchPending.GetType(), ClanTagFetchPending));
-
-        lstReturn.Add(new CPluginVariable("2 - Exclusions|Minutes Since First Spawn", MinutesSinceFirstSpawn.GetType(), MinutesSinceFirstSpawn));
-
-        /* ===== SECTION 3 - Server Population Setttings ===== */
-
-        lstReturn.Add(new CPluginVariable("3 - Population Settings|Low Population: Ticket Percentage To Unstack", LowPopulationTicketPercentageToUnstack.GetType(), LowPopulationTicketPercentageToUnstack));
-
-        lstReturn.Add(new CPluginVariable("3 - Population Settings|Medium Population: Ticket Percentage To Unstack", MediumPopulationTicketPercentageToUnstack.GetType(), MediumPopulationTicketPercentageToUnstack));
-
-        lstReturn.Add(new CPluginVariable("3 - Population Settings|High Population: Ticket Percentage To Unstack", HighPopulationTicketPercentageToUnstack.GetType(), HighPopulationTicketPercentageToUnstack));
-
-        var_name = "3 - Population Settings|Low Population: Balance Speed";
-        var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(BalanceSpeed))) + ")";
-        
-        lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(BalanceSpeed), LowPopulationBalanceSpeed)));
-
-        var_name = "3 - Population Settings|Medium Population: Balance Speed";
-        var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(BalanceSpeed))) + ")";
-        
-        lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(BalanceSpeed), MediumPopulationBalanceSpeed)));
-
-        var_name = "3 - Population Settings|High Population: Balance Speed";
-        var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(BalanceSpeed))) + ")";
-        
-        lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(BalanceSpeed), HighPopulationBalanceSpeed)));
-
-        /* ===== SECTION 4 - Round Phase Setttings ===== */
-
-        lstReturn.Add(new CPluginVariable("4 - Round Phase Settings|Early Phase: Ticket Percentage To Unstack", EarlyPhaseTicketPercentageToUnstack.GetType(), EarlyPhaseTicketPercentageToUnstack));
-
-        lstReturn.Add(new CPluginVariable("4 - Round Phase Settings|Mid Phase: Ticket Percentage To Unstack", MidPhaseTicketPercentageToUnstack.GetType(), MidPhaseTicketPercentageToUnstack));
-
-        lstReturn.Add(new CPluginVariable("4 - Round Phase Settings|Late Phase: Ticket Percentage To Unstack", LatePhaseTicketPercentageToUnstack.GetType(), LatePhaseTicketPercentageToUnstack));
-
-        var_name = "4 - Round Phase Settings|Early Phase: Balance Speed";
-        var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(BalanceSpeed))) + ")";
-        
-        lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(BalanceSpeed), EarlyPhaseBalanceSpeed)));
-
-        var_name = "4 - Round Phase Settings|Mid Phase: Balance Speed";
-        var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(BalanceSpeed))) + ")";
-        
-        lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(BalanceSpeed), MidPhaseBalanceSpeed)));
-
-        var_name = "4 - Round Phase Settings|Late Phase: Balance Speed";
-        var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(BalanceSpeed))) + ")";
-        
-        lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(BalanceSpeed), LatePhaseBalanceSpeed)));
-
-        /* ===== SECTION 5 - Messages ===== */
-        
-        lstReturn.Add(new CPluginVariable("5 - Messages|Chat: Moved For Balance", ChatMovedForBalance.GetType(), ChatMovedForBalance));
-        
-        lstReturn.Add(new CPluginVariable("5 - Messages|Yell: Moved For Balance", YellMovedForBalance.GetType(), YellMovedForBalance));
-        
-        lstReturn.Add(new CPluginVariable("5 - Messages|Chat: Moved To Unstack", ChatMovedToUnstack.GetType(), ChatMovedToUnstack));
-        
-        lstReturn.Add(new CPluginVariable("5 - Messages|Yell: Moved To Unstack", YellMovedToUnstack.GetType(), YellMovedToUnstack));
-        
-        lstReturn.Add(new CPluginVariable("5 - Messages|Chat: Detected Switch To Winning Team", ChatDetectedSwitchToWinningTeam.GetType(), ChatDetectedSwitchToWinningTeam));
-        
-        lstReturn.Add(new CPluginVariable("5 - Messages|Yell: Detected Switch To Winning Team", YellDetectedSwitchToWinningTeam.GetType(), YellDetectedSwitchToWinningTeam));
-        
-        lstReturn.Add(new CPluginVariable("5 - Messages|Chat: Detected Switch To Losing Team", ChatDetectedSwitchToLosingTeam.GetType(), ChatDetectedSwitchToLosingTeam));
-        
-        lstReturn.Add(new CPluginVariable("5 - Messages|Yell: Detected Switch To Losing Team", YellDetectedSwitchToLosingTeam.GetType(), YellDetectedSwitchToLosingTeam));
-        
-        lstReturn.Add(new CPluginVariable("5 - Messages|Chat: After Unswitching", ChatAfterUnswitching.GetType(), ChatAfterUnswitching));
-        
-        lstReturn.Add(new CPluginVariable("5 - Messages|Yell: After Unswitching", YellAfterUnswitching.GetType(), YellAfterUnswitching));
-
-        /* ===== SECTION 6 - TBD ===== */
-
-        /* ===== SECTION 7 - TBD ===== */
-
-        /* ===== SECTION 8 - Per-Mode Settings ===== */
-
-        List<String> simpleModes = GetSimplifiedModes();
-
-        foreach (String sm in simpleModes) {
-            PerModeSettings oneSet = null;
-            if (!fPerMode.ContainsKey(sm)) {
-                oneSet = new PerModeSettings(sm);
-                fPerMode[sm] = oneSet;
-            } else {
-                oneSet = fPerMode[sm];
-            }
-
-            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Max Players", oneSet.MaxPlayers.GetType(), oneSet.MaxPlayers));
-
-            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Estimated Max Tickets", oneSet.EstimatedMaxTickets.GetType(), oneSet.EstimatedMaxTickets));
-
-            var_name = "8 - Settings for " + sm + "|" + sm + ": " + "Determine Strong Players By";
-            var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(DefineStrong))) + ")";
-
-            lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(DefineStrong), oneSet.DetermineStrongPlayersBy)));
-
-            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of High Population: Players >=", oneSet.DefinitionOfHighPopulationPlayers.GetType(), oneSet.DefinitionOfHighPopulationPlayers));
-
-            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Low Population: Players <=", oneSet.DefinitionOfLowPopulationPlayers.GetType(), oneSet.DefinitionOfLowPopulationPlayers));
-
-            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Early Phase: Tickets >=", oneSet.DefinitionOfEarlyPhaseTickets.GetType(), oneSet.DefinitionOfEarlyPhaseTickets));
-
-            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Late Phase: Tickets <=", oneSet.DefinitionOfLatePhaseTickets.GetType(), oneSet.DefinitionOfLatePhaseTickets));
-
-            /*
-            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Min Tickets Percentage", oneSet.MinTicketsPercentage.GetType(), oneSet.MinTicketsPercentage));
-
-            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Go Aggressive", oneSet.GoAggressive.GetType(), oneSet.GoAggressive));
-            */
-        }
-
-        /* ===== SECTION 9 - Debug Settings ===== */
-
-        lstReturn.Add(new CPluginVariable("9 - Debugging|Show In Log", ShowInLog.GetType(), ShowInLog));
-
-        lstReturn.Add(new CPluginVariable("9 - Debugging|Log Chat", LogChat.GetType(), LogChat));
-
-
-    } catch (Exception e) {
-        ConsoleException(e.ToString());
-    }
-
-    return lstReturn;
-}
-
-public List<CPluginVariable> GetPluginVariables() {
-    return GetDisplayPluginVariables();
-}
-
-public void SetPluginVariable(String strVariable, String strValue) {
-
-    DebugWrite(strVariable + " <- " + strValue, 3);
-
-    try {
-        String tmp = strVariable;
-        int pipeIndex = strVariable.IndexOf('|');
-        if (pipeIndex >= 0) {
-            pipeIndex++;
-            tmp = strVariable.Substring(pipeIndex, strVariable.Length - pipeIndex);
-        }
-
-        BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
-
-        String propertyName = Regex.Replace(tmp, @"[\s:;,'\-<>=]", String.Empty);
-
-        FieldInfo field = this.GetType().GetField(propertyName, flags);
-        
-        Type fieldType = null;
-
-
-        if (!tmp.Contains("Settings for") && field != null) {
-            fieldType = field.GetValue(this).GetType();
-            if (strVariable.Contains("Preset")) {
-                fieldType = typeof(PresetItems);
-                try {
-                    Preset = (PresetItems)Enum.Parse(fieldType, strValue);
-                } catch (Exception e) {
-                    ConsoleException(e.ToString());
-                }
-            } else if (strVariable.Contains("Balance Speed")) {
-                fieldType = typeof(BalanceSpeed);
-                try {
-                    field.SetValue(this, (BalanceSpeed)Enum.Parse(fieldType, strValue));
-                } catch (Exception e) {
-                    ConsoleException(e.ToString());
-                }
-            } else if (fEasyTypeDict.ContainsValue(fieldType)) {
-                field.SetValue(this, TypeDescriptor.GetConverter(fieldType).ConvertFromString(strValue));
-            } else if (fListStrDict.ContainsValue(fieldType)) {
-                field.SetValue(this, new List<string>(CPluginVariable.DecodeStringArray(strValue)));
-            } else if (fBoolDict.ContainsValue(fieldType)) {
-                DebugWrite(propertyName + " strValue = " + strValue, 3);
-                if (Regex.Match(strValue, "True", RegexOptions.IgnoreCase).Success) {
-                    field.SetValue(this, true);
-                } else {
-                    field.SetValue(this, false);
-                }
-            }
-        } else {
-            Match m = Regex.Match(tmp, @"([^:]+):\s([^:]+)$");
-            
-            if (m.Success) {
-                String mode = m.Groups[1].Value;
-                String perModeName = m.Groups[2].Value.Replace(" ","");
-                
-                if (!fPerMode.ContainsKey(mode)) {
-                    fPerMode[mode] = new PerModeSettings(mode);
-                }
-                PerModeSettings pms = fPerMode[mode];
-                
-                field = pms.GetType().GetField(perModeName, flags);
-                
-                if (field != null) {
-                    fieldType = field.GetValue(pms).GetType();
-                    if (fEasyTypeDict.ContainsValue(fieldType)) {
-                        field.SetValue(pms, TypeDescriptor.GetConverter(fieldType).ConvertFromString(strValue));
-                    } else if (fListStrDict.ContainsValue(fieldType)) {
-                        field.SetValue(pms, new List<string>(CPluginVariable.DecodeStringArray(strValue)));
-                    } else if (fBoolDict.ContainsValue(fieldType)) {
-                        if (Regex.Match(strValue, "True", RegexOptions.IgnoreCase).Success) {
-                            field.SetValue(pms, true);
-                        } else {
-                            field.SetValue(pms, false);
-                        }
-                    } else if (strVariable.Contains("Strong")) {
-                        fieldType = typeof(DefineStrong);
-                        try {
-                            field.SetValue(pms, (DefineStrong)Enum.Parse(fieldType, strValue));
-                        } catch (Exception e) {
-                            ConsoleException(e.ToString());
-                        }
-                    }
-                } else {
-                    DebugWrite("field is null", 3);
-                }
-            }
-        }
-    } catch (System.Exception e) {
-        ConsoleException(e.ToString());
-    } finally {
-        // TBD: Validate() function needed here!
-        // Validate all values and correct if needed
-        
-        if (!String.IsNullOrEmpty(ShowInLog)) {
-            if (Regex.Match(ShowInLog, @"modes", RegexOptions.IgnoreCase).Success) {
-                List<String> modeList = GetSimplifiedModes();
-                DebugWrite("modes(" + modeList.Count + "):", 2);
-                foreach (String m in modeList) {
-                    DebugWrite(m, 2);
-                }
-            }
-            
-            ShowInLog = String.Empty;
-        }
-
-                
-        /*
-        switch (perModeName) {
-            case "Min Tickets":
-                if (!Double.TryParse(strValue, out pms.MinTicketsPercentage)) {
-                    ConsoleError("Bogus setting for " + strVariable + " ? " + strValue);
-                }
-                break;
-            case "Go Aggressive":
-                if (!Int32.TryParse(strValue, out pms.GoAggressive)) {
-                    ConsoleError("Bogus setting for " + strVariable + " ? " + strValue);
-                }
-                break;
-        }
-        */
-        
-        // Update Preset value based on current settings
-        // UpdatePresetValue(); // TBD
-    }
-}
-
-
-public void OnPluginLoaded(String strHostName, String strPort, String strPRoConVersion) {
-    this.RegisterEvents(this.GetType().Name, 
-    "OnVersion",
-    "OnServerInfo",
-    "OnResponseError",
-    "OnListPlayers",
-    "OnPlayerJoin",
-    "OnPlayerLeft",
-    "OnPlayerKilled",
-    "OnPlayerSpawned",
-    "OnPlayerTeamChange",
-    "OnGlobalChat",
-    "OnTeamChat",
-    "OnSquadChat",
-    "OnRoundOverPlayers",
-    "OnRoundOver",
-    "OnRoundOverTeamScores",
-    "OnLoadingLevel",
-    "OnLevelStarted",
-    "OnLevelLoaded"
-    );
-}
-
-public void OnPluginEnable() {
-    fIsEnabled = true;
-    ConsoleWrite("Enabled! Version = " + GetPluginVersion());
-}
-
-
-private void JoinWith(Thread thread, int secs)
-{
-    if (thread == null || !thread.IsAlive)
-        return;
-
-    ConsoleWrite("Waiting for ^b" + thread.Name + "^n to finish");
-    thread.Join(secs*1000);
-}
-
-
-public void OnPluginDisable() {
-    fIsEnabled = false;
-    
-    ConsoleWrite("Disabled!");
-}
-
-
-public override void OnVersion(String type, String ver) {
-    DebugWrite("OnVersion " + type + " " + ver, 9);
-}
-
-private CServerInfo fSI = null;
-
-public override void OnServerInfo(CServerInfo serverInfo) {
-    DebugWrite("Debug level = " + DebugLevel, 9);
-    
-    fSI = serverInfo;
-}
-
-public override void OnResponseError(List<String> requestWords, String error) { }
-
-public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subset) {
-}
-
-public override void OnPlayerJoin(String soldierName) {
-}
-
-public override void OnPlayerLeft(CPlayerInfo playerInfo) {
-}
-
-public override void OnPlayerKilled(Kill kKillerVictimDetails) { }
-
-public override void OnPlayerSpawned(String soldierName, Inventory spawnedInventory) { }
-
-public override void OnPlayerTeamChange(String soldierName, int teamId, int squadId) { }
-
-public override void OnGlobalChat(String speaker, String message) { }
-
-public override void OnTeamChat(String speaker, String message, int teamId) { }
-
-public override void OnSquadChat(String speaker, String message, int teamId, int squadId) { }
-
-public override void OnRoundOverPlayers(List<CPlayerInfo> players) { }
-
-public override void OnRoundOverTeamScores(List<TeamScore> teamScores) { }
-
-public override void OnRoundOver(int winningTeamId) { }
-
-public override void OnLoadingLevel(String mapFileName, int roundsPlayed, int roundsTotal) { }
-
-public override void OnLevelStarted() { }
-
-public override void OnLevelLoaded(String mapFileName, String Gamemode, int roundsPlayed, int roundsTotal) { } // BF3
-
-
-/* ===== */
-
-public List<String> GetSimplifiedModes() {
+private List<String> GetSimplifiedModes() {
     List<String> r = new List<String>();
     
     if (fModeToSimple.Count < 1) {
         List<CMap> raw = this.GetMapDefines();
         foreach (CMap m in raw) {
             String simple = null;
-            if (Regex.Match(m.GameMode, @"(?:Conquest|Assault)").Success) {
-                simple = "Conquest";
-            } else if (Regex.Match(m.GameMode, @"TDM").Success) {
-                simple = "Team Deathmatch";
-            } else if (Regex.Match(m.GameMode, @"Gun Master").Success) {
-                continue; // not supported
-            } else {
-                simple = m.GameMode;
+            switch (m.GameMode) {
+                case "Conquest Large":
+                case "Assault64":
+                    simple = "Conquest Large";
+                    break;
+                case "Conquest":
+                case "Assault":
+                case "Assault #2":
+                case "Conquest Domination":
+                case "Scavenger":
+                    simple = "Conq Small, Dom, Scav";
+                    break;
+                case "TDM":
+                case "TDM Close Quarters":
+                    simple = "Team Deathmatch";
+                    break;
+                case "Tank Superiority":
+                case "Air Superiority":
+                    simple = "Superiority";
+                    break;
+                case "Rush":
+                case "CTF":
+                case "Squad Deathmatch":
+                case "Gun Master":
+                case "Squad Rush":
+                    simple = m.GameMode;
+                    break;
+                default:
+                    simple = "Unknown or New Mode";
+                    break;
+                
             }
             if (fModeToSimple.ContainsKey(m.PlayList)) {
                 if (fModeToSimple[m.PlayList] != simple) {
@@ -826,70 +5276,2236 @@ public List<String> GetSimplifiedModes() {
     bool last = false;
     foreach (KeyValuePair<String,String> p in fModeToSimple) {
         if (r.Contains(p.Value)) continue;
-        if (p.Value == "Squad Rush") { last = true; continue; }
+        if (p.Value == "Unknown or New Mode") { last = true; continue; }
         r.Add(p.Value); // collect up all the simple GameMode names
     }
-    if (last) r.Add("Squad Rush"); // make sure this is last
+    if (last) r.Add("Unknown or New Mode"); // make sure this is last
 
     return r;
+}
+
+public bool CheckForEquality(MULTIbalancer rhs) {
+    return (this.OnWhitelist == rhs.OnWhitelist
+     && this.TopScorers == rhs.TopScorers
+     && this.SameClanTagsInSquad == rhs.SameClanTagsInSquad
+     && this.MinutesAfterJoining == rhs.MinutesAfterJoining
+     && this.JoinedEarlyPhase == rhs.JoinedEarlyPhase
+     && this.JoinedMidPhase == rhs.JoinedMidPhase
+     && this.JoinedLatePhase == rhs.JoinedLatePhase
+     && MULTIbalancerUtils.EqualArrays(this.EarlyPhaseTicketPercentageToUnstack, rhs.EarlyPhaseTicketPercentageToUnstack)
+     && MULTIbalancerUtils.EqualArrays(this.MidPhaseTicketPercentageToUnstack, rhs.MidPhaseTicketPercentageToUnstack)
+     && MULTIbalancerUtils.EqualArrays(this.LatePhaseTicketPercentageToUnstack, rhs.LatePhaseTicketPercentageToUnstack)
+     && MULTIbalancerUtils.EqualArrays(this.EarlyPhaseBalanceSpeed, rhs.EarlyPhaseBalanceSpeed)
+     && MULTIbalancerUtils.EqualArrays(this.MidPhaseBalanceSpeed, rhs.MidPhaseBalanceSpeed)
+     && MULTIbalancerUtils.EqualArrays(this.LatePhaseBalanceSpeed, rhs.LatePhaseBalanceSpeed)
+     && this.ForbidSwitchAfterAutobalance == rhs.ForbidSwitchAfterAutobalance 
+     && this.ForbidSwitchToWinningTeam == rhs.ForbidSwitchToWinningTeam 
+     && this.ForbidSwitchToBiggestTeam == rhs.ForbidSwitchToBiggestTeam
+     && this.ForbidSwitchAfterDispersal == rhs.ForbidSwitchAfterDispersal
+     && this.EnableImmediateUnswitch == rhs.EnableImmediateUnswitch
+    );
+}
+
+
+private void UpdatePresetValue() {
+    Preset = PresetItems.None;  // backstop value
+
+    try {
+
+        // Check for Standard
+        if (MULTIbalancerUtils.IsEqual(this, PresetItems.Standard)) {
+            Preset = PresetItems.Standard;
+            return;
+        }
+    
+        // Check for Aggressive
+        if (MULTIbalancerUtils.IsEqual(this, PresetItems.Aggressive)) {
+            Preset = PresetItems.Aggressive;
+            return;
+        }
+    
+        // Check for Passive
+        if (MULTIbalancerUtils.IsEqual(this, PresetItems.Passive)) {
+            Preset = PresetItems.Passive;
+            return;
+        }
+    
+        // Check for Intensify
+        if (MULTIbalancerUtils.IsEqual(this, PresetItems.Intensify)) {
+            Preset = PresetItems.Intensify;
+            return;
+        }
+    
+        // Check for Retain
+        if (MULTIbalancerUtils.IsEqual(this, PresetItems.Retain)) {
+            Preset = PresetItems.Retain;
+            return;
+        }
+    
+        // Check for BalanceOnly
+        if (MULTIbalancerUtils.IsEqual(this, PresetItems.BalanceOnly)) {
+            Preset = PresetItems.BalanceOnly;
+            return;
+        }
+    
+        // Check for UnstackOnly
+        if (MULTIbalancerUtils.IsEqual(this, PresetItems.UnstackOnly)) {
+            Preset = PresetItems.UnstackOnly;
+            return;
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+}
+
+private void Reset() {
+    ResetRound();
+    
+    lock (fFetchQ) {
+        fFetchQ.Clear();
+        Monitor.Pulse(fFetchQ);
+    }
+
+    lock (fMoveQ) {
+        fMoveQ.Clear();
+        Monitor.Pulse(fMoveQ);
+    }
+
+    lock (fListPlayersQ) {
+        fListPlayersQ.Clear();
+        Monitor.Pulse(fListPlayersQ);
+    }
+
+    lock (fAllPlayers) {
+        fAllPlayers.Clear();
+    }
+
+    lock (fMoving) {
+        fMoving.Clear();
+    }
+
+    lock (fMoveStash) {
+        fMoveStash.Clear();
+    }
+
+    fReassigned.Clear();
+    fPendingTeamChange.Clear();
+    fUnassigned.Clear();
+    
+    /*
+    fKnownPlayers is not cleared right away, since we want to retain stats from previous plugin sessions.
+    It will be garbage collected after MODEL_MINUTES.
+    */
+
+    fServerInfo = null; // release Procon reference
+    fListPlayersTimestamp = DateTime.MinValue;
+    fGotVersion = false;
+    fServerUptime = 0;
+    fServerCrashed  = false;
+    fFinalStatus = null;
+    fMaxTickets = -1;
+    fBalanceIsActive = false;
+    fIsFullRound = false;
+    fLastMsg = null;
+    fRoundsEnabled = 0;
+    fGrandTotalQuits = 0;
+    fGrandRageQuits = 0;
+
+    fDebugScramblerBefore[0].Clear();
+    fDebugScramblerBefore[1].Clear();
+    fDebugScramblerAfter[0].Clear();
+    fDebugScramblerAfter[1].Clear();
+}
+
+private void ResetRound() {
+    ClearTeams();
+
+    for (int i = 0; i < fTickets.Length; i++) {
+        fTickets[i] = 0;
+    }
+            
+    fRoundStartTimestamp = DateTime.Now;
+    fFullUnstackSwapTimestamp = DateTime.MinValue;
+
+    lock (fAllPlayers) {
+        foreach (String name in fAllPlayers) {
+            try {
+                if (!fKnownPlayers.ContainsKey(name)) {
+                    ConsoleDebug("ResetRound: " + name + " not in fKnownPlayers");
+                    continue;
+                }
+                PlayerModel m = null;
+                lock (fKnownPlayers) {
+                    m = fKnownPlayers[name];
+                }
+
+                m.ResetRound();
+            } catch (Exception e) {
+                ConsoleException(e);
+            }
+        }
+    }
+
+    fBalancedRound = 0;
+    fUnstackedRound = 0;
+    fUnswitchedRound = 0;
+    fExcludedRound = 0;
+    fExemptRound = 0;
+    fFailedRound = 0;
+    fTotalRound = 0;
+    fReassignedRound = 0;
+    fUnstackState = UnstackState.Off;
+    fRushStage = 0;
+    fRushAttackerTickets = 0;
+    fTimeOutOfJoint = 0;
+    fRoundsEnabled = fRoundsEnabled + 1;
+    fGrandTotalQuits = fGrandTotalQuits + fTotalQuits;
+    fTotalQuits = 0;
+    fGrandRageQuits = fGrandRageQuits + fRageQuits;
+    fRageQuits = 0;
+
+    fLastBalancedTimestamp = DateTime.MinValue;
+}
+
+private bool IsSQDM() {
+    if (fServerInfo == null) return false;
+    return (fServerInfo.GameMode == "SquadDeathMatch0");
+}
+
+private bool IsRush() {
+    if (fServerInfo == null) return false;
+    return (fServerInfo.GameMode == "RushLarge0" || fServerInfo.GameMode == "SquadRush0");
+}
+
+private bool IsCTF() {
+    if (fServerInfo == null) return false;
+    return (fServerInfo.GameMode == "CaptureTheFlag0");
+}
+
+private int MaxDiff() {
+    if (fServerInfo == null) return 2;
+    PerModeSettings perMode = null;
+    String simpleMode = String.Empty;
+    if (IsSQDM()) {
+        return ((TotalPlayerCount <= 32) ? 1 : 2);
+    }
+    perMode = GetPerModeSettings();
+
+    if (!perMode.isDefault) return ((GetPopulation(perMode, false) == Population.High) ? 2 : 1);
+
+    return 2;
+}
+
+private void UpdateTeams() {
+    ClearTeams();
+
+    List<String> names = new List<String>();
+
+    lock (fAllPlayers) {
+        foreach (String name in fAllPlayers) {
+            if (!fKnownPlayers.ContainsKey(name)) {
+                ConsoleDebug("UpdateTeams: " + name + " not in fKnownPlayers");
+                continue;
+            }
+            names.Add(name);
+        }
+    }
+    lock (fKnownPlayers) {
+        foreach (String dude in names) {
+            PlayerModel player = fKnownPlayers[dude];
+            List<PlayerModel> t = GetTeam(player.Team);
+            if (t != null) t.Add(player);
+        }
+    }
+}
+
+private List<PlayerModel> GetTeam(int team) {
+    switch (team) {
+        case 1: return(fTeam1);
+        case 2: return(fTeam2);
+        case 3: if (IsSQDM()) return(fTeam3); break;
+        case 4: if (IsSQDM()) return(fTeam4); break;
+        default: break;
+    }
+    return null;
+}
+
+private void ClearTeams() {
+    fTeam1.Clear();
+    fTeam2.Clear();
+    fTeam3.Clear();
+    fTeam4.Clear();
+}
+
+// Negative return value means toTeam is larger than fromTeam
+private int GetTeamDifference(ref int fromTeam, ref int toTeam) {
+    // 0 vs 0 means assign the max team to fromTeam and min team to toTeam and return the difference
+    if (fromTeam < 0 || fromTeam > 4) return 0;
+    if (toTeam < 0 || toTeam > 4) return 0;
+    if (fromTeam != 0 && toTeam != 0 && fromTeam == toTeam) return 0;
+
+    if (fromTeam != 0 && toTeam != 0) {
+        List<PlayerModel> from = null;
+        List<PlayerModel> to = null;
+
+        from = GetTeam(fromTeam);
+        if (from == null) return 0;
+
+        to = GetTeam(toTeam);
+        if (to == null) return 0;
+
+        return (from.Count - to.Count);
+    }
+
+    // otherwise find min and max
+
+    List<TeamRoster> teams = new List<TeamRoster>();
+    int big = 1;
+
+    teams.Add(new TeamRoster(1, fTeam1));
+    teams.Add(new TeamRoster(2, fTeam2));
+    if (IsSQDM()) {
+        teams.Add(new TeamRoster(3, fTeam3));
+        teams.Add(new TeamRoster(4, fTeam4));
+        big = 3;
+    }
+
+    teams.Sort(delegate(TeamRoster lhs, TeamRoster rhs) {
+        // Sort ascending order by count
+        if (lhs == null || rhs == null) return 0;
+        if (lhs.Roster.Count < rhs.Roster.Count) return -1;
+        if (lhs.Roster.Count > rhs.Roster.Count) return 1;
+        return 0;
+    });
+
+    TeamRoster minTeam = teams[0];
+    TeamRoster maxTeam = teams[big];
+
+    // assert(fromTeam == 0 && toTeam == 0)
+    toTeam = minTeam.Team;
+    fromTeam = maxTeam.Team;
+    return (maxTeam.Roster.Count - minTeam.Roster.Count);
+}
+
+
+private void AnalyzeTeams(out int maxDiff, out int[] ascendingSize, out int[] descendingTickets, out int biggestTeam, out int smallestTeam, out int winningTeam, out int losingTeam) {
+
+    biggestTeam = 0;
+    smallestTeam = 0;
+    winningTeam = 0;
+    losingTeam = 0;
+    maxDiff = 0;
+    bool isSQDM = IsSQDM();
+
+    ascendingSize = new int[4]{0,0,0,0};
+    descendingTickets = new int[4]{0,0,0,0};
+
+    if (fServerInfo == null) return;
+
+    List<TeamRoster> teams = new List<TeamRoster>();
+
+    teams.Add(new TeamRoster(1, fTeam1));
+    teams.Add(new TeamRoster(2, fTeam2));
+    if (isSQDM) {
+        teams.Add(new TeamRoster(3, fTeam3));
+        teams.Add(new TeamRoster(4, fTeam4));
+    }
+
+    teams.Sort(delegate(TeamRoster lhs, TeamRoster rhs) {
+        // Sort ascending order by count
+        if (lhs == null || rhs == null) return 0;
+        if (lhs.Roster.Count < rhs.Roster.Count) return -1;
+        if (lhs.Roster.Count > rhs.Roster.Count) return 1;
+        return 0;
+    });
+
+    for (int i = 0; i < ascendingSize.Length; ++i) {
+        if (i < teams.Count) {
+            ascendingSize[i] = teams[i].Team;
+        } else {
+            ascendingSize[i] = 0;
+        }
+    }
+
+    TeamRoster small = teams[0];
+    TeamRoster big = teams[teams.Count-1];
+    smallestTeam = small.Team;
+    biggestTeam = big.Team;
+    maxDiff = big.Roster.Count - small.Roster.Count;
+
+    List<TeamScore> byScore = new List<TeamScore>();
+    if (fServerInfo.TeamScores == null) return;
+    bool isCTF = IsCTF();
+    if (!isCTF && fServerInfo.TeamScores.Count == 0) return;
+    if (IsRush()) {
+        // Normalize scores
+        TeamScore attackers = fServerInfo.TeamScores[0];
+        TeamScore defenders = fServerInfo.TeamScores[1];
+        double normalized = fMaxTickets - (fRushMaxTickets - defenders.Score);
+        normalized = Math.Max(normalized, Convert.ToDouble(attackers.Score)/2);
+        byScore.Add(attackers); // attackers
+        byScore.Add(new TeamScore(defenders.TeamID, Convert.ToInt32(normalized), defenders.WinningScore));
+    } else if (isCTF) {
+        // Base sort on team points rather than tickets
+        int usPoints = Convert.ToInt32(GetTeamPoints(1));
+        int ruPoints = Convert.ToInt32(GetTeamPoints(2));
+        DebugWrite("^9CTF analysis: US/RU points = " + usPoints + "/" + ruPoints, 8);
+        byScore.Add(new TeamScore(1, usPoints, 0));
+        byScore.Add(new TeamScore(2, ruPoints, 0));
+    } else {
+        byScore.AddRange(fServerInfo.TeamScores);
+    }
+
+    byScore.Sort(delegate(TeamScore lhs, TeamScore rhs) {
+        // Sort descending order by score
+        if (lhs == null || rhs == null) return 0;
+        if (lhs.Score < rhs.Score) return 1;
+        if (lhs.Score > rhs.Score) return -1;
+        return 0;
+    });
+
+    for (int i = 0; i < descendingTickets.Length; ++i) {
+        if (isSQDM || i < 2) {
+            descendingTickets[i] = byScore[i].TeamID;
+        } else {
+            descendingTickets[i] = 0;
+        }
+    }
+
+    winningTeam = byScore[0].TeamID;
+    losingTeam = byScore[byScore.Count-1].TeamID;
+    DebugWrite("^9AnalyzeTeams: biggest/smallest/winning/losing = " + biggestTeam + "/" + smallestTeam + "/" + winningTeam + "/" + losingTeam, 8);
+}
+
+private int DifferenceFromSmallest(int fromTeam) {
+    int biggestTeam = 0;
+    int smallestTeam = 0;
+    int winningTeam = 0;
+    int losingTeam = 0;
+    int diff = 0;
+    int[] ascendingSize = null;
+    int[] descendingTickets = null;
+
+    List<TeamRoster> teams = new List<TeamRoster>();
+
+    teams.Add(new TeamRoster(1, fTeam1));
+    teams.Add(new TeamRoster(2, fTeam2));
+    if (IsSQDM()) {
+        teams.Add(new TeamRoster(3, fTeam3));
+        teams.Add(new TeamRoster(4, fTeam4));
+    }
+
+    if (!IsSQDM()) {
+        if (fromTeam < 1 || fromTeam > 2) return 0;
+    } else {
+        if (fromTeam < 1 || fromTeam > 4) return 0;
+    }
+
+    AnalyzeTeams(out diff, out ascendingSize, out descendingTickets, out biggestTeam, out smallestTeam, out winningTeam, out losingTeam);
+
+    if (fromTeam == smallestTeam || smallestTeam < 1 || smallestTeam > teams.Count) return 0;
+
+    return(teams[fromTeam-1].Roster.Count - teams[smallestTeam-1].Roster.Count);
+}
+
+
+private int ToTeam(String name, int fromTeam, bool isReassign, out int diff, ref bool mustMove) {
+    diff = 0;
+    if (fromTeam < 1 || fromTeam > 4) return 0;
+
+    List<PlayerModel>[] byId = new List<PlayerModel>[5]{null, fTeam1, fTeam2, fTeam3, fTeam4};
+    
+    int biggestTeam = 0;
+    int smallestTeam = 0;
+    int winningTeam = 0;
+    int losingTeam = 0;
+    int[] ascendingSize = null;
+    int[] descendingTickets = null;
+
+    AnalyzeTeams(out diff, out ascendingSize, out descendingTickets, out biggestTeam, out smallestTeam, out winningTeam, out losingTeam);
+
+    // diff already set by AnalyzeTeams
+    if (mustMove) {
+        int disTeam = ToTeamByDispersal(name, fromTeam, byId);
+
+        if (disTeam == -1) {
+            // this player moved more than other dispersals, skip
+            DebugBalance("Exempting dispersal player ^b" + name + "^n, moved more than others");
+            // leave mustMove set to true so that caller does the right thing
+            return 0;
+        }
+
+        if (disTeam != 0) {
+            DebugWrite("^9ToTeam for ^b" + name + "^n: dispersal returned team " + disTeam, 7);
+            return disTeam;
+        }
+        // fall thru if dispersal doesn't find a suitable team
+        mustMove = false;
+    }
+
+    DebugWrite("^9ToTeam for ^b" + name + "^n: winning/losing = " + winningTeam + "/" + losingTeam, 8);
+    if (DebugLevel >= 8 && descendingTickets != null) {
+        String ds = "^9ToTeam for ^b" + name + "^n: descendingTickets = [";
+        for (int k = 0; k < descendingTickets.Length; ++k) {
+            ds = ds + descendingTickets[k] + " ";
+        }
+        ds = ds + "]";
+        DebugWrite(ds, 7);
+    }
+
+    // diff is maximum difference between any two teams
+    if (!isReassign && diff <= MaxDiff()) return 0;
+    int superDiff = diff;
+
+    int targetTeam = smallestTeam;
+
+    // if teams are same size, send to losing team
+    if (biggestTeam != smallestTeam && byId[biggestTeam].Count == byId[smallestTeam].Count && losingTeam != fromTeam) {
+        targetTeam = losingTeam;
+    }
+    
+    if (targetTeam == fromTeam) return 0;
+
+    // Special handling for SQDM
+    bool isSQDM = IsSQDM();
+    if (isSQDM) {
+        int orig = targetTeam;
+        int i = 0;
+
+        // Don't send to the winning team, even if it is the smallest, unless reassigning
+        if (!isReassign && targetTeam == winningTeam) {
+            while (i < ascendingSize.Length) {
+                int aTeam = ascendingSize[i];
+                ++i;
+                if (aTeam == orig || aTeam == winningTeam || aTeam == fromTeam) continue;
+                targetTeam = aTeam;
+                break;
+            }
+        }
+
+        if (targetTeam != orig) {
+            String szs = "(";
+            for (i = 1; i < byId.Length; ++i) {
+                szs = szs + byId[i].Count.ToString();
+                if (i == 4) {
+                    szs = szs + ")";
+                } else {
+                    szs = szs + ", ";
+                }
+            }
+            DebugBalance("ToTeam  for ^b" + name + "^n: SQDM adjusted target from " + GetTeamName(orig) + " team to " + GetTeamName(targetTeam) + " team: " + szs);
+        }
+    }
+
+    // recompute diff to be difference between fromTeam and target team
+    diff = GetTeamDifference(ref fromTeam, ref targetTeam);
+    if (diff < 0) {
+        ConsoleDebug("ToTeam for ^b" + name + "^n: GetTeamDifference returned negative diff = " + diff);
+        diff = Math.Abs(diff);
+    }
+
+    // Fake out difference due to adjustment
+    if (isSQDM && diff < MaxDiff() && diff != 0) {
+        DebugBalance("ToTeam  for ^b" + name + "^n: SQDM fake out diff due to adjustment, was " + diff + ", will be reported as " + superDiff);
+        diff = superDiff;
+    }
+
+    String tm = "(";
+    for (int j = 1; j <= 4; ++j) {
+        if (j == winningTeam) tm = tm + "+";
+        if (j == losingTeam) tm = tm + "-";
+        tm = tm + byId[j].Count;
+        if (j != 4) tm = tm + "/";
+    }
+    tm = tm + ")";
+    DebugWrite("ToTeam for ^b" + name + "^n: analyze returned " + tm + ", " + fromTeam + " ==> " + targetTeam, 5);
+
+    return targetTeam;
+}
+
+private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] byId) {
+    int targetTeam = 0;
+    bool allEqual = false;
+    int grandTotal = 0;
+
+    if (byId == null) return 0;
+
+    /*
+    Select a team that would disperse this player evenly with similar players,
+    regardless of balance or stacking. Dispersal list takes priority over
+    other dispersal types.
+    */
+
+    PlayerModel player = GetPlayer(name);
+    if (player == null) return 0;
+
+    PerModeSettings perMode = GetPerModeSettings();
+    if (perMode.isDefault) return 0;
+
+    bool isSQDM = IsSQDM();
+    bool mostMoves = true;
+
+    bool isDispersalByRank = IsRankDispersal(player);
+    List<String> dispersalList = null;
+    bool isDispersalByList = false;
+    if (perMode.EnableDisperseEvenlyList && DisperseEvenlyList != null && DisperseEvenlyList.Length > 0) {
+        String extractedTag = ExtractTag(player);
+        dispersalList = new List<String>(DisperseEvenlyList);
+        if (dispersalList.Contains(name) 
+        || dispersalList.Contains(player.EAGUID) 
+        && (!String.IsNullOrEmpty(extractedTag) && dispersalList.Contains(extractedTag))) {
+            isDispersalByList = true;
+        }
+    }
+
+    /* By Dispersal List */
+
+    if (isDispersalByList) {
+        int[] usualSuspects = new int[5]{0,0,0,0,0};
+        mostMoves = true;
+
+        for (int i = 1; i < byId.Length; ++i) {
+            foreach (PlayerModel p in byId[i]) {
+                if (p.Name == player.Name) continue; // don't count this player
+                
+                String et = ExtractTag(p);
+                if (dispersalList.Contains(p.Name) 
+                || dispersalList.Contains(p.EAGUID)
+                || (!String.IsNullOrEmpty(et) && dispersalList.Contains(et))) {
+                    usualSuspects[i] = usualSuspects[i] + 1;
+                    grandTotal = grandTotal + 1;
+
+                    // Make sure this player hasn't been moved more than any other dispersal player
+                    if (p.MovesRound > player.MovesRound) {
+                        mostMoves = false;
+                    }
+                }
+            }
+        }
+
+        if (mostMoves && player.MovesRound > 0) {
+            DebugWrite("ToTeamByDispersal List: ^b" + player.Name + "^n moved more than other dispersals (" + player.MovesRound + " times), skipping!", 5);
+            return -1;
+        }
+
+        String an = usualSuspects[1] + "/" + usualSuspects[2];
+        if (isSQDM) an = an + "/" + usualSuspects[3] + "/" + usualSuspects[4];
+        DebugWrite("ToTeamByDispersal: analysis of ^b" + player.FullName + "^n dispersal by list: " + an, 5);
+
+        // Pick smallest one
+        targetTeam = 0;
+        allEqual = true;
+        int minSuspects = 64;
+        for (int i = 1; i < usualSuspects.Length; ++i) {
+            if (!isSQDM && i > 2) continue;
+            if (allEqual && usualSuspects[i] == minSuspects) {
+                allEqual = true;
+            } else if (usualSuspects[i] < minSuspects) {
+                minSuspects = usualSuspects[i];
+                targetTeam = i;
+                if (i != 1) allEqual = false;
+            } else {
+                if (i != 1) allEqual = false;
+            }
+        }
+
+        if (grandTotal > 1 && !allEqual && targetTeam != 0 && targetTeam != fromTeam) return targetTeam;
+
+        if (allEqual) DebugWrite("^9ToTeamByDispersal: all equal list, skipping", 5);
+        // otherwise fall through and try rank
+    }
+
+    /* By Rank? */
+
+    if (isDispersalByRank) {
+        int[] rankers = new int[5]{0,0,0,0,0};
+        grandTotal = 0;
+        mostMoves = true;
+
+        for (int i = 1; i < byId.Length; ++i) {
+            foreach (PlayerModel p in byId[i]) {
+                if (p.Name == player.Name) continue; // don't count this player
+                if (p.Rank >= perMode.DisperseEvenlyForRank) {
+                    rankers[i] = rankers[i] + 1;
+                    grandTotal = grandTotal + 1;
+
+                    // Make sure this player hasn't been moved more than any other dispersal player
+                    if (p.MovesRound > player.MovesRound) {
+                        mostMoves = false;
+                    }
+                }
+            }
+        }
+
+        if (mostMoves && player.MovesRound > 0) {
+            DebugWrite("ToTeamByDispersal Rank: ^b" + player.Name + "^n moved more than other dispersals (" + player.MovesRound + " times), skipping!", 5);
+            return -1;
+        }
+
+        String a = rankers[1] + "/" + rankers[2];
+        if (isSQDM) a = a + "/" + rankers[3] + "/" + rankers[4];
+        DebugWrite("ToTeamByDispersal: analysis of ^b" + name + "^n dispersal of rank >= " + perMode.DisperseEvenlyForRank + ": " + a, 5);
+
+        // Pick smallest one
+        targetTeam = 0;
+        allEqual = true;
+        int minRanks = 64;
+        for (int i = 1; i < rankers.Length; ++i) {
+            if (!isSQDM && i > 2) continue;
+            if (allEqual && rankers[i] == minRanks) {
+                allEqual = true;
+            } else if (rankers[i] < minRanks) {
+                minRanks = rankers[i];
+                targetTeam = i;
+                if (i != 1) allEqual = false;
+            } else {
+                if (i != 1) allEqual = false;
+            }
+        }
+
+        if (allEqual || grandTotal < 2) {
+            DebugWrite("^9ToTeamByDispersal: all equal by rank, skipping", 5);
+            return 0; // don't disperse
+        }
+        // fall through
+    }
+
+    return targetTeam; // ok if 0 or same as fromTeam, caller checks
+}
+
+private int ToSquad(String name, int team) {
+    int ret = 0;
+    try {
+        List<PlayerModel> teamList = null;
+
+        if (IsSQDM()) return 1; // SQDM, squad is always 1
+
+        teamList = GetTeam(team);
+        if (teamList == null) return 0;
+
+        int[] squads = new int[SQUAD_NAMES.Length];
+
+        // Build table of squad counts
+        int i = 0;
+        for (i = 0; i < squads.Length; ++i) {
+            squads[i] = 0;
+        }
+        foreach (PlayerModel p in teamList) {
+            i = p.Squad;
+            if (i < 0 || i >= squads.Length) continue;
+            squads[i] = squads[i] + 1;
+        }
+
+        // Find the biggest squad less than 4 (that isn't locked -- TBD)
+        int squad = 0;
+        int best = 0;
+        int atZero = 0;
+        for (int squadNum = 1; squadNum < squads.Length; ++squadNum) {
+            int n = squads[squadNum];
+            if (n == 0) {
+                if (atZero == 0) atZero = squadNum;
+                continue;
+            }
+            if (n >= 4) continue;
+            if (n > best) {
+                squad = squadNum;
+                best = n;
+            }
+        }
+        // if no best squad, use empty squad with lowest slot number
+        if (squad == 0 && atZero != 0) {
+            ret = atZero;
+        } else {
+            // otherwise return the best squad
+            ret = squad;
+        }
+        if (DebugLevel >= 7) {
+            String ss = "selected " + ret + " out of ";
+            for (int k = 1; k < squads.Length; ++k) {
+                if (squads[k] == 0) continue;
+                ss = ss + k + ":" + squads[k] + "/";
+            }
+            ss = ss + "-";
+            ConsoleDebug("ToSquad ^b" + name + "^n: " + ss);
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+    return ret;
+}
+
+private void StartThreads() {
+    fMoveThread = new Thread(new ThreadStart(MoveLoop));
+    fMoveThread.IsBackground = true;
+    fMoveThread.Name = "unswitcher";
+    fMoveThread.Start();
+
+    fListPlayersThread = new Thread(new ThreadStart(ListPlayersLoop));
+    fListPlayersThread.IsBackground = true;
+    fListPlayersThread.Name = "lister";
+    fListPlayersThread.Start();
+
+    fFetchThread = new Thread(new ThreadStart(FetchLoop));
+    fFetchThread.IsBackground = true;
+    fFetchThread.Name = "fetcher";
+    fFetchThread.Start();
+
+    fScramblerThread = new Thread(new ThreadStart(ScramblerLoop));
+    fScramblerThread.IsBackground = true;
+    fScramblerThread.Name = "scrambler";
+    fScramblerThread.Start();
+}
+
+private void JoinWith(Thread thread, int secs)
+{
+    if (thread == null || !thread.IsAlive)
+        return;
+
+    ConsoleWrite("Waiting for ^b" + thread.Name + "^n to finish");
+    thread.Join(secs*1000);
+}
+
+private void StopThreads() {
+    try
+    {
+        Thread stopper = new Thread(new ThreadStart(delegate()
+            {
+                fFinalizerActive = true;
+
+                Thread.Sleep(100);
+
+                try
+                {
+                    lock (fMoveQ) {
+                        Monitor.Pulse(fMoveQ);
+                    }
+                    JoinWith(fMoveThread, 3);
+                    fMoveThread = null;
+                    JoinWith(fListPlayersThread, 3);
+                    fListPlayersThread = null;
+                    lock (fFetchQ) {
+                        Monitor.Pulse(fFetchQ);
+                    }
+                    JoinWith(fFetchThread, 3);
+                    fFetchThread = null;
+                    lock (fScramblerLock) {
+                        fScramblerLock.MaxDelay = 0;
+                        Monitor.Pulse(fScramblerLock);
+                    }
+                    JoinWith(fScramblerThread, 3);
+                    fScramblerThread = null;
+                }
+                catch (Exception e)
+                {
+                    ConsoleException(e);
+                }
+
+                fFinalizerActive = false;
+                ConsoleWrite("Finished disabling threads, ready to be enabled again!");
+            }));
+
+        stopper.Name = "stopper";
+        stopper.Start();
+
+    }
+    catch (Exception e)
+    {
+        ConsoleException(e);
+    }
+}
+
+private void UpdateMoveTime(String name) {
+    PlayerModel player = GetPlayer(name);
+    if (player == null) return;
+    player.MovedTimestamp = DateTime.Now;
+}
+
+private void IncrementMoves(String name) {
+    if (!IsKnownPlayer(name)) return;
+    lock (fKnownPlayers) {
+        PlayerModel m = fKnownPlayers[name];
+        m.MovesRound = m.MovesRound + 1;
+        m.MovedByMB = true;
+    }
+    UpdateMoveTime(name);
+}
+
+private void ConditionalIncrementMoves(String name) {
+    /*
+    If some other plugin did an admin move on this player, increment
+    the move counter so that this player will be exempted from balancing and unstacking
+    for the rest of this round, but don't set the flag, since MB didn't move this player.
+    */
+    if (!IsKnownPlayer(name)) return;
+    lock (fKnownPlayers) {
+        PlayerModel m = fKnownPlayers[name];
+        if (!m.MovedByMB) {
+            m.MovesRound = m.MovesRound + 1;
+        }
+    }
+    IncrementTotal(); // no matching stat, reflects handling of non-MB admin move
+}
+
+/*
+private int GetMoves(String name) {
+    if (!IsKnownPlayer(name)) return 99;
+    lock (fKnownPlayers) {
+        return fKnownPlayers[name].MovesRound;
+    }
+}
+*/
+
+private void IncrementTotal()
+{
+    if (fPluginState == PluginState.Active) fTotalRound = fTotalRound + 1;
+}
+
+private String GetTeamName(int team) {
+    if (team < 0) return "None";
+
+    if (IsSQDM() && team < SQUAD_NAMES.Length) {
+        return SQUAD_NAMES[team];
+    } else if (IsRush() && team < RUSH_NAMES.Length) {
+        return RUSH_NAMES[team];
+    }
+    if (team >= TEAM_NAMES.Length) return "None";
+    return TEAM_NAMES[team];
+}
+
+private void ListPlayersLoop() {
+    /*
+    Strategy: Control the rate of listPlayers commands by keeping track of the
+    timestamp of the last event. Only issue a new command if no new event occurs within
+    the required time.
+    */
+    try {
+        while (fIsEnabled) {
+            DelayedRequest request = null;
+            lock (fListPlayersQ) {
+                while (fListPlayersQ.Count == 0) {
+                    Monitor.Wait(fListPlayersQ);
+                    if (!fIsEnabled) return;
+                }
+
+                request = fListPlayersQ.Dequeue();
+
+                // Wait until event handler updates fListPlayersTimestamp or MaxDelay has elapsed
+                while (request.LastUpdate == fListPlayersTimestamp 
+                  && DateTime.Now.Subtract(request.LastUpdate).TotalSeconds < request.MaxDelay) {
+                    Monitor.Wait(fListPlayersQ, 1000);
+                    if (!fIsEnabled) return;
+                }
+            }
+
+            // If there has been no event, ask for one
+            if (request.LastUpdate == fListPlayersTimestamp) ServerCommand("admin.listPlayers", "all");
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
+    } finally {
+        ConsoleWrite("^bListPlayersLoop^n thread stopped");
+    }
+}
+
+private void ScheduleListPlayers(double delay) {
+    DelayedRequest r = new DelayedRequest(delay, fListPlayersTimestamp);
+    DebugWrite("^9Scheduling listPlayers no sooner than " + r.MaxDelay  + " seconds from " + r.LastUpdate.ToString("HH:mm:ss"), 7);
+    lock (fListPlayersQ) {
+        fListPlayersQ.Enqueue(r);
+        Monitor.Pulse(fListPlayersQ);
+    }
+}
+
+private String ExtractTag(PlayerModel m) {
+    if (m == null) return String.Empty;
+
+    String tag = m.Tag;
+    if (m.TagVerified && String.IsNullOrEmpty(tag)) {
+        // Maybe they are using [_-=]XXX[=-_]PlayerName[_-=]XXX[=-_] format
+        Match tm = Regex.Match(m.Name, @"^[=_\-]*([^=_\-]{2,4})[=_\-]");
+        if (tm.Success) {
+            tag = tm.Groups[1].Value;
+        } else {
+            tm = Regex.Match(m.Name, @"[^=_\-][=_\-]([^=_\-]{2,4})[=_\-]*$");
+            if (tm.Success) { 
+                tag = tm.Groups[1].Value;
+            } else {
+                tag = String.Empty;
+            }
+        }
+    }
+    return tag;
+}
+
+// Sort delegate
+public static int DescendingRoundScore(PlayerModel lhs, PlayerModel rhs) {
+    if (lhs == null) {
+        return ((rhs == null) ? 0 : -1);
+    } else if (rhs == null) {
+        return ((lhs == null) ? 0 : 1);
+    }
+
+    if (lhs.ScoreRound < rhs.ScoreRound) return 1;
+    if (lhs.ScoreRound > rhs.ScoreRound) return -1;
+    return 0;
+}
+
+
+// Sort delegate
+public static int DescendingRoundSPM(PlayerModel lhs, PlayerModel rhs) {
+    if (lhs == null) {
+        return ((rhs == null) ? 0 : -1);
+    } else if (rhs == null) {
+        return ((lhs == null) ? 0 : 1);
+    }
+    if (lhs.SPMRound < rhs.SPMRound) return 1;
+    if (lhs.SPMRound > rhs.SPMRound) return -1;
+    return 0;
+}
+
+
+// Sort delegate
+public static int DescendingRoundKills(PlayerModel lhs, PlayerModel rhs) {
+    if (lhs == null) {
+        return ((rhs == null) ? 0 : -1);
+    } else if (rhs == null) {
+        return ((lhs == null) ? 0 : 1);
+    }
+
+    if (lhs.KillsRound < rhs.KillsRound) return 1;
+    if (lhs.KillsRound > rhs.KillsRound) return -1;
+    return 0;
+}
+
+
+// Sort delegate
+public static int DescendingRoundKDR(PlayerModel lhs, PlayerModel rhs) {
+    if (lhs == null) {
+        return ((rhs == null) ? 0 : -1);
+    } else if (rhs == null) {
+        return ((lhs == null) ? 0 : 1);
+    }
+
+    if (lhs.KDRRound < rhs.KDRRound) return 1;
+    if (lhs.KDRRound > rhs.KDRRound) return -1;
+    return 0;
+}
+
+
+// Sort delegate
+public static int DescendingPlayerRank(PlayerModel lhs, PlayerModel rhs) {
+    if (lhs == null) {
+        return ((rhs == null) ? 0 : -1);
+    } else if (rhs == null) {
+        return ((lhs == null) ? 0 : 1);
+    }
+
+    if (lhs.Rank < rhs.Rank) return 1;
+    if (lhs.Rank > rhs.Rank) return -1;
+    return 0;
+}
+
+
+private void GatherProconGoodies() {
+    fFriendlyMaps.Clear();
+    fFriendlyModes.Clear();
+    List<CMap> bf3_defs = this.GetMapDefines();
+    foreach (CMap m in bf3_defs) {
+        if (!fFriendlyMaps.ContainsKey(m.FileName)) fFriendlyMaps[m.FileName] = m.PublicLevelName;
+        if (!fFriendlyModes.ContainsKey(m.PlayList)) fFriendlyModes[m.PlayList] = m.GameMode;
+    }
+    if (DebugLevel >= 8) {
+        foreach (KeyValuePair<String,String> pair in fFriendlyMaps) {
+            DebugWrite("friendlyMaps[" + pair.Key + "] = " + pair.Value, 8);
+        }
+        foreach (KeyValuePair<String,String> pair in fFriendlyModes) {
+            DebugWrite("friendlyModes[" + pair.Key + "] = " + pair.Value, 8);
+        }
+    }
+    DebugWrite("Friendly names loaded", 6);
+}
+
+
+private PlayerModel GetPlayer(String name) {
+    if (String.IsNullOrEmpty(name)) return null;
+    PlayerModel p = null;
+    lock (fKnownPlayers) {
+        if (!fKnownPlayers.TryGetValue(name, out p)) {
+            p = null;
+        }
+    }
+    if (p == null) ConsoleDebug("GetPlayer unknown player ^b" + name);
+    return p;
+}
+
+private double RemainingTicketPercent(double tickets, double goal) {
+    if (goal == 0) {
+        if (IsRush() && tickets > fMaxTickets && tickets < fRushMaxTickets) {
+            double normalized = Math.Max(0, fMaxTickets - (fRushMaxTickets - tickets));
+            return ((normalized / fMaxTickets) * 100.0);
+        }
+        return ((tickets / fMaxTickets) * 100.0);
+    }
+    return (((goal - tickets) / goal) * 100.0);
+}
+
+private TimeSpan GetPlayerJoinedTimeSpan(PlayerModel player) {
+    if (player != null) {
+        return(DateTime.Now.Subtract(player.FirstSeenTimestamp));
+    }
+    return TimeSpan.FromMinutes(0);
+}
+
+private void DebugBalance(String msg) {
+    // Filter out repeat messages
+    int level = 5;
+    if (fLastMsg != null) {
+        if (msg.Equals(fLastMsg)) {
+            level = 8;
+        } else {
+            String[] mWords = msg.Split(new Char[] {' '});
+            String[] lWords = fLastMsg.Split(new Char[] {' '});
+
+            int n = Math.Min(mWords.Length, lWords.Length);
+            int i = 0;
+            for (i = 0; i < n; ++i) {
+                if (!mWords[i].Equals(lWords[i])) break;
+            }
+            if ((i+1) >= 5) level = 8;
+        }
+    }
+    DebugWrite("^5(AUTO)^9 " + msg, level);
+    fLastMsg = msg;
+}
+
+
+private void DebugUnswitch(String msg) {
+    DebugWrite("^5(SWITCH)^9 " + msg, 5);
+}
+
+
+private void DebugFetch(String msg) {
+    DebugWrite("^5(FETCH)^9 " + msg, 6);
+}
+
+private void DebugScrambler(String msg) {
+    DebugWrite("^5(SCRAMBLER)^9 " + msg, 6);
+}
+
+
+private double NextSwapGroupInSeconds(PerModeSettings perMode) {
+    if (fFullUnstackSwapTimestamp == DateTime.MinValue) return 0;
+    if (fUnstackGroupCount > 0 && fUnstackGroupCount <= perMode.NumberOfSwapsPerGroup) return 0;
+    double since = DateTime.Now.Subtract(fFullUnstackSwapTimestamp).TotalSeconds;
+    if (since > perMode.DelaySecondsBetweenSwapGroups) return 0;
+    return (perMode.DelaySecondsBetweenSwapGroups - since);
+}
+
+
+private String GetPlayerStatsString(String name) {
+    DateTime now = DateTime.Now;
+    double score = -1;
+    double kills = -1;
+    double deaths = -1;
+    double kdr = -1;
+    double spm = -1;
+    int team = -1;
+    bool ok = false;
+    TimeSpan tir = TimeSpan.FromSeconds(0); // Time In Round
+    PlayerModel m = null;
+
+    lock (fKnownPlayers) {
+        if (fKnownPlayers.TryGetValue(name, out m)) {
+            ok = true;
+            m.LastSeenTimestamp = now;
+            m.IsDeployed = false;
+            score = m.ScoreRound;
+            kills = m.KillsRound;
+            deaths = m.DeathsRound;
+            kdr = m.KDRRound;
+            spm = m.SPMRound;
+            tir = now.Subtract((m.FirstSpawnTimestamp != DateTime.MinValue) ? m.FirstSpawnTimestamp : now);
+            team = m.Team;
+        }
+    }
+
+    if (!ok) return("NO STATS FOR: " + name);
+
+    Match rm = Regex.Match(tir.ToString(), @"([0-9]+:[0-9]+:[0-9]+)");
+    String sTIR = (rm.Success) ? rm.Groups[1].Value : "?";
+    String vn = m.FullName;
+
+    return("STATS: ^b" + vn + "^n [T:" + team + ", S:" + score + ", K:" + kills + ", D:" + deaths + ", KDR:" + kdr.ToString("F2") + ", SPM:" + spm.ToString("F0") + ", TIR: " + sTIR + "]");
+}
+
+
+private double GetTimeInRoundMinutes() {
+    DateTime rst = (fRoundStartTimestamp == DateTime.MinValue) ? DateTime.Now : fRoundStartTimestamp;
+    return (DateTime.Now.Subtract(fRoundStartTimestamp).TotalMinutes);
+}
+
+private String GetTimeInRoundString() {
+    DateTime rst = (fRoundStartTimestamp == DateTime.MinValue) ? DateTime.Now : fRoundStartTimestamp;
+    Match rm = Regex.Match(DateTime.Now.Subtract(fRoundStartTimestamp).ToString(), @"([0-9]+:[0-9]+:[0-9]+)");
+    return ( (rm.Success) ? rm.Groups[1].Value : "?" );
+}
+
+private void SetSpawnMessages(String name, String chat, String yell, bool quiet) {
+    PlayerModel player = null;
+
+    player = GetPlayer(name);
+    if (player == null) return;
+
+    if (!String.IsNullOrEmpty(player.SpawnChatMessage)) {
+        DebugWrite("^9Overwriting previous chat message for ^b" + name + "^n: " + player.SpawnChatMessage, 7);
+    }
+    player.SpawnChatMessage = chat;
+    player.SpawnYellMessage = yell;
+    player.QuietMessage = quiet;
+}
+
+private void FireMessages(String name) {
+    PlayerModel player = GetPlayer(name);
+    if (player == null) return;
+
+    if (!String.IsNullOrEmpty(player.SpawnChatMessage) || !String.IsNullOrEmpty(player.SpawnYellMessage)) {
+        DebugWrite("^5(SPAWN)^9 firing messages delayed until spawn for ^b" + name, 5);
+    }
+    if (!String.IsNullOrEmpty(player.SpawnChatMessage)) Chat(name, player.SpawnChatMessage, player.QuietMessage);
+    if (!String.IsNullOrEmpty(player.SpawnYellMessage)) Yell(name, player.SpawnYellMessage);
+    player.SpawnChatMessage = String.Empty;
+    player.SpawnYellMessage = String.Empty;
+    player.QuietMessage = false;
+}
+
+private void CheckDelayedMove(String name) {
+    PlayerModel player = GetPlayer(name);
+    if (player == null) return;
+    
+    if (player.DelayedMove != null) {
+        MoveInfo dm = player.DelayedMove;
+        player.DelayedMove = null;
+
+        DebugWrite("^5(SPAWN)^9 executing delayed move of ^b" + name, 5);
+        DebugUnswitch("FORBIDDEN: Detected bad team switch, scheduling admin kill and move for ^b: " + name);
+        String log = "^4^bUNSWITCHING^n^0 ^b" + name + "^n from " + dm.SourceName + " back to " + dm.DestinationName;
+        log = (EnableLoggingOnlyMode) ? "^9(SIMULATING)^0 " + log : log;
+        DebugWrite(log, 3);
+        KillAndMoveAsync(dm);
+    }
+}
+
+private double GetTeamPoints(int team) {
+    double total = 0;
+    List<String> dup = new List<String>();
+    // copy player name list
+    lock (fAllPlayers) {
+        dup.AddRange(fAllPlayers);
+    }
+    // sum up player points for specified team
+    foreach (String name in dup) {
+        PlayerModel player = GetPlayer(name);
+        if (player.Team != team) continue;
+        total = total + player.ScoreRound;
+    }
+    return total;
+}
+
+
+private PerModeSettings GetPerModeSettings() {
+    PerModeSettings perMode = null;
+    if (fModeToSimple == null || fServerInfo == null) return new PerModeSettings();
+    String simpleMode = String.Empty;
+    if (fModeToSimple.TryGetValue(fServerInfo.GameMode, out simpleMode) 
+    && !String.IsNullOrEmpty(simpleMode)
+    && fPerMode.TryGetValue(simpleMode, out perMode)
+    && perMode != null) {
+        return perMode;
+    }
+    return new PerModeSettings();
+}
+
+private void CheckDeativateBalancer(String reason) {
+    if (fBalanceIsActive) {
+        fBalanceIsActive = false;
+        double dur = DateTime.Now.Subtract(fLastBalancedTimestamp).TotalSeconds;
+        if (fLastBalancedTimestamp == DateTime.MinValue) dur = 0;
+        if (dur > 0) {
+            if (DebugLevel >= 7) DebugBalance("^2^b" + reason + "^n: Was active for " + dur.ToString("F0") + " seconds!");
+        }
+    }
+}
+
+private bool IsDispersal(PlayerModel player) {
+    PerModeSettings perMode = GetPerModeSettings();
+    List<String> dispersalList = null;
+    bool isDispersalByList = false;
+    if (perMode.EnableDisperseEvenlyList && DisperseEvenlyList != null && DisperseEvenlyList.Length > 0) {
+        String extractedTag = ExtractTag(player);
+        dispersalList = new List<String>(DisperseEvenlyList);
+        if (dispersalList.Contains(player.Name) 
+        || dispersalList.Contains(player.EAGUID) 
+        || (!String.IsNullOrEmpty(extractedTag) && dispersalList.Contains(extractedTag))) {
+            isDispersalByList = true;
+        }
+    }
+    return (isDispersalByList);
+}
+
+private bool IsRankDispersal(PlayerModel player) {
+    PerModeSettings perMode = GetPerModeSettings();
+    if (perMode.DisperseEvenlyForRank == 0) return false;
+    return (player.Rank >= perMode.DisperseEvenlyForRank);
+}
+
+private void FinishedFullSwap(String name, PerModeSettings perMode) {
+    fUnstackGroupCount = fUnstackGroupCount + 1;
+    if (fUnstackGroupCount >= perMode.NumberOfSwapsPerGroup) {
+        fFullUnstackSwapTimestamp = DateTime.Now; // start the timer
+        DebugBalance("For ^b" + name + "^n, finished group of " + perMode.NumberOfSwapsPerGroup + ", delay timer set");
+        fUnstackGroupCount = 0;
+    } else {
+        DebugBalance("For ^b" + name + "^n, did swap " + fUnstackGroupCount + " of " + perMode.NumberOfSwapsPerGroup);
+        fFullUnstackSwapTimestamp = DateTime.MinValue;
+    }
+}
+
+private void ValidateInt(ref int val, String propName, int def) {
+    if (val < 0) {
+        ConsoleError("^b" + propName + "^n must be greater than or equal to 0, was set to " + val + ", corrected to " + def);
+        val = def;
+        return;
+    }
+}
+
+
+private void ValidateIntRange(ref int val, String propName, int min, int max, int def, bool zeroOK) {
+    if (zeroOK && val == 0) return;
+    if (val < min || val > max) {
+        String zero = (zeroOK) ? " or equal to 0" : String.Empty;
+        ConsoleError("^b" + propName + "^n must be greater than or equal to " + min + " and less than or equal to " + max + zero + ", was set to " + val + ", corrected to " + def);
+        val = def;
+    }
+}
+
+
+private void ValidateDouble(ref double val, String propName, double def) {
+    if (val < 0) {
+        ConsoleError("^b" + propName + "^n must be greater than or equal to 0, was set to " + val + ", corrected to " + def);
+        val = def;
+        return;
+    }
+}
+
+
+private void ValidateDoubleRange(ref double val, String propName, double min, double max, double def, bool zeroOK) {
+    if (zeroOK && val == 0.0) return;
+    if (val < min || val > max) {
+        String zero = (zeroOK) ? " or equal to 0" : String.Empty;
+        ConsoleError("^b" + propName + "^n must be greater than or equal to " + min + " and less than or equal to " + max + zero + ", was set to " + val + ", corrected to " + def);
+        val = def;
+        return;
+    }
+}
+
+
+private void CheckRageQuit(String name) {
+    /*
+    Heuristic: if player leaves server within 1 minute of being moved, treat as a rage quit
+    due to actions of this plugin.
+    */
+    PlayerModel player = GetPlayer(name);
+    if (player == null) return;
+
+    ++fTotalQuits;
+
+    if (player.MovedTimestamp != DateTime.MinValue && DateTime.Now.Subtract(player.MovedTimestamp).TotalSeconds <= 60) {
+        ++fRageQuits;
+        DebugWrite("Looks like ^b" + name + "^n rage quit: " + fRageQuits + " so far this round, out of " + fTotalQuits, 4);
+    }
+}
+
+
+private int CountMatchingTags(PlayerModel player) {
+    if (player == null) return 0;
+    if (player.Team == 0 || player.Squad == 0) return 0;
+    int team = player.Team;
+    int squad = player.Squad;
+
+    List<PlayerModel> teamList = GetTeam(team);
+    if (teamList == null) return 0;
+
+    String tag = ExtractTag(player);
+    if (String.IsNullOrEmpty(tag)) return 0;
+    int same = 0;
+    int verified = 0;
+    int total = 0;
+
+    foreach (PlayerModel mate in teamList) {
+        if (mate.Squad != squad) continue;
+        ++total;
+        if (mate.TagVerified) ++verified;
+        if (ExtractTag(mate) == tag) ++same;
+    }
+
+    String sname = squad.ToString();
+    if (squad > 0 && squad <= SQUAD_NAMES.Length) {
+        sname = SQUAD_NAMES[squad];
+    }
+
+    if (verified < 2) {
+        if (DebugLevel >= 6) DebugBalance("For ^b" + player.Name + "^n in " + sname + ", not enough verified tags to find matches");
+        return 0;
+    } else {
+        if (DebugLevel >= 6) DebugBalance("For ^b" + player.Name + "^n in " + sname + ", found " + same + " matching tags [" + tag + "]");
+    }
+    return same;
+}
+
+
+private void ListSideBySide(List<String> us, List<String> ru) {
+    int max = Math.Max(us.Count, ru.Count);
+
+    // Sort lists by specified metric, which might have changed by now, oh well
+    List<PlayerModel> all = new List<PlayerModel>();
+    PlayerModel player = null;
+    double usTotal = 0;
+    foreach (String u in us) {
+        String en = ExtractName(u);
+        player = GetPlayer(en);
+        if (player == null) continue;
+        all.Add(player);
+        double stat = 0;
+        switch (ScrambleBy) {
+            case DefineStrong.RoundScore:
+                stat = player.ScoreRound;
+                break;
+            case DefineStrong.RoundSPM:
+                stat = player.SPMRound;
+                break;
+            case DefineStrong.RoundKills:
+                stat = player.KillsRound;
+                break;
+            case DefineStrong.RoundKDR:
+                stat = player.KDRRound;
+                break;
+            case DefineStrong.PlayerRank:
+                stat = player.Rank;
+                break;
+            default:
+                break;
+        }
+        usTotal = usTotal + stat;
+    }
+    double usAvg = usTotal / Math.Max(1, us.Count);
+
+    double ruTotal = 0;
+    foreach (String r in ru) {
+        String en = ExtractName(r);
+        player = GetPlayer(en);
+        if (player == null) continue;
+        all.Add(player);
+        double stat = 0;
+        switch (ScrambleBy) {
+            case DefineStrong.RoundScore:
+                stat = player.ScoreRound;
+                break;
+            case DefineStrong.RoundSPM:
+                stat = player.SPMRound;
+                break;
+            case DefineStrong.RoundKills:
+                stat = player.KillsRound;
+                break;
+            case DefineStrong.RoundKDR:
+                stat = player.KDRRound;
+                break;
+            case DefineStrong.PlayerRank:
+                stat = player.Rank;
+                break;
+            default:
+                break;
+        }
+        ruTotal = ruTotal + stat;
+    }
+    double ruAvg = ruTotal / Math.Max(1, ru.Count);
+
+    String kstat = "?";
+    switch (ScrambleBy) {
+        case DefineStrong.RoundScore:
+            all.Sort(DescendingRoundScore);
+            kstat = "S";
+            break;
+        case DefineStrong.RoundSPM:
+            all.Sort(DescendingRoundSPM);
+            kstat = "SPM";
+            break;
+        case DefineStrong.RoundKills:
+            all.Sort(DescendingRoundKills);
+            kstat = "K";
+            break;
+        case DefineStrong.RoundKDR:
+            all.Sort(DescendingRoundKDR);
+            kstat = "KDR";
+            break;
+        case DefineStrong.PlayerRank:
+            all.Sort(DescendingPlayerRank);
+            kstat = "R";
+            break;
+        default:
+            all.Sort(DescendingRoundScore);
+            break;
+    }
+    List<String> allNames = new List<String>();
+    foreach (PlayerModel p in all) {
+        allNames.Add(p.Name); // sorted name list
+    }
+
+    // Sort teams
+    
+    us.Sort(delegate(String lhs, String rhs) { // descending position in allNames
+        if (lhs == null && rhs == null) return 0;
+        if (lhs == null) return -1;
+        if (rhs == null) return 1;
+
+        int l = allNames.IndexOf(ExtractName(lhs))+1;
+        int r = allNames.IndexOf(ExtractName(rhs))+1;
+        if (l == 0 && r == 0) return 0;
+        if (l == 0) return 1; // 0 sorts to end
+        if (r == 0) return 1;
+        if (l < r) return -1;
+        if (l > r) return 1;
+        return 0;
+    });
+    ru.Sort(delegate(String lhs, String rhs) { // descending position in allNames
+        if (lhs == null && rhs == null) return 0;
+        if (lhs == null) return -1;
+        if (rhs == null) return 1;
+
+        int l = allNames.IndexOf(ExtractName(lhs))+1;
+        int r = allNames.IndexOf(ExtractName(rhs))+1;
+        if (l == 0 && r == 0) return 0;
+        if (l == 0) return 1; // 0 sorts to end
+        if (r == 0) return 1;
+        if (l < r) return -1;
+        if (l > r) return 1;
+        return 0;
+    });
+
+    for (int i = 0; i < max; ++i) {
+        String u = " ";
+        String r = " ";
+        if (i < us.Count) {
+            u = us[i] + " (" + kstat + ":#" + (allNames.IndexOf(ExtractName(us[i]))+1) + ")";
+        }
+        if (i < ru.Count) {
+            r = ru[i] + " (" + kstat + ":#" + (allNames.IndexOf(ExtractName(ru[i]))+1) + ")";
+        }
+        ConsoleDump(String.Format("{0,-32} - {1,32}", u, r));
+    }
+    ConsoleDump(String.Format("{0,-32} - {1,32}", 
+        "US AVG " + kstat + ":" + usAvg.ToString("F2"),
+        "RU AVG " + kstat + ":" + ruAvg.ToString("F2")
+    ));
+
+}
+
+private String ExtractName(String fullName) {
+    String ret = fullName;
+    Match m = Regex.Match(fullName, @"\[\w+\](\w+)");
+    if (m.Success) {
+        ret = m.Groups[1].Value;
+    }
+    return ret;
 }
 
 
 
 
+public void CheckForPluginUpdate() {
+	try {
+		XmlDocument xml = new XmlDocument();
+        try {
+            xml.Load("https://myrcon.com/procon/plugins/plugin/MULTIbalancer");
+            //WebClient c = new WebClient();
+            //String x = c.DownloadString("https://myrcon.com/procon/plugins/plugin/MULTIbalancer");
+            //xml.LoadXml(x);
+        } catch (System.Security.SecurityException e) {
+            if (DebugLevel >= 8) ConsoleException(e);
+            ConsoleWrite(" ");
+            ConsoleWrite("^8^bNOTICE! Unable to check for plugin update!");
+            ConsoleWrite("Tools => Options... => Plugins tab: ^bPlugin security^n is set to ^bRun plugins in a sandbox^n.");
+            //ConsoleWrite("Please add ^bmyrcon.com^n to your trusted ^bOutgoing connections^n");
+            ConsoleWrite("Consider changing to ^bRun plugins with no restrictions.^n");
+            ConsoleWrite("Alternatively, check the ^bPlugins^n forum for an update to this plugin.");
+            ConsoleWrite(" ");
+            fLastVersionCheckTimestamp = DateTime.MaxValue;
+            return;
+        } 
+        if (DebugLevel >= 8) ConsoleDebug("CheckForPluginUpdate: Got " + xml.BaseURI);
+		XmlNodeList rows = xml.SelectNodes("//tr");
+        if (DebugLevel >= 8) ConsoleDebug("CheckForPluginUpdate: # rows = " + rows.Count);
+        Dictionary<String,int> versions = new Dictionary<String,int>();
+		foreach (XmlNode tr in rows) {
+            XmlNode ver = tr.SelectSingleNode("td[1]");
+            XmlNode count = tr.SelectSingleNode("td[2]");
+            if (ver != null && count != null) {
+                if (DebugLevel >= 8) ConsoleDebug("CheckForPluginUpdate: Version: " + ver.InnerText + ", Count: " + count.InnerText);
+                int n = 0;
+                if (!Int32.TryParse(count.InnerText, out n)) continue; 
+                versions[ver.InnerText] = n;
+            }
+		}
+
+        // Select current version and any "later" versions
+        int usage = 0;
+        String myVersion = GetPluginVersion();
+        if (!versions.TryGetValue(myVersion, out usage)) {
+            DebugWrite("CheckForPluginUpdate: " + myVersion + " not found!", 8);
+            return;
+        }
+
+        // Update check time
+        fLastVersionCheckTimestamp = DateTime.Now;
+
+        // numeric sort
+        List<String> byNumeric = new List<String>();
+        byNumeric.AddRange(versions.Keys);
+        // Sort numerically descending
+        byNumeric.Sort(delegate(String lhs, String rhs) {
+            if (lhs == rhs) return 0;
+            if (String.IsNullOrEmpty(lhs)) return 1;
+            if (String.IsNullOrEmpty(rhs)) return -1;
+            uint l = VersionToNumeric(lhs);
+            uint r = VersionToNumeric(rhs);
+            if (l < r) return 1;
+            if (l > r) return -1;
+            return 0;
+        });
+        DebugWrite("CheckForPluginUpdate: sorted version list:", 7);
+        foreach (String u in byNumeric) {
+            DebugWrite(u + " (" + String.Format("{0:X8}", VersionToNumeric(u)) + "), count = " + versions[u], 7);
+        }
+
+        int position = byNumeric.IndexOf(myVersion);
+
+        DebugWrite("CheckForPluginUpdate: found " + position + " newer versions", 5);
+
+        if (position != 0) {
+            // Newer versions found
+            // Find the newest version with the largest number of usages
+            int hasMost = -1;
+            int most = 0;
+            for (int i = position-1; i >= 0; --i) {
+                int newerVersionCount = versions[byNumeric[i]];
+                if (hasMost == -1 || most < newerVersionCount) {
+                    // Skip newer versions that don't have enough usage yet
+                    if (most > 0 && newerVersionCount < MIN_UPDATE_USAGE_COUNT) continue;
+                    hasMost = i;
+                    most = versions[byNumeric[i]];
+                }
+            }
+
+            if (hasMost != -1 && hasMost < byNumeric.Count && most >= MIN_UPDATE_USAGE_COUNT) {
+                String newVersion = byNumeric[hasMost];
+                ConsoleWrite("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+                ConsoleWrite(" ");
+                ConsoleWrite("^8^bA NEW VERSION OF THIS PLUGIN IS AVAILABLE!");
+                ConsoleWrite(" ");
+                ConsoleWrite("^8^bPLEASE UPDATE TO VERSION: ^0" + newVersion);
+                ConsoleWrite(" ");
+                ConsoleWrite("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+
+                TaskbarNotify(GetPluginName() + ": new version available!", "Please download and install " + newVersion); 
+            }
+        }
+	} catch (Exception e) {
+		if (DebugLevel >= 8) ConsoleException(e);
+	}
+}
+
+private uint VersionToNumeric(String ver) {
+    uint numeric = 0;
+    byte part = 0;
+    Match m = Regex.Match(ver, @"^\s*([0-9]+)\.([0-9]+)\.([0-9]+)\.([0-9]+)(\w*)\s*$");
+    if (m.Success) {
+        for (int i = 1; i < 5; ++i) {
+            if (!Byte.TryParse(m.Groups[i].Value, out part)) {
+                part = 0;
+            }
+            numeric = (numeric << 8) | part;
+        }
+    }
+    return numeric;
+}
 
 
+private void LogStatus(bool isFinal) {
+  try {
+    // If server is empty, log status only every 20 minutes
+    if (TotalPlayerCount == 0) {
+        if (fRoundStartTimestamp != DateTime.MinValue && DateTime.Now.Subtract(fRoundStartTimestamp).TotalMinutes <= 20) {
+            return;
+        } else {
+            fRoundStartTimestamp = DateTime.Now;
+        }
+    }
 
-/* ========================================================================== */
+    if (!isFinal && (DebugLevel == 3 || DebugLevel == 4)) ConsoleWrite("+------------------------------------------------+");
 
+    Speed balanceSpeed = Speed.Adaptive;
 
+    String tm = fTickets[1] + "/" + fTickets[2];
+    if (IsSQDM()) tm = tm + "/" + fTickets[3] + "/" + fTickets[4];
+    if (IsRush()) tm = tm  + "(" + Math.Max(fTickets[1]/2, fMaxTickets - (fRushMaxTickets - fTickets[2])) + ")";
+    if (IsCTF()) tm = GetTeamPoints(1) + "/" + GetTeamPoints(2);
 
+    double goal = 0;
+    if (fServerInfo != null && Regex.Match(fServerInfo.GameMode, @"(?:TeamDeathMatch|SquadDeathMatch)").Success) {
+        if (fServerInfo.TeamScores != null && fServerInfo.TeamScores.Count > 0) {
+            goal = fServerInfo.TeamScores[0].WinningScore;
+        }
+    }
 
+    if (goal == 0) {
+        if (fMaxTickets != -1) tm = tm + " <- [" + fMaxTickets.ToString("F0") + "]";
+    } else {
+        tm = tm + " -> [" + goal.ToString("F0") + "]";
+    }
 
+    String rt = GetTimeInRoundString();
 
+    DebugWrite("^bStatus^n: Plugin state = " + fPluginState + ", game state = " + fGameState + ", Enable Logging Only Mode = " + EnableLoggingOnlyMode, 4);
+    int useLevel = (isFinal) ? 2 : 3;
+    if (IsRush()) {
+        DebugWrite("^bStatus^n: Map = " + FriendlyMap + ", mode = " + FriendlyMode + ", stage = " + fRushStage + ", time in round = " + rt + ", tickets = " + tm, useLevel);
+    } else if (IsCTF()) {
+        DebugWrite("^bStatus^n: Map = " + FriendlyMap + ", mode = " + FriendlyMode + ", time in round = " + rt + ", points = " + tm, useLevel);
+    } else {
+        DebugWrite("^bStatus^n: Map = " + FriendlyMap + ", mode = " + FriendlyMode + ", time in round = " + rt + ", tickets = " + tm, useLevel);
+    }
+    if (fPluginState == PluginState.Active) {
+        double secs = DateTime.Now.Subtract(fLastBalancedTimestamp).TotalSeconds;
+        if (!fBalanceIsActive || fLastBalancedTimestamp == DateTime.MinValue) secs = 0;
+        PerModeSettings perMode = null;
+        String simpleMode = String.Empty;
+        if (fModeToSimple.TryGetValue(fServerInfo.GameMode, out simpleMode) 
+          && fPerMode.TryGetValue(simpleMode, out perMode) && perMode != null) {
+            balanceSpeed = GetBalanceSpeed(perMode);
+            double unstackRatio = GetUnstackTicketRatio(perMode);
+            String activeTime = (secs > 0) ? "^1active (" + secs.ToString("F0") + " secs)^0" : "not active";
+            DebugWrite("^bStatus^n: Autobalance is " + activeTime + ", phase = " + GetPhase(perMode, false) + ", population = " + GetPopulation(perMode, false) + ", speed = " + balanceSpeed + ", unstack when ticket ratio >= " + (unstackRatio * 100).ToString("F0") + "%", 3);
+        }
+    }
+    if (!IsModelInSync()) {
+        double toj = (fTimeOutOfJoint == 0) ? 0 : GetTimeInRoundMinutes() - fTimeOutOfJoint;
+        DebugWrite("^bStatus^n: Model not in sync for " + toj.ToString("F1") + " mins: fMoving = " + fMoving.Count + ", fReassigned = " + fReassigned.Count, 5);
+    }
 
+    String raged = fRageQuits.ToString() + "/" + fTotalQuits + " raged, ";
+    useLevel = (isFinal) ? 2 : 5;
+    DebugWrite("^bStatus^n: " + raged + fReassignedRound + " reassigned, " + fBalancedRound + " balanced, " + fUnstackedRound + " unstacked, " + fUnswitchedRound + " unswitched, " + fExcludedRound + " excluded, " + fExemptRound + " exempted, " + fFailedRound + " failed; of " + fTotalRound + " TOTAL", useLevel);
+    
+    useLevel = (isFinal) ? 1 : 3;
+    if (IsSQDM()) {
+        DebugWrite("^bStatus^n: Team counts [" + TotalPlayerCount + "] = " + fTeam1.Count + "(A) vs " + fTeam2.Count + "(B) vs " + fTeam3.Count + "(C) vs " + fTeam4.Count + "(D), with " + fUnassigned.Count + " unassigned", useLevel);
+    } else {
+        DebugWrite("^bStatus^n: Team counts [" + TotalPlayerCount + "] = " + fTeam1.Count + "(US) vs " + fTeam2.Count + "(RU), with " + fUnassigned.Count + " unassigned", useLevel);
+    }
+    
+    List<int> counts = new List<int>();
+    counts.Add(fTeam1.Count);
+    counts.Add(fTeam2.Count);
+    if (IsSQDM()) {
+        counts.Add(fTeam3.Count);
+        counts.Add(fTeam4.Count);
+    }
+    
+    counts.Sort();
+    int diff = Math.Abs(counts[0] - counts[counts.Count-1]);
+    String next = (diff > MaxDiff() && fGameState == GameState.Playing && balanceSpeed != Speed.Stop && !fBalanceIsActive) ? "^n^0 ... autobalance will activate on next death!" : "^n";
+    
+    DebugWrite("^bStatus^n: Team difference = " + ((diff > MaxDiff()) ? "^8^b" : "^b") + diff + next, 4);
 
-
-
-
-private const String HTML_DOC = @"
-<h1>Multi-Balancer &amp; Unstacker, including SQDM</h1>
-<p>For BF3, this plugin does live round team balancing and unstacking for all game modes, including Squad Deathmatch (SQDM).</p>
-
-<h2>THIS IS JUST A PROTOTYPE FOR FEEDBACK!</h2>
-<p>It doesn't do any balancing or unstacking, no matter what you change the settings to. It is completely safe to run on an active server. It sends no commands to the server.</p>
-
-<p><font color=#0000FF>The purpose of this prototype is to get feedback from users about the arrangement and usage of plugin settings. I'm interested in answers to these questions:</font></p>
-
-<ul>
-<li>What is your overall impression with the number and complexity of settings?</li>
-<li>What's missing?</li>
-<li>What should be added?</li>
-<li>Which names or values are confusing and need additional documentation to clarify?</li>
-<li>What should be changed to improve clarity?</li>
-</ul>
-
-<h2>Description</h2>
-<p>TBD</p>
-
-<h2>Commands</h2>
-<p>TBD</p>
-
-<h2>Settings</h2>
-<p>TBD</p>
-
-<h2>Development</h2>
-<p>TBD</p>
-<h3>Changelog</h3>
-<blockquote><h4>1.0.0.0 (10-JAN-2013)</h4>
-    - initial version<br/>
-</blockquote>
-";
-
+  } catch (Exception e) {
+    ConsoleException(e);
+  }
+}
 
 } // end MULTIbalancer
 
-} // end namespace PRoConEvents
 
+
+
+
+
+
+
+
+
+
+/* ======================== UTILITIES ============================= */
+
+#region UTILITIES
+
+
+
+
+
+
+
+static class MULTIbalancerUtils {
+    public static bool IsEqual(MULTIbalancer lhs, MULTIbalancer.PresetItems preset) {
+        MULTIbalancer rhs = new MULTIbalancer(preset);
+        return (lhs.CheckForEquality(rhs));
+    }
+    
+    public static void UpdateSettingsForPreset(MULTIbalancer lhs, MULTIbalancer.PresetItems preset) {
+        try {
+            MULTIbalancer rhs = new MULTIbalancer(preset);
+        
+            lhs.DebugWrite("UpdateSettingsForPreset to " + preset, 6);
+
+            lhs.OnWhitelist = rhs.OnWhitelist;
+            lhs.TopScorers = rhs.TopScorers;
+            lhs.SameClanTagsInSquad = rhs.SameClanTagsInSquad;
+            lhs.MinutesAfterJoining = rhs.MinutesAfterJoining;
+            lhs.JoinedEarlyPhase = rhs.JoinedEarlyPhase;
+            lhs.JoinedMidPhase = rhs.JoinedMidPhase;
+            lhs.JoinedLatePhase = rhs.JoinedLatePhase;
+
+            lhs.EarlyPhaseTicketPercentageToUnstack = rhs.EarlyPhaseTicketPercentageToUnstack;
+            lhs.MidPhaseTicketPercentageToUnstack = rhs.MidPhaseTicketPercentageToUnstack;
+            lhs.LatePhaseTicketPercentageToUnstack = rhs.LatePhaseTicketPercentageToUnstack;
+
+            lhs.EarlyPhaseBalanceSpeed = rhs.EarlyPhaseBalanceSpeed;
+            lhs.MidPhaseBalanceSpeed = rhs.MidPhaseBalanceSpeed;
+            lhs.LatePhaseBalanceSpeed = rhs.LatePhaseBalanceSpeed;
+
+            lhs.ForbidSwitchAfterAutobalance = rhs.ForbidSwitchAfterAutobalance;
+            lhs.ForbidSwitchToWinningTeam = rhs.ForbidSwitchToWinningTeam;
+            lhs.ForbidSwitchToBiggestTeam = rhs.ForbidSwitchToBiggestTeam;
+            lhs.ForbidSwitchAfterDispersal = rhs.ForbidSwitchAfterDispersal;
+            lhs.EnableImmediateUnswitch = rhs.EnableImmediateUnswitch;
+
+        } catch (Exception) { }
+    }
+    
+    public static bool EqualArrays(double[] lhs, double[] rhs) {
+        if (lhs == null && rhs == null) return true;
+        if (lhs == null || rhs == null) return false;
+        if (lhs.Length != rhs.Length) return false;
+        
+        for (int i = 0; i < lhs.Length; ++i) {
+            if (lhs[i] != rhs[i]) return false;
+        }
+        return true;
+    }
+
+    public static bool EqualArrays(MULTIbalancer.Speed[] lhs, MULTIbalancer.Speed[] rhs) {
+        if (lhs == null && rhs == null) return true;
+        if (lhs == null || rhs == null) return false;
+        if (lhs.Length != rhs.Length) return false;
+        
+        for (int i = 0; i < lhs.Length; ++i) {
+            if (lhs[i] != rhs[i]) return false;
+        }
+        return true;
+    }
+    
+    public static String ArrayToString(double[] a) {
+        String ret = String.Empty;
+        bool first = true;
+        if (a == null || a.Length == 0) return ret;
+        for (int i = 0; i < a.Length; ++i) {
+            if (first) {
+                ret = a[i].ToString("F0");
+                first = false;
+            } else {
+                ret = ret + ", " + a[i].ToString("F0");
+            }
+        }
+        return ret;
+    }
+
+    public static String ArrayToString(MULTIbalancer.Speed[] a) {
+        String ret = String.Empty;
+        bool first = true;
+        if (a == null || a.Length == 0) return ret;
+        for (int i = 0; i < a.Length; ++i) {
+            if (first) {
+                ret = Enum.GetName(typeof(MULTIbalancer.Speed), a[i]);
+                first = false;
+            } else {
+                ret = ret + ", " + Enum.GetName(typeof(MULTIbalancer.Speed), a[i]);
+            }
+        }
+        return ret;
+    }
+
+    public static double[] ParseNumArray(String s) {
+        double[] nums = new double[3] {-1,-1,-1}; // -1 indicates a syntax error
+        if (String.IsNullOrEmpty(s)) return nums;
+        if (!s.Contains(",")) return nums;
+        String[] strs = s.Split(new Char[] {','});
+        if (strs.Length != 3) return nums;
+        for (int i = 0; i < nums.Length; ++i) {
+            bool parsedOk = Double.TryParse(strs[i], out nums[i]);
+            if (!parsedOk) {
+                nums[i] = -1;
+                return nums;
+            }
+        }
+        return nums;
+    }
+
+    public static MULTIbalancer.Speed[] ParseSpeedArray(MULTIbalancer plugin, String s) {
+        MULTIbalancer.Speed[] speeds = new MULTIbalancer.Speed[3] {
+            MULTIbalancer.Speed.Adaptive,
+            MULTIbalancer.Speed.Adaptive,
+            MULTIbalancer.Speed.Adaptive
+        };
+        if (String.IsNullOrEmpty(s) || !s.Contains(",")) {
+            if (s == null) s = "(null)";
+            plugin.ConsoleWarn("Bad balance speed setting: " + s);
+            return speeds;
+        }
+        String[] strs = s.Split(new Char[] {','});
+        if (strs.Length != 3) {
+            plugin.ConsoleWarn("Wrong number of speeds, should be 3, separated by commas: " + s);
+            return speeds;
+        }
+        for (int i = 0; i < speeds.Length; ++i) {
+            try {
+                speeds[i] = (MULTIbalancer.Speed)Enum.Parse(typeof(MULTIbalancer.Speed), strs[i]);
+            } catch (Exception) {
+                plugin.ConsoleWarn("Bad balance speed value: " + strs[i]);
+                speeds[i] = MULTIbalancer.Speed.Adaptive;
+            }
+        }
+        return speeds;
+    }
+
+#region HTML_DOC
+    public const String HTML_DOC = @"
+<h1>Multi-Balancer &amp; Unstacker, including SQDM</h1>
+<h3>Acknowledgments</h3>
+<p>This plugin would not have been possible without the help and support of these individuals and communities:<br></br>
+<small>myrcon.com staff, [C2C]Blitz, [FTB]guapoloko, [Xtra]HexaCanon, [11]EBassie, Firejack, [IAF]SDS, dyn, Jaythegreat1, ADKGamers, AgentHawk, TreeSaint, Taxez, PatPgtips, Hutchew, LumpyNutz, popbndr, tarreltje, 24Flat, [Oaks]kcuestag ... and many others</small></p>
+
+<p>For BF3, this plugin does live round team balancing and unstacking for all game modes, including Squad Deathmatch (SQDM).</p>
+
+<h2>NOTICE</h2>
+<p>This plugin is free to use, forever. Support is provided on a voluntary basic, when time is available, by the author and the user community. Use at your own risk, no guarantees are made or implied (complete notice text is in the source code). Some of the code in this plugin (Battlelog and BattlelogCache code, plugin framework, other odds & ends) was directly derived from Insane Limits by micovery. Inspiration for the plugin settings came from TrueBalancer by Panther and all of the members of the design discussion group, some of whom are listed above in the acknowledgments.</p>
+
+<p><b>Section 7 of settings is intentionally not defined.</b></p>
+
+<h2>Description</h2>
+<p>This plugin performs several automated operations:
+<ul>
+<li>Team balancing for all modes</li>
+<li>Unstacking a stacked team</li>
+<li>Unswitching players who team switch</li>
+</ul></p>
+
+<p>This plugin only moves players when they die. No players are killed by admin to be moved, with the single exception of players who attempt to switch teams when team switching is not allowed -- those players may be admin killed before being moved back to their original team. This plugin also monitors new player joins and if the game server would assign a new player to the wrong team (a team with 30 players when another team only has 27 players), the plugin will <i>reassign</i> the player to the team that needs players for balance. This all happens before a player spawns, so they will not be aware that they were reassigned.</p>
+
+<h3>Quick Start</h3>
+<p>Don't want to spend a lot of time learning all of the settings for this plugin? Just follow these quick start steps:
+
+<p>1) Select a <b>Preset</b> at the top of the plugin settings:
+<table>
+<tr><td><b>Standard</b></td><td>Autobalance and unstack teams, good for most server configurations</td></tr>
+<tr><td><b>Aggressive</b></td><td>Autobalance and unstack teams quickly, moving lots of players in a short amount of time</td></tr>
+<tr><td><b>Passive</b></td><td>Autobalance and unstack teams slowly, moving few players over a long period of time</td></tr>
+<tr><td><b>Intensify</b></td><td>Focus on keeping teams evenly matched for a level playing field and an intense game</td></tr>
+<tr><td><b>Retain</b></td><td>Focus on reducing rage quitting by keeping teams balanced, but refrain from too many player moves</td></tr>
+<tr><td><b>BalanceOnly</b></td><td>Disable team unstacking, only move for autobalance</td></tr>
+<tr><td><b>UnstackOnly</b></td><td>Disable autobalancing, only move to unstack teams</td></tr>
+<tr><td><b>None</b></td><td>Custom plugin settings (this is automatically selected if you change settings controlled by <b>Presets</b>)</td></tr>
+</table></p>
+
+<p>2) Review plugin section <b>5. Messages</b> and change any messages you don't like.</p>
+
+<p>3) That's it! You are good to go.</p>
+
+<h3>Details</h3>
+<p>This plugin provides a rich set of features for a wide variety of team management styles. Some (but not all) of the styles this plugin is designed for are listed below, and you can mix and max these styles depending on the game mode, number of players on the server and whether it is early or late in the round:</p>
+
+<h4>Fair play</h4>
+<p>This style aims for each round to be as evenly balanced in skills as possible. Every round should end as a &quot;nail-biter&quot;. If you want to see Conquest rounds end with ticket differences less than 20 or Team Deathmatch or Squad Deathmatch rounds end with kill differences less than 5 or Rush matches that get down to 1 ticket before the last MCOM is blown, the settings provided by this plugin give you the best chance to have that experience on your server.</p>
+
+<h4>Cutthroat</h4>
+<p>This is pretty much the exact opposite of Fair Play. Every player for himself and damn the consequences. If one team gets stacked with good players, that's just too bad for the other team. The newest players to join are the ones moved to keep teams balanced. This plugin supports cutthroat style by turning most of the features off, except new player reassignment and new player autobalancing.</p>
+
+<h4>Retain players</h4>
+<p>This style aims to retain players on your server. Players are left alone to do what they want, but aspects of team balance and team switching that cause players to leave, like too much autobalancing, team stacking, too many Colonel 100's on one team, too many players from one clan on one team, etc., are dealt with. Only things that are related to team balance are managed, however. This plugin doesn't do anything about, for example, base raping.</p>
+
+<h4>Keep friends together</h4>
+<p>This style recognizes that friends like to play together. To the extent that friends wear the same clan tag, the balancer and unstacker can be configured to keep players with the same tags together.</p>
+
+<h4>Split problem clans apart</h4>
+<p>This style recognizes that some &quot;pro&quot; clans can spoil everyone's fun if they play together, so the balancer and unstacker can be configured to split players with the same clan tag apart and spread them out evenly between teams.</p>
+
+<h2>Concepts</h2>
+<p>This plugin recognizes that a game round has a natural pattern and flow that depends on several factors. Play during the very beginning of a round is different from the very end. Play when the server is nearly empty is different from when the server is nearly full. The natural flow of a round of Conquest is very different from the flow of a game of Rush. Strong (good) players are not interchangeable with weak (bad) players. So with all these differences, how can one set of settings cover all of those different situations? They can't. So this plugin allows you to configure different settings for each combination of factors. The primary factors and concepts are described in the sections that follow.</p>
+
+<h3>Round Phase</h3>
+<p>To configure the factor of time, each round is divided into three time phases: <b>Early</b>, <b>Mid</b> (for Mid-phase), and <b>Late</b>. You define the phase based on ticket counts (or in the case of CTF, time in minutes) from the start of the round and the end of the round. You may define different settings for different modes, e.g., for <i>Conquest Large</i> you might define the early phase to be the first 200 tickets after the round starts, but for <i>Team Deathmatch</i> you might set early phase to be after the first 25 kills.</p>
+
+<h3>Population</h3>
+<p>To configure the factor of number of players, each round is divivded into three population levels: <b>Low</b>, <b>Medium</b>, and <b>High</b>. You define the population level based on total number of players in the server.</p>
+
+<h3>Game Mode</h3>
+<p>To configure the factor of game mode, each game mode is grouped into similar per-mode settings. For example, Conquest Large and Conquest Assault Large are grouped together as <b>Conquest Large</b>.</p>
+
+<h3>Exclusions</h3>
+<p>There are certain types of players that should never be moved for autobalance. You define those players with exclusions. For example, you can arrange for everyone on your reserved slots lists to be whitelisted so that they are ignored by this plugin.</p>
+
+<h3>Balance Speed</h3>
+<p>The aggressiveness with which the balancer selects players to move is controled by the speed names:
+<table border='0'>
+<tr><td>Stop</td><td>No balancing, no players are selected to move</td></tr>
+<tr><td>Slow</td><td>Few players are selected to move, all exclusions are applied, whether they are enabled by you or not</td></tr>
+<tr><td>Fast</td><td>Many players are selected to move, no exclusions are applied, whether they are enabled by you or not</td></tr>
+<tr><td>Adaptive</td><td>Starts out slow; if teams remain unbalanced, gradually selects more players to move; if teams are still unbalanced after <b>Seconds Until Adaptive Speed Becomes Fast</b>, many players are selected, etc.</td></tr>
+<tr><td>Unstack</td><td>Do unstacking only, no balancing. May swap players when teams are not in balance.</td></tr>
+</table></p>
+
+<h3>Definition of Strong</h3>
+<p>To configure the selection of strong players and weak players, you choose a definition for strong determined from:
+<ul>
+<li>Round Score</li>
+<li>Round SPM</li>
+<li>Round Kills</li>
+<li>Round KDR</li>
+<li>Player Rank</li>
+</ul></p>
+
+<h3>Ticket Percentage (Ratio)</h3>
+<p>The ticket percentage ratio is calculated by taking the tickets of the winning team and dividing them by the tickets of the losing team, expressed as a percentage. For example, if the winning team has 550 tickets and the losing team has 500 tickets, the ticket percentage ratio is 110. This ratio is used to determine when teams are stacked. If the ticket percentage ratio exceeds the level that you set, unstacking swaps will begin.</p>
+
+<h3>Unstacking</h3>
+<p>To unstack teams, a strong player is selected from the winning team and is moved to the losing team. Then, a weak player is selected from the losing team and moved to the winning team. This is repeated until the round ends, or teams become unbalanced, or <b>Max&nbsp;Unstacking&nbsp;Swaps&nbsp;Per&nbsp;Round</b> is reached, whichever comes first.</p>
+
+<h2>Settings</h2>
+<p>Each setting is defined below. Settings are grouped into sections.</p>
+
+<h3>0 - Presets</h3>
+<p>See the <b>Quick Start</b> section above.</p>
+
+<h3>1 - Settings</h3>
+<p>These are general settings.</p>
+
+<p><b>Debug Level</b>: Number from 0 to 9, default 2. Sets the amount of debug messages sent to plugin.log. Status messages for the state of the plugin may be seen at level 4 or higher. Complete details for operation of the plugin may be seen at level 7 or higher. When a problem with the plugin needs to be diagnosed, level 7 will often be required. Setting the level to 0 turns off all logging messages.</p>
+
+<p><b>Maximum Server Size</b>: Number from 8 to 64, default 64. Maximum number of slots on your game server, regardless of game mode.</p>
+
+<p><b>Enable Battlelog Requests</b>: True or False, default True. Enables making requests to Battlelog (uses BattlelogCache if available). Used to obtain clan tag for players.</p>
+
+<p><b>Maximum Request Rate</b>: Number from 1 to 15, default 2. If <b>Enable Battlelog Requests</b> is set to True, defines the maximum number of Battlelog requests that are sent every 20 seconds.</p>
+
+<p><b>Wait Timeout</b>: Number from 15 to 90, default 30. If <b>Enable Battlelog Requests</b> is set to True, defines the maximum number of seconds to wait for a reply from Battlelog or BattlelogCache before giving up.</p>
+
+<p><b>Unlimited Team Switching During First Minutes Of Round</b>: Number greater than or equal to 0, default 5. Starting from the beginning of the round, this is the number of minutes that players are allowed to switch teams without restriction. After this time is expired, the plugin will prevent team switching that unbalances or stacks teams. The idea is to enable friends who were split up during the previous round due to autobalancing or unstacking to regroup so that they can play together this round. However, players who switch teams during this period are not excluded from being moved for autobalance or unstacking later in the round, unless some other exclusion applies them.</p>
+
+<p><b>Seconds Until Adaptive Speed Becomes Fast</b>: Number of seconds greater than or equal to 120, default 180. If the autobalance speed is Adaptive and the autobalancer has been active for more than the specified number of seconds, the speed will be forced to Fast. This insures that teams don't remain unbalanced too long if Adaptive speed is not sufficient to move players.</p>
+
+<p><b>Enable Whitelisting Of Reserved Slots List</b>: True or False, default True. Treats the reserved slots list as if it were added to the specified <b>Whitelist</b>.</p>
+
+<p><b>Whitelist</b>: List of player names (without clan tags), clan tags (by themselves), or EA GUIDs, one per line, in any combination. If <b>On&nbsp;Whitelist</b> is enabled or the balance speed is <i>Slow</i>, any players on the whitelist are completely excluded from being moved by the plugin. Example list with the name of one player, tag of a clan, and GUID of another player:
+<pre>
+  PapaCharlie9
+  LGN
+  EA_20D5B089E734F589B1517C8069A37E28
+</pre></p>
+
+<p><b>Disperse Evenly List</b>: List of player names (without clan tags), clan tags (by themselves), or EA GUIDs, one per line, in any combination. Groups of players found on this list will be split up and moved so that they are evenly dispersed across teams.</p>
+
+<h3>2 - Exclusions</h3>
+<p>These settings define which players should be excluded from being moved for balance or unstacking. Changing a preset may overwrite the value of one or more of these settings. Changing one of these settings may change the value of the Preset, usually to None, to indicate a custom setting.</p>
+
+<p><b>On Whitelist</b>: True or False, default True. If True, the Whitelist is used to exclude players. If False, the Whitelist is ignored.</p>
+
+<p><b>Top Scorers</b>: True or False, default True. If True, the top 1, 2, or 3 players (depending on server population and mode) on each team are excluded from moves for balancing or unstacking. This is to reduce the whining and QQing when a team loses their top players to autobalancing.</p>
+
+<p><b>Same Clan Tags In Squad</b>: True or False, default True. If True, a player will be excluded from being moved for balancing or unstacking if they are a member of a squad (or team, in the case of SQDM) that has at least one other player in it with the same clan tag.</p>
+
+<p><b>Minutes After Joining</b>: Number greater than or equal to 0, default 5. After joining the server, a player is excluded from being moved for balance or unstacking for this number of minutes. Set to 0 to disable. Keep in mind that most joining players were already assigned to the team with the least players. They have already 'paid their dues'.</p>
+
+<h3>3 - Round Phase and Population Settings</h3>
+<p>These settings control balancing and unstacking, depending on the round phase and server population.
+For each phase, there are three unstacking settings for server population: Low, Medium and High, by number of players. Each number is the ticket percentage ratio that triggers unstacking for each combination of phase and population. Setting the value to 0 disables team unstacking for that combination. If the number is not 0, if the ratio of the winning team's tickets to the losing teams tickets is equal to or greater than the ticket percentage ratio specified, unstacking will be activated.</p>
+
+<p><i>Example</i>: for the <b>Ticket Percentage To Unstack</b> setting, there are three phases, Early, Mid and Late. For each phase, the value is a list of 3 number, either 0 or greater than 100, one for each of the population levels of Low, Medium, and High, respectively:
+<pre>
+    Early Phase: Ticket Percentage To Unstack        0, 120, 120
+    Mid Phase: Ticket Percentage To Unstack          0, 120, 120
+    Late Phase: Ticket Percentage To Unstack         0, 0, 0
+</pre></p>
+
+<p>This means that in the Early or Mid phases when the population is Low, there will be no unstacking (0 always means disable). Also, in the Late Phase for any population level, there will be no unstacking. For any other combination, such as Mid Phase with High population, teams will be unstacked when the ratio of winning tickets to losing tickets is 120% or more.</p>
+
+<p>For each phase, there are also three balance speed names for server population: Low, Medium and High, by number of players. These speeds control how aggressively players are selected for moving by the autobalancer. Enter them as speed names separated by commas.</p>
+
+<p><i>Example</i>: for the <b>Balance Speed</b> setting, there are three phases, Early, Mid and Late. For each phase, the value is a list of 3 speed names, one for each of the population levels of Low, Medium, and High, respectively: 
+<pre>
+    Early Phase: Balance Speed        Slow, Adaptive, Adaptive
+    Mid Phase: Balance Speed          Slow, Adaptive, Adaptive
+    Late Phase: Balance speed         Stop, Stop, Stop
+</pre></p>
+
+<p>This means that in the Early or Mid phases when the population is Low, the balance speed will be Slow. In the Late Phase for any population level, balancing will be disabled. For any other combination, such as Mid Phase with High population, balancing will use an Adaptive speed.</p>
+
+<p>If you forget the names of the balance speeds, click on the <b>Spelling Of Speed Names Reminder</b> setting. This will display all of the balance speed names for you.</p>
+
+<h3>4 - Scrambler</h3>
+<p>These settings define options for between-round scrambling of teams. The setting <b>Enable Scrambler</b> is a per-mode setting, which allows you to decide on a mode-by-mode basis whether to use scrambling between rounds or not. See the per-mode settings in Section 8 below for more details. Note that whitelisted players are exempt from scrambling.</p>
+
+<p><b>Only On New Maps</b>: True or False, default True. If True, scrambles will happen only after the last round of a map. For example, if a map has 2 rounds, there will be no scramble after round 1, only after round 2. If False, scrambling will be attempted at the end of every round.</p>
+
+<p><b>Only On Final Ticket Percentage &gt;=</b>: Number greater than 100 or equal to 0, default 120. This is the ratio between the winning and losing teams final ticket counts at the end of the round. In count-down modes like Conquest, this is the ratio of the difference between the maximum starting tickets and the final ticket count. For example, on a 1000 ticket server, if the final ticket counts are 0/250, the ratio is (1000-0)/(1000-250)=1000/750=133%. Since that is greater than 120, scrambling would be done. For count-up modes like TDM, the ratio is final ticket values. If this value is set to 0, scrambling will occur regardless of final ticket counts.</p>
+
+<p><b>Scramble By</b>: One of the values defined in <b>Definition Of Strong</b> above. Determines how strong vs. weak players are chosen for scrambling.</p>
+
+<p><b>Keep Clan Tags In Same Squad</b>: True or False, default True. If True, a player will be excluded from being moved for scrambling if they are a member of a squad that has at least one other player in it with the same clan tag.</p>
+
+<p><b>Delay Seconds</b>: Number of seconds greater than or equal to 0 and less than or equal to 43, default 30. Number of seconds to wait after the round ends before doing the scramble. If done too soon, many players may leave after the scramble, resulting in wildly unequal teams. If done too late, the next level may load and the game server will swap players to opposite teams, interfering with the scramble in progress, which may result in wildly unequal teams.</p>
+
+<h3>5 - Messages</h3>
+<p>These settings define all of the chat and yell messages that are sent to players when various actions are taken by the plugin. All of the messages are in pairs, one for chat, one for yell. If both the chat and the yell messages are defined and <b>Quiet&nbsp;Mode</b> is not set to True, both will be sent at the same time. The message setting descriptions apply to both chat and yell. To disable a chat message for a specific actcion, delete the message and leave it empty. To disable theyell message for a specific action, delete the message and leave it empty.</p>
+
+<p>Several substitution macros are defined. You may use them in either chat or yell messages:
+<table border='0'>
+<tr><td>%name%</td><td>player name</td></tr>
+<tr><td>%tag%</td><td>player clan tag</td></tr>
+<tr><td>%fromTeam%</td><td>team the player is currently on, as 'US' or 'RU', or 'Alpha', 'Bravo', 'Charlie', or 'Delta' for SQDM</td></tr>
+<tr><td>%toTeam%</td><td>team the plugin will move the player to, same team name substitutions as for %fromTeam%</td></tr>
+<tr><td>%reason%</td><td>ONLY APPLIES TO BAD TEAM SWITCH: reason for switching the player back, may contain other replacements</td></tr>
+</table></p>
+
+<p><b>Quiet Mode</b>: True or False, default False. If False, chat messages are sent to all players and yells are sent to the player being moved. If True, chat and yell messages are only sent to the player being moved.</p>
+
+<p><b>Yell Duration Seconds</b>: A number greater than 0 and less than or equal to 20, or 0. If set to 0, all yells are disabled, even if they have non-empty messages. All yells have the same duration. This duration also controls the delay between when a player is warned and when the are unswitched (see Section 6).</p>
+
+<p><b>Moved For Balance</b>: Message sent after a player is moved for balance.</p>
+
+<p><b>Moved To Unstack</b>: Message sent after a player is moved to unstack teams.</p>
+
+<p><b>Detected Bad Team Switch</b>: Message sent after a player tries to make a forbidden team switch if [b]Enable Immediate Unswitch[/b] is set to False (see Section 6 below) or mode is Squad Deathmatch. The message is sent before the player is admin killed and sent back to his original team.</p>
+
+<p><b>Bad Because: Moved By Balancer</b>: Replacement for %reason% if the player tried to move to a different team from the one the plugin have moved them to for balance or unstacking.</p>
+
+<p><b>Bad Because: Winning Team</b>: Replacement for %reason% if the player tried to move to the winning team.</p>
+
+<p><b>Bad Because: Biggest Team</b>: Replacement for %reason% if the player tried to move to the biggest team.</p>
+
+<p><b>Bad Because: Rank</b>: Replacement for %reason% if the player has Rank greater than or equal to the per-mode <b>Disperse Evenly For Rank</b> setting.</p>
+
+<p><b>Bad Because: Rank</b>: Replacement for %reason% if the player is a member of the <b>Disperse Evenly List</b>.</p>
+
+<p><b>Detected Good Team Switch</b>: Message sent after a player switches from the winning team to the losing team, or from the biggest team to the smallest team. There is no follow-up message, this is the only one sent.</p>
+
+<p><b>After Unswitching</b>: Message sent after a player is killed by admin and moved back to the team he was assigned to. This message is sent after the <b>Detected Bad Team Switch</b> message.</p>
+
+<h3>6 - Unswitcher</h3>
+<p>This section controls the unswitcher. Every time a player tries to switch to a different team, the unswitcher checks if the switch is allowed or forbidden. If forbidden, he will be moved back by the plugin (see <b>Enable Immediate Unswitch</b> for details about how). Note that setting any of the <b>Forbid ...</b> settings to False will reduce the effectiveness of the balancer and unstacker.</p>
+
+<p><b>Forbid Switch After Autobalance</b>: True or False, default True. If True, after a player is moved to a different team for balance or unstacking, this setting forbids them from moving back to their original team. If False, they may move back to their original team.</p>
+
+<p><b>Forbid Switch To Winning Team</b>: True or False, default True. If True, a player is not allowed to switch to the winning team. If False, they are allowed.</p>
+
+<p><b>Forbid Switch To Biggest Team</b>: True or False, default True. If True, a player is not allowed to switch to the biggest team. If False, they are allowed.</p>
+
+<p><b>Forbid Switch After Dispersal</b>: True or False, default True. If True, after a player is moved to a different team due to <b>Disperse Evenly For Rank</b> or the <b>Disperse Evenly List</b>, this setting forbids them from moving back to their original team. If False, they may move back to their original team.</p>
+
+<p><b>Enable Immediate Unswitch</b>: True or False, default True. If True, if a player tries to make a forbidden team switch, the plugin will immediately move them back without any warning. They will only see the <b>After Unswitching</b> message(s). If False, the plugin will wait until the player spawns, it will then post the <b>Detected Bad Team Switch</b> message(s), it will wait <b>Yell Duration Seconds</b> seconds, then it will admin kill the player and move him back. <b>NOTE: Does not apply to SQDM. SQDM is always treated as this were set to False.</b></p>
+
+<h3>7 - TBD</h3>
+<p>There is no section 7. This section is reserved for future use.</p>
+
+<h3>8 - Settings for ... (each game mode)</h3>
+<p>These are the per-mode settings, used to define population and phase levels for a round and other settings specific to a game mode. Some modes have settings that no other modes have, other modes have fewer settings than most other modes. Each section is structured similarly. One common section is described in detail below and applies to several modes. Modes that have unique settings are then listed separately. The game modes are grouped as follows:
+<table border='0'>
+<tr><td>Conq Small, Dom, Scav</td><td>Conquest Small, Conquest Assault Small #1 and #2, Conquest Domination, and Scavenger</td></tr>
+<tr><td>Conquest Large</td><td>Conquest Large and Conquest Assault Large</td></tr>
+<tr><td>CTF</td><td>Capture The Flag, uses minutes to define phase instead of tickets</td></tr>
+<tr><td>Gun Master</td><td>Only has a few settings</td></tr>
+<tr><td>Rush</td><td>Has unique settings shared with Squad Rush and no other modes</td></tr>
+<tr><td>Squad Deathmatch</td><td>Standard settings, similar to Conquest, except that unstacking is disabled (default 0)</td></tr>
+<tr><td>Squad Rush</td><td>Has unique settings shared with Rush and no other modes</td></tr>
+<tr><td>Superiority</td><td>Air and Tank Superiority</td></tr>
+<tr><td>Team Deathmatch</td><td>TDM and TDM Close Quarters, standard settings, similar to Conquest</td></tr>
+<tr><td>Unknown or New Mode</td><td>Generic settings for any new mode that gets introduced before this plugin gets updated</td></tr>
+</table></p>
+
+<p>These are the settings that are common to most modes:</p>
+
+<p><b>Max Players</b>: Number greater than or equal to 8 and less than or equal to <b>Maximum Server Size</b>. Some modes might be set up in UMM or Adaptive Server Size or other plugins with a lower maximum than the server maximum. If you set a lower value in your server settings or in a plugin, set the same setting here. This is important for calculating population size correctly.</p>
+
+<p><b>Check Team Stacking After First Minutes</b>: Number greater than or equal to 0. From the start of the round, this setting is the number of minutes to wait before activating unstacking. If set to 0, no unstacking will occur for this mode.</p>
+
+<p><b>Max Unstacking Swaps Per Round</b>: Number greater than or equal to 0. To prevent the plugin from swapping every player on every team for unstacking, a maximum per round is set here. If set to 0, no unstacking will occur for this mode.</p>
+
+<p><b>Number Of Swaps Per Group</b>: Number greater than or equal to 0 and less than or equal to <b>Max Unstacking Swaps Per Round</b>, ideally an integral factor, e.g., if <b>Max Unstacking Swaps Per Round</b> is 12, <b>Number Of Swaps Per Group</b> may be 1, 2, 3, 4, 6 or 12. During unstacking, swaps are done as quickly as possible, up to this number. Once this number of swaps is reached, the <b>Delay Seconds Between Swap Groups</b> delay is applied before further swaps are attempted.</p>
+
+<p><b>Delay Seconds Between Swap Groups</b>: Number greater than or equal to 60. After a group of unstacking swaps, wait this number of seconds before doing another group of unstacking swaps.</p>
+
+<p><b>Determine Strong Players By</b>: Choice based on method. The setting defines how strong players are determined. Any player that is not a strong player is a weak player. See the <b>Definition of Strong</b> section above for the list of settings. All players in a single team are sorted by the specified definition. Any player above the median position after sorting is considered strong. For example, suppose there are 31 players on a team and this setting is set to <i>RoundScore</i> and after sorting, the median is position #16. If this player is position #7, he is considered strong. If his position is #16 or #17, he is considered weak.</p>
+
+<p><b>Percent Of Top Of Team Is Strong</b>: Number greater than or equal to 5 and less than or equal to 50, or 0. After sorting a team with the <b>Determine Strong Players By</b> choice, this percentage determines the portion of the top players to define as strong. Default is 50 so that any player above the median counts as strong. CAUTION: This setting is changed when the <b>Preset</b> is changed, previous values are overwritten for all modes.</p>
+
+<p><b>Disperse Evenly For Rank &gt;=</b>: Number greater than or equal to 0 and less than or equal to 145, default 145. Any players with this absolute rank (Colonel 100 is 145) or higher will be dispersed evenly across teams. This is useful to insure that Colonel 100 ranked players don't all stack on one team. Set to 0 to disable.</p>
+
+<p><b>Enable Disperse Evenly List</b>:  True or False, default False. If set to true, the players are matched against the <b>Disperse Evenly List</b> and any that match will be dispersed evenly across teams. This is useful to insure that certain clans or groups of players don't always dominate whatever team they are not on.</p>
+
+<p><b>Definition Of High Population For Players &gt;=</b>: Number greater than or equal to 0 and less than or equal to <b>Max&nbsp;Players</b>. This is where you define the High population level. If the total number of players in the server is greater than or equal to this number, population is High.</p>
+
+<p><b>Definition Of Low Population For Players &lt;=</b>: Number greater than or equal to 0 and less than or equal to <b>Max&nbsp;Players</b>. This is where you define the Low population level. If the total number of players in the server is less than or equal to this number, population is Low. If the total number is between the definition of High and Low, it is Medium.</p>
+
+<p><b>Definition Of Early Phase As Tickets From Start</b>: Number greater than or equal to 0. This is where you define the Early phase, as tickets from the start of the round. For example, if your round starts with 1500 tickets and you set this to 300, as long as the ticket level for all teams is greater than or equal to 1500-300=1200, the phase is Early. Set to 0 to disable Early phase.</p>
+
+<p><b>Definition Of Late Phase As Tickets From End</b>: Number greater than or equal to 0. This is where you define the Late phase, as tickets from the end of the round. For example, if you set this to 300 and at least one team in Conquest has less than 300 tickets less, the phase is Late. If the ticket level of both teams is between the Early and Late settings, the phase is Mid. Set to 0 to disable Late phase.</p>
+
+<p><b>Enable Scrambler</b>:  True or False, default False. If set to True, between-round scrambling of teams will be attempted for rounds played in this mode, depending on the settings in Section 5.</p>
+
+<p>These settings are unique to CTF.</p>
+
+<p><b>Definition Of Early Phase As Minutes From Start</b>: Number greater than or equal to 0. This is where you define the Early phase, as minutes from the start of the round. For example, if your round starts with 20 minutes on the clock and you set this to 5, the phase is Early until 20-5=15 minutes are left on the clock.</p>
+
+<p><b>Definition Of Late Phase As Minutes From End</b>: Number greater than or equal to 0. This is where you define the Late phase, as minutes from the end of the round. For example, if your round starts with 20 minutes on the clock and you set this to 8, the phase is Late for when there 8 minutes or less left on the clock.</p>
+
+<p>These settings are unique to Rush and Squad Rush.</p>
+
+<p>Rush and Squad Rush require adjustments to the ticket percentage to unstack values specified in section 3 above. For example, if you have a mixed mode server with TDM and Rush, you may set ticket percentage to unstack to 120 for certain combinations of phase and population. This works great for TDM with 200 tickets. It does not work well for Rush with 150 tickets. The ticket ratio may easily exceed 120% without the teams being stacked. It's just the nature of the stages. Rather than have completely different settings for Rush and Squad Rush for section 3, instead, the per-mode settings define adjustments to the section 3 settings. For example, if you specify 30 for <b>Stage 1 Ticket Percentage To Unstack Adjustment</b>, 30 is added to 120 to yield 150% as the ratio for stage 1. You may also use negative numbers to reduce the value, for example, if the normal setting is 120 and you want stage 4 to have no unstacking, you may set the adjustment to -120. If the adjustment results in a value less than or equal to 100, it is set to 0. If you use 0 for the adjustment value, no change is made. <b>If the normal value is 0, no adjustment is applied.</b> Otherwise, the adjustment is applied to all phase and population combinations for that stage.</p>
+
+<p><b>Stage 1 Ticket Percentage To Unstack Adjustment</b>: Any positive or negative number whose absolute value is 0 or less than or equal to the corresponding <b>Ticket Percentage To Unstack</b> value. If the defending team is stacked, the game will be unlikely to get past stage 1, so ratios in the range 125 to 150 after adjustment are good for stage 1. For example, if your normal ratio is 120, set the adjustment to 5 to get 125 for Rush.</p>
+
+<p><b>Stage 2 Ticket Percentage To Unstack Adjustment</b>: Any positive or negative number whose absolute value is 0 or less than or equal to the corresponding <b>Ticket Percentage To Unstack</b> value. If the attacking team is stacked, the game will get to stage 2 quickly, so ratios in the range 125 to 150 are good for stage 2. For example, if  your normal ratio is 120, set the adjustment to 30 to get 150 for Rush</p>
+
+<p><b>Stage 3 Ticket Percentage To Unstack Adjustment</b>: Any positive or negative number whose absolute value is 0 or less than or equal to the corresponding <b>Ticket Percentage To Unstack</b> value. Evenly matched teams will often get to stage 3, so set the ratio high to catch unsual situations only, ratios in the range 200 or more are good for stage 3. For example, if your normal ratio is 120, set the adjustment to 80 to get 200 for Rush.</p>
+
+<p><b>Stage 4 Ticket Percentage To Unstack Adjustment</b>: Any positive or negative number whose absolute value is 0 or less than or equal to the corresponding <b>Ticket Percentage To Unstack</b> value. This is tricky, since a team that is stacked for attackers or evenly matched teams will both get to stage 4. To give the benefit of the doubt, aim for a ratio of 0. For example, if your normal ratio is 120, set the adjustment to -120 to get 0 for Rush.</p>
+
+
+<h3>9 - Debugging</h3>
+<p>These settings are used for debugging problems with the plugin.</p>
+
+<p><b>Show In Log</b>: Special commands may be typed in this text area to display information in plugin.log.</p>
+
+<p><b>Log Chat</b>: True or False, default True. If set to True, all chat messages sent by the plugin will be logged in chat.log.</p>
+
+<p><b>Enable Logging Only Mode</b>: True or False, default False. If set to True, the plugin will only log messages. No move, chat or yell commands will be sent to the game server. If set to False, the plugin will operate normally.</p>
+
+<h2>Development</h2>
+<p>This plugin is an open source project hosted on GitHub.com. The repo is located at
+<a href='https://github.com/PapaCharlie9/multi-balancer'>https://github.com/PapaCharlie9/multi-balancer</a> and
+the master branch is used for public distributions. See the <a href='https://github.com/PapaCharlie9/multi-balancer/tags'>Tags</a> tab for the latest ZIP distribution. If you would like to offer bug fixes or new features, feel free to fork the repo and submit pull requests.</p>
+";
+#endregion
+
+} // end MULTIbalancerUtils
+#endregion
+
+} // end namespace PRoConEvents
 
 
