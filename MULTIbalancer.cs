@@ -2409,7 +2409,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
         }
 
         if (fServerInfo == null || fServerInfo.GameMode != serverInfo.GameMode || fServerInfo.Map != serverInfo.Map) {
-            DebugWrite("ServerInfo update: " + serverInfo.Map + "/" + serverInfo.GameMode, 4);
+            ConsoleDebug("ServerInfo update: " + serverInfo.Map + "/" + serverInfo.GameMode);
         }
     
         // Check for server crash
@@ -2442,13 +2442,13 @@ public override void OnServerInfo(CServerInfo serverInfo) {
         if (fMaxTickets == -1) {
             if (!isRush) {
                 fMaxTickets = maxTickets;
-                DebugWrite("ServerInfo update: fMaxTickets = " + fMaxTickets.ToString("F0"), 4);
+                ConsoleDebug("ServerInfo update: fMaxTickets = " + fMaxTickets.ToString("F0"));
             } else if (fServerInfo.TeamScores.Count == 2) {
                 fRushMaxTickets = defender;
                 fMaxTickets = attacker;
                 fRushStage = 1;
                 fRushAttackerTickets = attacker;
-                DebugWrite("ServerInfo update: fMaxTickets = " + fMaxTickets.ToString("F0") + ", fRushMaxTickets = " + fRushMaxTickets + ", fRushStage = " + fRushStage, 4);
+                ConsoleDebug("ServerInfo update: fMaxTickets = " + fMaxTickets.ToString("F0") + ", fRushMaxTickets = " + fRushMaxTickets + ", fRushStage = " + fRushStage);
             }
         }
 
@@ -5201,7 +5201,7 @@ public void DebugWrite(String msg, int level)
 
 public void ConsoleDebug(String msg)
 {
-    if (DebugLevel >= 4) ConsoleWrite(msg, MessageType.Debug);
+    if (DebugLevel >= 6) ConsoleWrite(msg, MessageType.Debug);
 }
 
 public void ConsoleDump(String msg)
@@ -6941,16 +6941,16 @@ private uint VersionToNumeric(String ver) {
 
 private void LogStatus(bool isFinal) {
   try {
-    // If server is empty, log status only every 20 minutes
-    if (TotalPlayerCount == 0) {
-        if (fRoundStartTimestamp != DateTime.MinValue && DateTime.Now.Subtract(fRoundStartTimestamp).TotalMinutes <= 20) {
+    // If server is empty, log status only every 60 minutes
+    if (!isFinal && TotalPlayerCount == 0) {
+        if (fRoundStartTimestamp != DateTime.MinValue && DateTime.Now.Subtract(fRoundStartTimestamp).TotalMinutes <= 60) {
             return;
         } else {
             fRoundStartTimestamp = DateTime.Now;
         }
     }
 
-    if (!isFinal && (DebugLevel == 3 || DebugLevel == 4)) ConsoleWrite("+------------------------------------------------+");
+    if (!isFinal && (DebugLevel == 4)) ConsoleWrite("+------------------------------------------------+");
 
     Speed balanceSpeed = Speed.Adaptive;
 
@@ -6974,8 +6974,8 @@ private void LogStatus(bool isFinal) {
 
     String rt = GetTimeInRoundString();
 
-    DebugWrite("^bStatus^n: Plugin state = " + fPluginState + ", game state = " + fGameState + ", Enable Logging Only Mode = " + EnableLoggingOnlyMode, 4);
-    int useLevel = (isFinal) ? 2 : 3;
+    DebugWrite("^bStatus^n: Plugin state = " + fPluginState + ", game state = " + fGameState + ", Enable Logging Only Mode = " + EnableLoggingOnlyMode, 6);
+    int useLevel = (isFinal) ? 2 : 4;
     if (IsRush()) {
         DebugWrite("^bStatus^n: Map = " + FriendlyMap + ", mode = " + FriendlyMode + ", stage = " + fRushStage + ", time in round = " + rt + ", tickets = " + tm, useLevel);
     } else if (IsCTF()) {
@@ -6993,19 +6993,19 @@ private void LogStatus(bool isFinal) {
             balanceSpeed = GetBalanceSpeed(perMode);
             double unstackRatio = GetUnstackTicketRatio(perMode);
             String activeTime = (secs > 0) ? "^1active (" + secs.ToString("F0") + " secs)^0" : "not active";
-            DebugWrite("^bStatus^n: Autobalance is " + activeTime + ", phase = " + GetPhase(perMode, false) + ", population = " + GetPopulation(perMode, false) + ", speed = " + balanceSpeed + ", unstack when ticket ratio >= " + (unstackRatio * 100).ToString("F0") + "%", 3);
+            DebugWrite("^bStatus^n: Autobalance is " + activeTime + ", phase = " + GetPhase(perMode, false) + ", population = " + GetPopulation(perMode, false) + ", speed = " + balanceSpeed + ", unstack when ticket ratio >= " + (unstackRatio * 100).ToString("F0") + "%", 4);
         }
     }
     if (!IsModelInSync()) {
         double toj = (fTimeOutOfJoint == 0) ? 0 : GetTimeInRoundMinutes() - fTimeOutOfJoint;
-        DebugWrite("^bStatus^n: Model not in sync for " + toj.ToString("F1") + " mins: fMoving = " + fMoving.Count + ", fReassigned = " + fReassigned.Count, 5);
+        DebugWrite("^bStatus^n: Model not in sync for " + toj.ToString("F1") + " mins: fMoving = " + fMoving.Count + ", fReassigned = " + fReassigned.Count, 6);
     }
 
     String raged = fRageQuits.ToString() + "/" + fTotalQuits + " raged, ";
     useLevel = (isFinal) ? 2 : 5;
     DebugWrite("^bStatus^n: " + raged + fReassignedRound + " reassigned, " + fBalancedRound + " balanced, " + fUnstackedRound + " unstacked, " + fUnswitchedRound + " unswitched, " + fExcludedRound + " excluded, " + fExemptRound + " exempted, " + fFailedRound + " failed; of " + fTotalRound + " TOTAL", useLevel);
     
-    useLevel = (isFinal) ? 1 : 3;
+    useLevel = (isFinal) ? 2 : 4;
     if (IsSQDM()) {
         DebugWrite("^bStatus^n: Team counts [" + TotalPlayerCount + "] = " + fTeam1.Count + "(A) vs " + fTeam2.Count + "(B) vs " + fTeam3.Count + "(C) vs " + fTeam4.Count + "(D), with " + fUnassigned.Count + " unassigned", useLevel);
     } else {
