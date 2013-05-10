@@ -3188,6 +3188,7 @@ private void BalanceAndUnstack(String name) {
     
     int origUnTeam = player.Team;
     String origUnName = GetTeamName(player.Team);
+    String strength = "strong";
 
     if (lastMoveFrom != 0) {
         origUnTeam = lastMoveFrom;
@@ -3236,6 +3237,7 @@ private void BalanceAndUnstack(String name) {
                 moveUnstack = new MoveInfo(name, player.Tag, origUnTeam, origUnName, winningTeam, GetTeamName(winningTeam));
                 toTeam = winningTeam;
                 fUnstackState = UnstackState.SwappedWeak;
+                strength = "weak";
                 FinishedFullSwap(name, perMode); // updates group count
             } else {
                 DebugBalance("Skipping ^b" + name + "^n, don't move strong player to winning team (#" + (playerIndex+1) + " of " + fromList.Count + ", median " + (strongest) + ")");
@@ -3251,7 +3253,7 @@ private void BalanceAndUnstack(String name) {
 
     /* Move for unstacking */
     
-    log = "^4^bUNSTACK^n^0 moving ^b" + name + "^n from " + moveUnstack.SourceName + " to " + moveUnstack.DestinationName + " because: " + um;
+    log = "^4^bUNSTACK^n^0 moving " + strength + " ^b" + name + "^n from " + moveUnstack.SourceName + " to " + moveUnstack.DestinationName + " because: " + um;
     log = (EnableLoggingOnlyMode) ? "^9(SIMULATING)^0 " + log : log;
     DebugWrite(log, 3);
     moveUnstack.For = MoveType.Unstack;
