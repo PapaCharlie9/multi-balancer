@@ -536,6 +536,7 @@ private DateTime fLastVersionCheckTimestamp = DateTime.MinValue;
 private double fTimeOutOfJoint = 0;
 private List<String>[] fDebugScramblerBefore = null;
 private List<String>[] fDebugScramblerAfter = null;
+private DelayedRequest fUpdateThreadLock;
 
 // Data model
 private List<String> fAllPlayers = null;
@@ -773,6 +774,7 @@ public MULTIbalancer() {
     fIsCacheEnabled = false;
     fScramblerLock = new DelayedRequest();
     fWinner = 0;
+    fUpdateThreadLock = new DelayedRequest();
     
     /* Settings */
 
@@ -2039,7 +2041,7 @@ public void OnPluginEnable() {
     ServerCommand("serverInfo");
     ServerCommand("admin.listPlayers", "all");
 
-    CheckForPluginUpdate();
+    LaunchCheckForPluginUpdate();
 
     fIsCacheEnabled = IsCacheEnabled(true);
 }
@@ -2468,7 +2470,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
         // Check for plugin updates periodically
         if (fLastVersionCheckTimestamp != DateTime.MinValue 
         && DateTime.Now.Subtract(fLastVersionCheckTimestamp).TotalMinutes > CHECK_FOR_UPDATES_MINS) {
-            CheckForPluginUpdate();
+            LaunchCheckForPluginUpdate();
         }
     } catch (Exception e) {
         ConsoleException(e);
@@ -6822,9 +6824,37 @@ private String ExtractName(String fullName) {
 
 
 
+public void LaunchCheckForPluginUpdate() {
+    try {
+        double alive = 0;
+        DateTime since = DateTime.MinValue;
+        lock (fUpdateThreadLock) {
+            alive = fUpdateThreadLock.MaxDelay; // repurpose MaxDely to be a thread counter
+            since = fUpdateThreadLock.LastUpdate;
+        }
+        if (alive > 0) {
+            DebugWrite("Unable to check for updates, " + alive + " threads active for " + DateTime.Now.Subtract(since).TotalSeconds.ToString("F1") + " seconds!", 3);
+            return;
+        }
 
-public void CheckForPluginUpdate() {
+        Thread t = new Thread(new ThreadStart(CheckForPluginUpdate));
+        t.IsBackground = true;
+        t.Name = "updater";
+        DebugWrite("Starting updater thread ...", 3);
+        t.Start();
+        Thread.Sleep(2);
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+}
+
+
+public void CheckForPluginUpdate() { // runs in one-shot thread
 	try {
+        lock (fUpdateThreadLock) {
+            fUpdateThreadLock.MaxDelay = fUpdateThreadLock.MaxDelay + 1;
+            fUpdateThreadLock.LastUpdate = DateTime.Now;
+        }
 		XmlDocument xml = new XmlDocument();
         try {
             xml.Load("https://myrcon.com/procon/plugins/report/format/xml/plugin/MULTIbalancer");
@@ -6955,7 +6985,13 @@ public void CheckForPluginUpdate() {
         }
 	} catch (Exception e) {
 		if (DebugLevel >= 8) ConsoleException(e);
-	}
+	} finally {
+        lock (fUpdateThreadLock) {
+            fUpdateThreadLock.MaxDelay = fUpdateThreadLock.MaxDelay - 1;
+            fUpdateThreadLock.LastUpdate = DateTime.MinValue;
+        }
+        DebugWrite("Updater thread finished!", 3);
+    }
 }
 
 private uint VersionToNumeric(String ver) {
@@ -7527,7 +7563,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 <h3>9 - Debugging</h3>
 <p>These settings are used for debugging problems with the plugin.</p>
 
-<p><b>Show In Log</b>: Special commands may be typed in this text area to display information in plugin.log.</p>
+<p><b>Show In Log</b>: Special commands may be typed in this text area to display information in plugin.log. Type <i>help></i> into the text field and press Enter (type a return). A list of commands will be written to plugin.log.</p>
 
 <p><b>Log Chat</b>: True or False, default True. If set to True, all chat messages sent by the plugin will be logged in chat.log.</p>
 
