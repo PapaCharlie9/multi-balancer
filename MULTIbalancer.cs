@@ -1586,7 +1586,7 @@ private bool ValidateSettings(String strVariable, String strValue) {
             ConsoleWarn(strVariable + ": contains %reason%, which is only recognized in ^bDetected Bad Team Switch^n");
         }
     
-        /* ===== SECTION 6 - TBD ===== */
+        /* ===== SECTION 6 ===== */
 
         /* ===== SECTION 7 - TBD ===== */
 
