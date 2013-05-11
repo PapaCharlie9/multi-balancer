@@ -3,4 +3,4 @@ multi-balancer
 
 BF3 multiple mode balancer &amp; unstacker, including SQDM.
 
-Current version under test: 0.0.0.18
+Version: 1.0.0.0
