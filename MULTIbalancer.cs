@@ -1083,7 +1083,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.0.0";
+    return "1.0.0.1";
 }
 
 public String GetPluginAuthor() {
@@ -3069,7 +3069,7 @@ private void BalanceAndUnstack(String name) {
     /* Unstack */
 
     if (winningTeam <= 0 || winningTeam >= fTickets.Length || losingTeam <= 0 || losingTeam >= fTickets.Length || balanceSpeed == Speed.Stop) {
-        if (DebugLevel >= 5) DebugBalance("Skipping unstack for ^b" + name +"^n: winning = " + winningTeam + ", losingTeam = " + losingTeam + ", speed = " + balanceSpeed);
+        if (DebugLevel >= 5) DebugBalance("Skipping unstack for player that was killed ^b" + name +"^n: winning = " + winningTeam + ", losingTeam = " + losingTeam + ", speed = " + balanceSpeed);
         IncrementTotal(); // no matching stat, reflect total deaths handled
         return;
     }
