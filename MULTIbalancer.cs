@@ -1586,7 +1586,7 @@ private bool ValidateSettings(String strVariable, String strValue) {
             ConsoleWarn(strVariable + ": contains %reason%, which is only recognized in ^bDetected Bad Team Switch^n");
         }
     
-        /* ===== SECTION 6 - TBD ===== */
+        /* ===== SECTION 6 ===== */
 
         /* ===== SECTION 7 - TBD ===== */
 
@@ -7572,7 +7572,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 <h2>Development</h2>
 <p>This plugin is an open source project hosted on GitHub.com. The repo is located at
 <a href='https://github.com/PapaCharlie9/multi-balancer'>https://github.com/PapaCharlie9/multi-balancer</a> and
-the master branch is used for public distributions. See the <a href='https://github.com/PapaCharlie9/multi-balancer/tags'>Tags</a> tab for the latest ZIP distribution. If you would like to offer bug fixes or new features, feel free to fork the repo and submit pull requests.</p>
+the master branch is used for public distributions. See the <a href='https://github.com/PapaCharlie9/multi-balancer/tags'>Tags</a> tab for the latest ZIP distribution. If you would like to offer bug fixes or new features, feel free to fork the repo and submit pull requests. Post questions and problem reports in the forum Plugin thread.</p>
 ";
 #endregion
 
