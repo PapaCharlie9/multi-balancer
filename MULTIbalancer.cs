@@ -115,7 +115,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         public PerModeSettings(String simplifiedModeName) {
             DetermineStrongPlayersBy = DefineStrong.RoundScore;
             PercentOfTopOfTeamIsStrong = 50;
-            DisperseEvenlyForRank = 145;
+            DisperseEvenlyByRank = 0;
             EnableDisperseEvenlyList = false;
             EnableScrambler = false;
             isDefault = false;
@@ -259,7 +259,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         public int DefinitionOfLowPopulationForPlayers = 16;
         public int DefinitionOfEarlyPhaseFromStart = 50;
         public int DefinitionOfLatePhaseFromEnd = 50;
-        public int DisperseEvenlyForRank = 145;
+        public int DisperseEvenlyByRank = 145;
         public bool EnableDisperseEvenlyList = false;
         public double PercentOfTopOfTeamIsStrong = 50;
         public int NumberOfSwapsPerGroup = 3;
@@ -1308,7 +1308,7 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
             }
 
-            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Disperse Evenly For Rank >=", oneSet.DisperseEvenlyForRank.GetType(), oneSet.DisperseEvenlyForRank));
+            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Disperse Evenly By Rank >=", oneSet.DisperseEvenlyByRank.GetType(), oneSet.DisperseEvenlyByRank));
 
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Enable Disperse Evenly List", oneSet.EnableDisperseEvenlyList.GetType(), oneSet.EnableDisperseEvenlyList));
 
@@ -1597,27 +1597,26 @@ private bool ValidateSettings(String strVariable, String strValue) {
             PerModeSettings def = new PerModeSettings(mode); // defaults for this mode
 
             def.MaxPlayers = Math.Min(def.MaxPlayers, MaximumServerSize);
-            if (strVariable.Contains("Max Players")) ValidateIntRange(ref perMode.MaxPlayers, mode + ":" + "Max Players", 8, MaximumServerSize, def.MaxPlayers, false);
-            if (strVariable.Contains("Check Team Stacking After First Minutes")) ValidateDouble(ref perMode.CheckTeamStackingAfterFirstMinutes, mode + ":" + "Check Team Stacking After First Minutes", def.CheckTeamStackingAfterFirstMinutes);
-            if (strVariable.Contains("Max Unstacking Swaps Per Round")) ValidateInt(ref perMode.MaxUnstackingSwapsPerRound, mode + ":" + "Max Unstacking Swaps Per Round", def.MaxUnstackingSwapsPerRound);
             def.NumberOfSwapsPerGroup = Math.Min(def.NumberOfSwapsPerGroup, perMode.MaxUnstackingSwapsPerRound);
-            if (strVariable.Contains("Number Of Swaps Per Group")) ValidateIntRange(ref perMode.NumberOfSwapsPerGroup, mode + ":" + "Number Of Swaps Per Group", 0, perMode.MaxUnstackingSwapsPerRound, def.NumberOfSwapsPerGroup, false);
-            if (strVariable.Contains("Delay Seconds Between Swap Groups")) ValidateDoubleRange(ref perMode.DelaySecondsBetweenSwapGroups, mode + ":" + "Delay Seconds Between Swap Groups", 60, 24*60*60, def.DelaySecondsBetweenSwapGroups, false);
-            if (strVariable.Contains("Percent Of Top Of Team Is Strong")) ValidateDoubleRange(ref perMode.PercentOfTopOfTeamIsStrong, mode + ":" + "Percent Of Top Of Team Is Strong", 5, 50, def.PercentOfTopOfTeamIsStrong, false);
-            if (strVariable.Contains("Disperse Evenly For Rank")) ValidateInt(ref perMode.DisperseEvenlyForRank, mode + ":" + "Disperse Evenly For Rank", def.DisperseEvenlyForRank);
             def.DefinitionOfHighPopulationForPlayers = Math.Min(def.DefinitionOfHighPopulationForPlayers, perMode.MaxPlayers);
             def.DefinitionOfLowPopulationForPlayers = Math.Min(def.DefinitionOfLowPopulationForPlayers, perMode.MaxPlayers);
-            if (strVariable.Contains("Definition Of High Population For Players")) ValidateIntRange(ref perMode.DefinitionOfHighPopulationForPlayers, mode + ":" + "Definition Of High Population For Players", 0, perMode.MaxPlayers, def.DefinitionOfHighPopulationForPlayers, false); 
-            if (strVariable.Contains("Definition Of Low Population For Players")) ValidateIntRange(ref perMode.DefinitionOfLowPopulationForPlayers, mode + ":" + "Definition Of Low Population For Players", 0, perMode.MaxPlayers, def.DefinitionOfLowPopulationForPlayers, false);
-            if (strVariable.Contains("Definition Of Early Phase")) ValidateInt(ref perMode.DefinitionOfEarlyPhaseFromStart, mode + ":" + "Definition Of Early Phase From Start", def.DefinitionOfEarlyPhaseFromStart);
-            if (strVariable.Contains("Definition Of Late Phase")) ValidateInt(ref perMode.DefinitionOfLatePhaseFromEnd, mode + ":" + "Definition Of Late Phase From End", def.DefinitionOfLatePhaseFromEnd);
+            if (strVariable.Contains("Max Players")) ValidateIntRange(ref perMode.MaxPlayers, mode + ":" + "Max Players", 8, MaximumServerSize, def.MaxPlayers, false);
+            else if (strVariable.Contains("Check Team Stacking After First Minutes")) ValidateDouble(ref perMode.CheckTeamStackingAfterFirstMinutes, mode + ":" + "Check Team Stacking After First Minutes", def.CheckTeamStackingAfterFirstMinutes);
+            else if (strVariable.Contains("Max Unstacking Swaps Per Round")) ValidateInt(ref perMode.MaxUnstackingSwapsPerRound, mode + ":" + "Max Unstacking Swaps Per Round", def.MaxUnstackingSwapsPerRound);
+            else if (strVariable.Contains("Number Of Swaps Per Group")) ValidateIntRange(ref perMode.NumberOfSwapsPerGroup, mode + ":" + "Number Of Swaps Per Group", 0, perMode.MaxUnstackingSwapsPerRound, def.NumberOfSwapsPerGroup, false);
+            else if (strVariable.Contains("Delay Seconds Between Swap Groups")) ValidateDoubleRange(ref perMode.DelaySecondsBetweenSwapGroups, mode + ":" + "Delay Seconds Between Swap Groups", 60, 24*60*60, def.DelaySecondsBetweenSwapGroups, false);
+            else if (strVariable.Contains("Percent Of Top Of Team Is Strong")) ValidateDoubleRange(ref perMode.PercentOfTopOfTeamIsStrong, mode + ":" + "Percent Of Top Of Team Is Strong", 5, 50, def.PercentOfTopOfTeamIsStrong, false);
+            else if (strVariable.Contains("Disperse Evenly By Rank")) ValidateInt(ref perMode.DisperseEvenlyByRank, mode + ":" + "Disperse Evenly By Rank", def.DisperseEvenlyByRank);
+            else if (strVariable.Contains("Definition Of High Population For Players")) ValidateIntRange(ref perMode.DefinitionOfHighPopulationForPlayers, mode + ":" + "Definition Of High Population For Players", 0, perMode.MaxPlayers, def.DefinitionOfHighPopulationForPlayers, false); 
+            else if (strVariable.Contains("Definition Of Low Population For Players")) ValidateIntRange(ref perMode.DefinitionOfLowPopulationForPlayers, mode + ":" + "Definition Of Low Population For Players", 0, perMode.MaxPlayers, def.DefinitionOfLowPopulationForPlayers, false);
+            else if (strVariable.Contains("Definition Of Early Phase")) ValidateInt(ref perMode.DefinitionOfEarlyPhaseFromStart, mode + ":" + "Definition Of Early Phase From Start", def.DefinitionOfEarlyPhaseFromStart);
+            else if (strVariable.Contains("Definition Of Late Phase")) ValidateInt(ref perMode.DefinitionOfLatePhaseFromEnd, mode + ":" + "Definition Of Late Phase From End", def.DefinitionOfLatePhaseFromEnd);
             if (mode == "CTF") {
                 int maxMinutes = 20; // TBD, might need to factor in gameModeCounter
                 if (strVariable.Contains("Definition Of Late Phase") && perMode.DefinitionOfLatePhaseFromEnd > maxMinutes) {
                     ConsoleError("^b" + "Definition Of Late Phase" + "^n must be less than or equal to " + maxMinutes + " minutes, corrected to " + maxMinutes);
                     perMode.DefinitionOfEarlyPhaseFromStart = 0;
-                }
-                if (strVariable.Contains("Definition Of Early Phase") && perMode.DefinitionOfEarlyPhaseFromStart > (maxMinutes - perMode.DefinitionOfLatePhaseFromEnd)) {
+                } else if (strVariable.Contains("Definition Of Early Phase") && perMode.DefinitionOfEarlyPhaseFromStart > (maxMinutes - perMode.DefinitionOfLatePhaseFromEnd)) {
                     ConsoleError("^b" + "Definition Of Early Phase" + "^n must be less than or equal to " + (maxMinutes - perMode.DefinitionOfLatePhaseFromEnd) + " minutes, corrected to " + (maxMinutes - perMode.DefinitionOfLatePhaseFromEnd));
                     perMode.DefinitionOfEarlyPhaseFromStart = maxMinutes - perMode.DefinitionOfLatePhaseFromEnd;
                 }
@@ -2719,7 +2718,7 @@ private void BalanceAndUnstack(String name) {
     bool isDisperseByRank = IsRankDispersal(player);
     bool isDisperseByList = IsDispersal(player);
     if (isDisperseByRank) {
-        DebugBalance("ON MUST MOVE LIST ^b" + name + "^n T:" + player.Team + ", Rank " + player.Rank + " >= " + perMode.DisperseEvenlyForRank);
+        DebugBalance("ON MUST MOVE LIST ^b" + name + "^n T:" + player.Team + ", Rank " + player.Rank + " >= " + perMode.DisperseEvenlyByRank);
         mustMove = true;
     } else if (isDisperseByList) {
         DebugBalance("ON MUST MOVE LIST ^b" + player.FullName + "^n T:" + player.Team + ", disperse evenly enabled");
@@ -5922,7 +5921,7 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] byI
         for (int i = 1; i < byId.Length; ++i) {
             foreach (PlayerModel p in byId[i]) {
                 if (p.Name == player.Name) continue; // don't count this player
-                if (p.Rank >= perMode.DisperseEvenlyForRank) {
+                if (p.Rank >= perMode.DisperseEvenlyByRank) {
                     rankers[i] = rankers[i] + 1;
                     grandTotal = grandTotal + 1;
 
@@ -5941,7 +5940,7 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] byI
 
         String a = rankers[1] + "/" + rankers[2];
         if (isSQDM) a = a + "/" + rankers[3] + "/" + rankers[4];
-        DebugWrite("ToTeamByDispersal: analysis of ^b" + name + "^n dispersal of rank >= " + perMode.DisperseEvenlyForRank + ": " + a, 5);
+        DebugWrite("ToTeamByDispersal: analysis of ^b" + name + "^n dispersal of rank >= " + perMode.DisperseEvenlyByRank + ": " + a, 5);
 
         // Pick smallest one
         targetTeam = 0;
@@ -6551,8 +6550,8 @@ private bool IsDispersal(PlayerModel player) {
 
 private bool IsRankDispersal(PlayerModel player) {
     PerModeSettings perMode = GetPerModeSettings();
-    if (perMode.DisperseEvenlyForRank == 0) return false;
-    return (player.Rank >= perMode.DisperseEvenlyForRank);
+    if (perMode.DisperseEvenlyByRank == 0) return false;
+    return (player.Rank >= perMode.DisperseEvenlyByRank);
 }
 
 private void FinishedFullSwap(String name, PerModeSettings perMode) {
