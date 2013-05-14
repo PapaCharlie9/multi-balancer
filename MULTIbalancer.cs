@@ -6829,7 +6829,7 @@ public void LaunchCheckForPluginUpdate() {
         double alive = 0;
         DateTime since = DateTime.MinValue;
         lock (fUpdateThreadLock) {
-            alive = fUpdateThreadLock.MaxDelay; // repurpose MaxDely to be a thread counter
+            alive = fUpdateThreadLock.MaxDelay; // repurpose MaxDelay to be a thread counter
             since = fUpdateThreadLock.LastUpdate;
         }
         if (alive > 0) {
@@ -6867,7 +6867,6 @@ public void CheckForPluginUpdate() { // runs in one-shot thread
             ConsoleWrite("Consider changing to ^bRun plugins with no restrictions.^n");
             ConsoleWrite("Alternatively, check the ^bPlugins^n forum for an update to this plugin.");
             ConsoleWrite(" ");
-            fLastVersionCheckTimestamp = DateTime.MaxValue;
             return;
         } 
         if (DebugLevel >= 8) ConsoleDebug("CheckForPluginUpdate: Got " + xml.BaseURI);
@@ -6929,9 +6928,6 @@ public void CheckForPluginUpdate() { // runs in one-shot thread
             return;
         }
 
-        // Update check time
-        fLastVersionCheckTimestamp = DateTime.Now;
-
         // numeric sort
         List<String> byNumeric = new List<String>();
         byNumeric.AddRange(versions.Keys);
@@ -6986,6 +6982,9 @@ public void CheckForPluginUpdate() { // runs in one-shot thread
 	} catch (Exception e) {
 		if (DebugLevel >= 8) ConsoleException(e);
 	} finally {
+        // Update check time
+        fLastVersionCheckTimestamp = DateTime.Now;
+        // Update traffic control
         lock (fUpdateThreadLock) {
             fUpdateThreadLock.MaxDelay = fUpdateThreadLock.MaxDelay - 1;
             fUpdateThreadLock.LastUpdate = DateTime.MinValue;
