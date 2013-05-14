@@ -3896,7 +3896,7 @@ private void StartMoveImmediate(MoveInfo move, bool sendMessages) {
     // Send before messages?
     if (sendMessages) {
         Yell(move.Name, move.YellBefore);
-        Chat(move.Name, move.ChatBefore, move.For == MoveType.Unswitch); // player only if unswitch
+        Chat(move.Name, move.ChatBefore, (move.For == MoveType.Unswitch || QuietMode)); // player only if unswitch or Quiet
     }
 
     lock (fMoving) {
@@ -3948,7 +3948,7 @@ private bool FinishMove(String name, int team) {
     }
     if (move != null) {
         // MB move for balance/unstacking/unswitching
-        SetSpawnMessages(move.Name, move.ChatAfter, move.YellAfter, move.For == MoveType.Unswitch);
+        SetSpawnMessages(move.Name, move.ChatAfter, move.YellAfter, (move.For == MoveType.Unswitch || QuietMode));
     }
     return (move != null);
 }
@@ -3980,7 +3980,7 @@ public void MoveLoop() {
 
             // Sending before messages
             Yell(move.Name, move.YellBefore);
-            Chat(move.Name, move.ChatBefore, move.For == MoveType.Unswitch); // player only if unswitching
+            Chat(move.Name, move.ChatBefore, (move.For == MoveType.Unswitch || QuietMode)); // player only if unswitching or Quiet
 
             // Stash for check later
             lock (fMoveStash) {
