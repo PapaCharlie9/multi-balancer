@@ -64,7 +64,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     public enum Speed { Click_Here_For_Speed_Names, Stop, Slow, Adaptive, Fast, Unstack };
 
-    public enum DefineStrong { RoundScore, RoundSPM, RoundKills, RoundKDR, PlayerRank };
+    public enum DefineStrong { RoundScore, RoundSPM, RoundKills, RoundKDR, PlayerRank, RoundKPM };
     
     public enum PluginState { Disabled, JustEnabled, Active, Error, Reconnected };
     
@@ -319,6 +319,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         // Computed
         public double KDRRound;
         public double SPMRound;
+        public double KPMRound;
         
         // Accumulated
         public double ScoreTotal; // not including current round
@@ -347,6 +348,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             Rank = -1;
             KDRRound = -1;
             SPMRound = -1;
+            KPMRound = -1;
             ScoreTotal = 0;
             KillsTotal = 0;
             DeathsTotal = 0;
@@ -379,6 +381,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             DeathsRound = -1;
             KDRRound = -1;
             SPMRound = -1;
+            KPMRound = -1;
             IsDeployed = false;
             SpawnChatMessage = String.Empty;
             SpawnYellMessage = String.Empty;
@@ -1835,7 +1838,7 @@ private void CommandToLog(string cmd) {
             ConsoleDump("MULTIbalancerUtils.HTML_DOC.Length = " + MULTIbalancerUtils.HTML_DOC.Length);
         }
 
-        m = Regex.Match(cmd, @"^sort\s+([1-4])\s+(score|spm|kills|kdr|rank)", RegexOptions.IgnoreCase);
+        m = Regex.Match(cmd, @"^sort\s+([1-4])\s+(score|spm|kills|kdr|rank|kpm)", RegexOptions.IgnoreCase);
         if (m.Success) {
             String teamID = m.Groups[1].Value;
             String propID = m.Groups[2].Value;
@@ -1866,6 +1869,9 @@ private void CommandToLog(string cmd) {
                 case "rank":
                     fromList.Sort(DescendingPlayerRank);
                     break;
+                case "kpm":
+                    fromList.Sort(DescendingRoundKPM);
+                    break;
                 default:
                     fromList.Sort(DescendingRoundScore);
                     break;
@@ -1887,6 +1893,9 @@ private void CommandToLog(string cmd) {
                         break;
                     case "rank":
                         ConsoleDump("#" + String.Format("{0,2}", n) + ") Rank: " + String.Format("{0:F0,6}", p.Rank) + ", ^b" + p.FullName);
+                        break;
+                    case "kpm":
+                        ConsoleDump("#" + String.Format("{0,2}", n) + ") KPM: " + String.Format("{0:F0,6}", p.KPMRound) + ", ^b" + p.FullName);
                         break;
                     default:
                         ConsoleDump("#" + String.Format("{0,2}", n) + ") Score: " + String.Format("{0:F0,6}", p.ScoreRound) + ", ^b" + p.FullName);
@@ -2821,6 +2830,10 @@ private void BalanceAndUnstack(String name) {
             fromList.Sort(DescendingPlayerRank);
             strongMsg = "Determing strong by: Player Rank";
             break;
+        case DefineStrong.RoundKPM:
+            fromList.Sort(DescendingRoundKPM);
+            strongMsg = "Determing strong by: Round KPM";
+            break;
         default:
             fromList.Sort(DescendingRoundScore);
             strongMsg = "Determing strong by: Round Score";
@@ -3388,6 +3401,7 @@ private void UpdatePlayerModel(String name, int team, int squad, String eaGUID, 
         m.KDRRound = m.KillsRound / Math.Max(1, m.DeathsRound);
         double mins = (m.FirstSpawnTimestamp == DateTime.MinValue) ? 1 : Math.Max(1, DateTime.Now.Subtract(m.FirstSpawnTimestamp).TotalMinutes);
         m.SPMRound = m.ScoreRound / mins;
+        m.KPMRound = m.KillsRound / mins;
 
         // Accumulated
         // TBD
@@ -4594,6 +4608,9 @@ private void ScramblerLoop () {
                         break;
                     case DefineStrong.PlayerRank:
                         all.Sort(DescendingPlayerRank);
+                        break;
+                    case DefineStrong.RoundKPM:
+                        all.Sort(DescendingRoundKPM);
                         break;
                     default:
                         all.Sort(DescendingRoundScore);
@@ -6301,6 +6318,19 @@ public static int DescendingPlayerRank(PlayerModel lhs, PlayerModel rhs) {
     return 0;
 }
 
+// Sort delegate
+public static int DescendingRoundKPM(PlayerModel lhs, PlayerModel rhs) {
+    if (lhs == null) {
+        return ((rhs == null) ? 0 : -1);
+    } else if (rhs == null) {
+        return ((lhs == null) ? 0 : 1);
+    }
+    if (lhs.KPMRound < rhs.KPMRound) return 1;
+    if (lhs.KPMRound > rhs.KPMRound) return -1;
+    return 0;
+}
+
+
 
 private void GatherProconGoodies() {
     fFriendlyMaps.Clear();
@@ -6405,6 +6435,7 @@ private String GetPlayerStatsString(String name) {
     double deaths = -1;
     double kdr = -1;
     double spm = -1;
+    double kpm = -1;
     int team = -1;
     bool ok = false;
     TimeSpan tir = TimeSpan.FromSeconds(0); // Time In Round
@@ -6420,6 +6451,7 @@ private String GetPlayerStatsString(String name) {
             deaths = m.DeathsRound;
             kdr = m.KDRRound;
             spm = m.SPMRound;
+            kpm = m.KPMRound;
             tir = now.Subtract((m.FirstSpawnTimestamp != DateTime.MinValue) ? m.FirstSpawnTimestamp : now);
             team = m.Team;
         }
@@ -6431,7 +6463,7 @@ private String GetPlayerStatsString(String name) {
     String sTIR = (rm.Success) ? rm.Groups[1].Value : "?";
     String vn = m.FullName;
 
-    return("STATS: ^b" + vn + "^n [T:" + team + ", S:" + score + ", K:" + kills + ", D:" + deaths + ", KDR:" + kdr.ToString("F2") + ", SPM:" + spm.ToString("F0") + ", TIR: " + sTIR + "]");
+    return("STATS: ^b" + vn + "^n [T:" + team + ", S:" + score + ", K:" + kills + ", D:" + deaths + ", KDR:" + kdr.ToString("F2") + ", SPM:" + spm.ToString("F0") + ", KPM:" + kpm.ToString("F1") + ", TIR: " + sTIR + "]");
 }
 
 
@@ -6688,6 +6720,9 @@ private void ListSideBySide(List<String> us, List<String> ru) {
             case DefineStrong.PlayerRank:
                 stat = player.Rank;
                 break;
+            case DefineStrong.RoundKPM:
+                stat = player.KPMRound;
+                break;
             default:
                 break;
         }
@@ -6718,6 +6753,9 @@ private void ListSideBySide(List<String> us, List<String> ru) {
             case DefineStrong.PlayerRank:
                 stat = player.Rank;
                 break;
+            case DefineStrong.RoundKPM:
+                stat = player.KPMRound;
+                break;
             default:
                 break;
         }
@@ -6746,6 +6784,10 @@ private void ListSideBySide(List<String> us, List<String> ru) {
         case DefineStrong.PlayerRank:
             all.Sort(DescendingPlayerRank);
             kstat = "R";
+            break;
+        case DefineStrong.RoundKPM:
+            all.Sort(DescendingRoundKPM);
+            kstat = "KPM";
             break;
         default:
             all.Sort(DescendingRoundScore);
