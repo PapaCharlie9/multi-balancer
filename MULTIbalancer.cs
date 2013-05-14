@@ -2900,6 +2900,18 @@ private void BalanceAndUnstack(String name) {
         return;   
     }
 
+    // Exclude if in squad with same tags
+    if (SameClanTagsInSquad) {
+        int cmt =  CountMatchingTags(player);
+        if (cmt >= 2) {
+            String et = ExtractTag(player);
+            DebugBalance("Excluding ^b" + name + "^n, " + cmt + " players in squad with tag [" + et + "]");
+            fExcludedRound = fExcludedRound + 1;
+            IncrementTotal();
+            return;
+        }
+    }
+
     /* Balance */
 
     int toTeamDiff = 0;
@@ -3014,17 +3026,6 @@ private void BalanceAndUnstack(String name) {
                 if (DebugLevel >= 7) DebugBalance("Exempting ^b" + name + "^n, don't move player to his own team!");
                 IncrementTotal(); // no matching stat, reflect total deaths handled
                 return;
-            }
-
-            // Don't move if in squad with same tags
-            if (SameClanTagsInSquad) {
-                int cmt =  CountMatchingTags(player);
-                if (cmt >= 2) {
-                    String et = ExtractTag(player);
-                    DebugBalance("Exempting ^b" + name + "^n, " + cmt + " players in squad with tag [" + et + "]");
-                    fExemptRound = fExemptRound + 1;
-                    IncrementTotal();
-                }
             }
         }
 
