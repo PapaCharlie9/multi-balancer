@@ -2912,6 +2912,14 @@ private void BalanceAndUnstack(String name) {
         }
     }
 
+    // Exempt if this player already been moved for balance or unstacking
+    if ((!mustMove && player.MovesRound >= 1) || (mustMove && player.MovesRound >= 2)) {
+        DebugBalance("Exempting ^b" + name + "^n, already moved this round");
+        fExemptRound = fExemptRound + 1;
+        IncrementTotal();
+        return;
+    }
+
     /* Balance */
 
     int toTeamDiff = 0;
@@ -2976,14 +2984,6 @@ private void BalanceAndUnstack(String name) {
         // Already on the smallest team
         if (!mustMove && player.Team == smallestTeam) {
             DebugBalance("Exempting ^b" + name + "^n, already on the smallest team");
-            fExemptRound = fExemptRound + 1;
-            IncrementTotal();
-            return;
-        }
-
-        // Has this player already been moved for balance or unstacking?
-        if (!mustMove && player.MovesRound >= 1) {
-            DebugBalance("Exempting ^b" + name + "^n, already moved this round");
             fExemptRound = fExemptRound + 1;
             IncrementTotal();
             return;
@@ -3157,14 +3157,6 @@ private void BalanceAndUnstack(String name) {
     // Are the minimum number of players present to decide strong vs weak?
     if (!mustMove && balanceSpeed != Speed.Fast && fromList.Count < minPlayers) {
         DebugBalance("Not enough players in team to determine strong vs weak, skipping ^b" + name + "^n, ");
-        fExemptRound = fExemptRound + 1;
-        IncrementTotal();
-        return;
-    }
-
-    // Has this player already been moved for balance or unstacking?
-    if (!mustMove && player.MovesRound >= 1) {
-        DebugBalance("Already moved this round, skipping ^b" + name + "^n, ");
         fExemptRound = fExemptRound + 1;
         IncrementTotal();
         return;
