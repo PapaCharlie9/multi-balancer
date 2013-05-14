@@ -614,6 +614,7 @@ public String[] Whitelist;
 public String[] DisperseEvenlyList;
 public PresetItems Preset;
 public double SecondsUntilAdaptiveSpeedBecomesFast;
+public bool EnableUnstacking;
 
 public bool OnWhitelist;
 public bool TopScorers;
@@ -781,6 +782,11 @@ public MULTIbalancer() {
     
     /* Settings */
 
+    /* ===== SECTION 0 - Presets ===== */
+
+    Preset = PresetItems.Standard;
+    EnableUnstacking = false;
+
     /* ===== SECTION 1 - Settings ===== */
 
     DebugLevel = 2;
@@ -796,7 +802,6 @@ public MULTIbalancer() {
     EnableWhitelistingOfReservedSlotsList = true;
     Whitelist = new String[] {"[-- name, tag, or EA_GUID --]"};
     DisperseEvenlyList = new String[] {"[-- name, tag, or EA_GUID --]"};
-    Preset = PresetItems.Standard;
     SecondsUntilAdaptiveSpeedBecomesFast = 3*60; // 3 minutes default
     
     /* ===== SECTION 2 - Exclusions ===== */
@@ -1133,6 +1138,8 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         String var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(PresetItems))) + ")";
         
         lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(PresetItems), Preset)));
+
+        lstReturn.Add(new CPluginVariable("0 - Presets|Enable Unstacking", EnableUnstacking.GetType(), EnableUnstacking));
         
         /* ===== SECTION 1 - Settings ===== */
         
@@ -1609,7 +1616,7 @@ private bool ValidateSettings(String strVariable, String strValue) {
             else if (strVariable.Contains("Number Of Swaps Per Group")) ValidateIntRange(ref perMode.NumberOfSwapsPerGroup, mode + ":" + "Number Of Swaps Per Group", 0, perMode.MaxUnstackingSwapsPerRound, def.NumberOfSwapsPerGroup, false);
             else if (strVariable.Contains("Delay Seconds Between Swap Groups")) ValidateDoubleRange(ref perMode.DelaySecondsBetweenSwapGroups, mode + ":" + "Delay Seconds Between Swap Groups", 60, 24*60*60, def.DelaySecondsBetweenSwapGroups, false);
             else if (strVariable.Contains("Percent Of Top Of Team Is Strong")) ValidateDoubleRange(ref perMode.PercentOfTopOfTeamIsStrong, mode + ":" + "Percent Of Top Of Team Is Strong", 5, 50, def.PercentOfTopOfTeamIsStrong, false);
-            else if (strVariable.Contains("Disperse Evenly By Rank")) ValidateInt(ref perMode.DisperseEvenlyByRank, mode + ":" + "Disperse Evenly By Rank", def.DisperseEvenlyByRank);
+            else if (strVariable.Contains("Disperse Evenly By Rank")) ValidateIntRange(ref perMode.DisperseEvenlyByRank, mode + ":" + "Disperse Evenly By Rank", 0, 145, def.DisperseEvenlyByRank, true);
             else if (strVariable.Contains("Definition Of High Population For Players")) ValidateIntRange(ref perMode.DefinitionOfHighPopulationForPlayers, mode + ":" + "Definition Of High Population For Players", 0, perMode.MaxPlayers, def.DefinitionOfHighPopulationForPlayers, false); 
             else if (strVariable.Contains("Definition Of Low Population For Players")) ValidateIntRange(ref perMode.DefinitionOfLowPopulationForPlayers, mode + ":" + "Definition Of Low Population For Players", 0, perMode.MaxPlayers, def.DefinitionOfLowPopulationForPlayers, false);
             else if (strVariable.Contains("Definition Of Early Phase")) ValidateInt(ref perMode.DefinitionOfEarlyPhaseFromStart, mode + ":" + "Definition Of Early Phase From Start", def.DefinitionOfEarlyPhaseFromStart);
@@ -1638,6 +1645,11 @@ private bool ValidateSettings(String strVariable, String strValue) {
 private void ResetSettings() {
     MULTIbalancer rhs = new MULTIbalancer();
 
+    /* ===== SECTION 0 - Presets ===== */
+
+    Preset = rhs.Preset;
+    // EnableUnstacking = rhs.EnableUnstacking; // don't reset EnableUnstacking
+
     /* ===== SECTION 1 - Settings ===== */
 
     DebugLevel = rhs.DebugLevel;
@@ -1652,7 +1664,6 @@ private void ResetSettings() {
     EnableWhitelistingOfReservedSlotsList = rhs.EnableWhitelistingOfReservedSlotsList;
     // Whitelist = rhs.Whitelist; // don't reset the whitelist
     // DisperseEvenlyList = rhs.DisperseEvenlyList; // don't reset the dispersal list
-    Preset = rhs.Preset;
     
     /* ===== SECTION 2 - Exclusions ===== */
     
@@ -1966,7 +1977,7 @@ private void CommandToLog(string cmd) {
             ConsoleDump("^1^breset settings^n^0: Reset all plugin settings to default, except for ^bWhitelist^n and ^bDisperse Evenly List^n");
             ConsoleDump("^1^bscrambled^n^0: Examine list of players before and after last successful scramble");
             ConsoleDump("^1^bsizes^n^0: Examine the sizes of various data structures");
-            ConsoleDump("^1^bsort^n ^iteam^n ^itype^n^0: Examine sorted ^iteam^n (1-4) by ^itype^n (one of: score, spm, kills, kdr, rank)");
+            ConsoleDump("^1^bsort^n ^iteam^n ^itype^n^0: Examine sorted ^iteam^n (1-4) by ^itype^n (one of: score, spm, kills, kdr, rank, kpm)");
             ConsoleDump("^1^btags^n^0: Examine list of players sorted by clan tags");
             return;
         }
@@ -7385,6 +7396,7 @@ static class MULTIbalancerUtils {
 <li>Round Kills</li>
 <li>Round KDR</li>
 <li>Player Rank</li>
+<li>Round KPM</li>
 </ul></p>
 
 <h3>Ticket Percentage (Ratio)</h3>
@@ -7398,6 +7410,8 @@ static class MULTIbalancerUtils {
 
 <h3>0 - Presets</h3>
 <p>See the <b>Quick Start</b> section above.</p>
+
+<p><b>Enable Unstacking</b>: True or False, default False. Enables the per-mode unstacking features described in sections 3 and 8. Setting to False will not reset individual unstacking settings, it just disables the unstacking-related settings from operating. Setting to True enables all of your untacking-related settings.</p>
 
 <h3>1 - Settings</h3>
 <p>These are general settings.</p>
@@ -7505,7 +7519,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Bad Because: Biggest Team</b>: Replacement for %reason% if the player tried to move to the biggest team.</p>
 
-<p><b>Bad Because: Rank</b>: Replacement for %reason% if the player has Rank greater than or equal to the per-mode <b>Disperse Evenly For Rank</b> setting.</p>
+<p><b>Bad Because: Rank</b>: Replacement for %reason% if the player has Rank greater than or equal to the per-mode <b>Disperse Evenly By Rank</b> setting.</p>
 
 <p><b>Bad Because: Rank</b>: Replacement for %reason% if the player is a member of the <b>Disperse Evenly List</b>.</p>
 
@@ -7522,7 +7536,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Forbid Switch To Biggest Team</b>: True or False, default True. If True, a player is not allowed to switch to the biggest team. If False, they are allowed.</p>
 
-<p><b>Forbid Switch After Dispersal</b>: True or False, default True. If True, after a player is moved to a different team due to <b>Disperse Evenly For Rank</b> or the <b>Disperse Evenly List</b>, this setting forbids them from moving back to their original team. If False, they may move back to their original team.</p>
+<p><b>Forbid Switch After Dispersal</b>: True or False, default True. If True, after a player is moved to a different team due to <b>Disperse Evenly By Rank</b> or the <b>Disperse Evenly List</b>, this setting forbids them from moving back to their original team. If False, they may move back to their original team.</p>
 
 <p><b>Enable Immediate Unswitch</b>: True or False, default True. If True, if a player tries to make a forbidden team switch, the plugin will immediately move them back without any warning. They will only see the <b>After Unswitching</b> message(s). If False, the plugin will wait until the player spawns, it will then post the <b>Detected Bad Team Switch</b> message(s), it will wait <b>Yell Duration Seconds</b> seconds, then it will admin kill the player and move him back. <b>NOTE: Does not apply to SQDM. SQDM is always treated as this were set to False.</b></p>
 
@@ -7560,7 +7574,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Percent Of Top Of Team Is Strong</b>: Number greater than or equal to 5 and less than or equal to 50, or 0. After sorting a team with the <b>Determine Strong Players By</b> choice, this percentage determines the portion of the top players to define as strong. Default is 50 so that any player above the median counts as strong. CAUTION: This setting is changed when the <b>Preset</b> is changed, previous values are overwritten for all modes.</p>
 
-<p><b>Disperse Evenly For Rank &gt;=</b>: Number greater than or equal to 0 and less than or equal to 145, default 145. Any players with this absolute rank (Colonel 100 is 145) or higher will be dispersed evenly across teams. This is useful to insure that Colonel 100 ranked players don't all stack on one team. Set to 0 to disable.</p>
+<p><b>Disperse Evenly By Rank &gt;=</b>: Number greater than or equal to 0 and less than or equal to 145, default 0. Any players with this absolute rank (Colonel 100 is 145) or higher will be dispersed evenly across teams. This is useful to insure that Colonel 100 ranked players don't all stack on one team. Set to 0 to disable.</p>
 
 <p><b>Enable Disperse Evenly List</b>:  True or False, default False. If set to true, the players are matched against the <b>Disperse Evenly List</b> and any that match will be dispersed evenly across teams. This is useful to insure that certain clans or groups of players don't always dominate whatever team they are not on.</p>
 
