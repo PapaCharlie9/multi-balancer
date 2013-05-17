@@ -1091,7 +1091,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.2.0";
+    return "1.0.2.1";
 }
 
 public String GetPluginAuthor() {
@@ -1847,6 +1847,7 @@ private void CommandToLog(string cmd) {
             ConsoleDump("fKnownPlayers.Count = " + kp + ", not playing = " + (kp-ap) + ", more than 12 hours old = " + old);
             ConsoleDump("fFetchQ.Count = " + fFetchQ.Count + ", verified tags = " + validTags);
             ConsoleDump("MULTIbalancerUtils.HTML_DOC.Length = " + MULTIbalancerUtils.HTML_DOC.Length);
+            return;
         }
 
         m = Regex.Match(cmd, @"^sort\s+([1-4])\s+(score|spm|kills|kdr|rank|kpm)", RegexOptions.IgnoreCase);
@@ -2048,7 +2049,7 @@ public void OnPluginEnable() {
     fEnabledTimestamp = DateTime.Now;
     fRoundStartTimestamp = DateTime.Now;
 
-    ConsoleWrite("^bEnabled!^n Version = " + GetPluginVersion());
+    ConsoleWrite("^b^2Enabled!^0^n Version = " + GetPluginVersion());
     DebugWrite("^b^3State = " + fPluginState, 6);
     DebugWrite("^b^3Game state = " + fGameState, 6);
 
