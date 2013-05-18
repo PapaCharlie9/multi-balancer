@@ -7144,7 +7144,7 @@ private void LogStatus(bool isFinal) {
     
     counts.Sort();
     int diff = Math.Abs(counts[0] - counts[counts.Count-1]);
-    String next = (diff > MaxDiff() && fGameState == GameState.Playing && balanceSpeed != Speed.Stop && !fBalanceIsActive) ? "^n^0 ... autobalance will activate on next death!" : "^n";
+    String next = (diff > MaxDiff() && fGameState == GameState.Playing && balanceSpeed != Speed.Stop && !fBalanceIsActive) ? "^n^0 ... autobalance will activate as soon as possible!" : "^n";
     
     DebugWrite("^bStatus^n: Team difference = " + ((diff > MaxDiff()) ? "^8^b" : "^b") + diff + next, 4);
 
