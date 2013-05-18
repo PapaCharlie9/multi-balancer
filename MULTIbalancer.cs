@@ -1112,7 +1112,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.2.1";
+    return "1.0.2.2";
 }
 
 public String GetPluginAuthor() {
@@ -4580,7 +4580,7 @@ private void ScramblerLoop () {
 
                 // Build a filtered list
                 List<String> toScramble = new List<String>();
-                List<String> exempt = new List<String>();
+                //List<String> exempt = new List<String>();
                 PlayerModel player = null;
 
                 lock (fAllPlayers) {
@@ -4596,6 +4596,8 @@ private void ScramblerLoop () {
                                 fDebugScramblerBefore[player.Team-1].Add(fullName);
                             }
 
+#region old_exempt
+                            /*
                             // Skip Whitelisted
                             if (OnWhitelist) {
                                 List<String> vip = new List<String>(Whitelist);
@@ -4607,7 +4609,7 @@ private void ScramblerLoop () {
                                 }
                             }
 
-                            /*
+                            
                             // Skip if on squad with clan tags
                             if (KeepClanTagsInSameSquad && CountMatchingTags(player) >= 2) {
                                 exempt.Add(egg);
@@ -4615,6 +4617,7 @@ private void ScramblerLoop () {
                                 continue;
                             }
                             */
+#endregion
 
                             // Add this player to list of scramblers
                             toScramble.Add(egg);
@@ -4626,58 +4629,88 @@ private void ScramblerLoop () {
 
                 if (toScramble.Count == 0) continue;
 
-                // Merge into a single list
+                // Build squad table and overall list
                 List<SquadRoster> all = new List<SquadRoster>();
                 Dictionary<int,SquadRoster> squads = new Dictionary<int,SquadRoster>(); // key int is (team * 1000) + squad
-                int freeCount = 0;
+                List<PlayerModel> loneWolves = new List<PlayerModel>();
+                int key = 0;
 
                 foreach (String egg in toScramble) {
                     try {
                         if (!IsKnownPlayer(egg)) continue; // might have left while we were working
                         player = GetPlayer(egg);
                         if (player == null) continue;
-                        int key = 9000; // free pool
+                        if (player.Team == -1) player.Team = 0;
+                        if (player.Squad == -1) player.Squad = 0;
+                        key = 9000; // free pool
                         int squadId = player.Squad;
                         if (KeepSquadsTogether) {
                             key = (Math.Max(0, player.Team) * 1000) + Math.Max(0, player.Squad);
                             if (key < 1000) {
-                                // each "free" player gets their own 1-man fake squad
-                                key = 9000 + freeCount;
-                                freeCount = freeCount + 1;
-                                squadId = 0;
+                                loneWolves.Add(player);
+                                continue;
                             } 
                             AddPlayerToSquadRoster(squads, player, key, squadId, true);
                         } else if (KeepClanTagsInSameSquad) {
                             if (CountMatchingTags(player) >= 2) {
                                 key = (Math.Max(0, player.Team) * 1000) + Math.Max(0, player.Squad); // 0 is okay, makes lone-wolf pool
                                 if (key < 1000) {
-                                    // each "free" player gets their own 1-man fake squad
-                                    key = 9000 + freeCount;
-                                    freeCount = freeCount + 1;
-                                    squadId = 0;
+                                    loneWolves.Add(player);
+                                    continue;
                                 } 
                             } else {
-                                // each "free" player gets their own 1-man fake squad
-                                key = 9000 + freeCount;
-                                freeCount = freeCount + 1;
-                                squadId = 0;
+                                loneWolves.Add(player);
+                                continue;
                             }
                             AddPlayerToSquadRoster(squads, player, key, squadId, true);
                         } else {
-                            // each "free" player gets their own 1-man fake squad
-                            key = 9000 + freeCount;
-                            freeCount = freeCount + 1;
-                            squadId = 0;
-                            AddPlayerToSquadRoster(squads, player, key, squadId, true);
+                            loneWolves.Add(player);
                         }
                     } catch (Exception e) {
                         if (DebugLevel >= 8) ConsoleException(e);
                     }
                 }
 
+                // Add lone wolves to empty squads
+                int emptyId = 1;
+                SquadRoster home = null;
+                bool filling = false;
+                foreach (PlayerModel wolf in loneWolves) {
+                    bool goback = true;
+                    while (goback) {
+                        if (!filling) {
+                            // Need to find an empty squad
+                            key = (wolf.Team * 1000) + emptyId;
+                            while (squads.ContainsKey(key)) {
+                                emptyId = emptyId + 1;
+                                if (emptyId > (SQUAD_NAMES.Length - 1)) break;
+                                key = (wolf.Team * 1000) + emptyId;
+                            }
+                            filling = true;
+                            ConsoleDebug("ScramblerLoop: using empty squad " + wolf.Team + "/" + emptyId);
+                        }
+                        if (emptyId > (SQUAD_NAMES.Length - 1)) break;
+                        if (filling) {
+                            // Add wolf to the squad we are filling until full
+                            key = (wolf.Team * 1000) + emptyId;
+                            home = AddPlayerToSquadRoster(squads, wolf, key, emptyId, false);
+                            if (home == null || !home.Roster.Contains(wolf)) {
+                                // Full
+                                filling = false;
+                                continue;
+                            } else {
+                                // Next wolf
+                                ConsoleDebug("ScramblerLoop: lone wolf ^b" + wolf.Name + "^n filled in empty squad " + wolf.Team + "/" + emptyId);
+                                goback = false;
+                                continue;
+                            }
+                        }
+                    }
+                }
+
+                // Sum up the metric for each squad
                 foreach (int k in squads.Keys) {
                     SquadRoster sr = squads[k];
-                    // sum up the metric
                     switch (ScrambleBy) {
                         case DefineStrong.RoundScore:
                             foreach (PlayerModel p in sr.Roster) {
@@ -4722,15 +4755,19 @@ private void ScramblerLoop () {
 
                 if (all.Count == 0) continue;
 
-                // Sort list
+                // Sort squads
                 all.Sort(DescendingMetricSquad);
             
                 // Prepare the new team lists
                 List<PlayerModel> usScrambled = new List<PlayerModel>();
+                Dictionary<int,SquadRoster> usSquads = new Dictionary<int,SquadRoster>();
                 double usMetric = 0;
                 List<PlayerModel> ruScrambled = new List<PlayerModel>();
+                Dictionary<int,SquadRoster> ruSquads = new Dictionary<int,SquadRoster>();
                 double ruMetric = 0;
 
+#region more_exempt_code
+                /*
                 foreach (String egg in exempt) {
                     try {
                         if (!IsKnownPlayer(egg)) continue; // might have left while we were working
@@ -4751,9 +4788,12 @@ private void ScramblerLoop () {
                 SumMetricByTeam(usScrambled, ruScrambled, out usMetric, out ruMetric);
 
                 DebugScrambler("Exempt metrics for " + ScrambleBy + ": US = " + usMetric.ToString("F1") + ", RU = " + ruMetric.ToString("F1"));
+                */
+#endregion
 
                 // Dole out squads, keeping metric in balance, starting with the losing team
-                List<PlayerModel> target = (fWinner == 0 || fWinner == 1) ? usScrambled : ruScrambled;
+                List<PlayerModel> target = (fWinner == 0 || fWinner == 1) ? ruScrambled : usScrambled;
+                Dictionary<int,SquadRoster> squadTable = (fWinner == 0 || fWinner == 1) ? ruSquads : usSquads;
                 int teamMax = MaximumServerSize/2;
 
                 foreach (SquadRoster squad in all) { // strongest to weakest
@@ -4761,7 +4801,14 @@ private void ScramblerLoop () {
                         DebugScrambler("BOTH teams full! Skipping remaining free pool!");
                         break;
                     }
+                    // Is there a squad id collision?
+                    if (squadTable.ContainsKey(squad.Squad)) {
+                        RemapSquad(squadTable, squad);
+                    }
+                    squadTable[squad.Squad] = squad;
+
                     foreach (PlayerModel p in squad.Roster) {
+                        p.ScrambledSquad = squad.Squad;
                         if (target.Count < teamMax && IsKnownPlayer(p.Name)) target.Add(p);
                     }
                     // Recalc team metrics
@@ -4769,30 +4816,20 @@ private void ScramblerLoop () {
                     if (DebugLevel >= 7) ConsoleDebug("Updated scrambler metrics " + ScrambleBy + ": US(" + usScrambled.Count + ") = " + usMetric.ToString("F1") + ", RU(" + ruScrambled.Count + ") = " + ruMetric.ToString("F1"));
                     if (usScrambled.Count >= teamMax && ruScrambled.Count < teamMax) {
                         target = ruScrambled;
+                        squadTable = ruSquads;
                     } else if (ruScrambled.Count >= teamMax && usScrambled.Count < teamMax) {
                         target = usScrambled;
+                        squadTable = usSquads;
                     } else if (usMetric < ruMetric) {
                         target = usScrambled;
+                        squadTable = usSquads;
                     } else {
                         target = ruScrambled;
+                        squadTable = ruSquads;
                     }
                 }
 
-                // Fix up squads on both teams
-                squads.Clear();
-                Dictionary<int,int> remap = new Dictionary<int,int>();
-                RemapSquads(usScrambled, remap);
-                foreach (PlayerModel p in usScrambled) {
-                    FixUpSquads(squads, p, remap);
-                }
-                squads.Clear();
-                remap.Clear();
-                RemapSquads(ruScrambled, remap);
-                foreach (PlayerModel p in ruScrambled) {
-                    FixUpSquads(squads, p, remap);
-                }
-                squads.Clear();
-                remap.Clear();
+
 
 #region old_code
                 /*
@@ -4994,68 +5031,16 @@ private void SumMetricByTeam(List<PlayerModel> usScrambled, List<PlayerModel> ru
     }
 }
 
-private void RemapSquads(List<PlayerModel> team, Dictionary<int,int> remap) {
-    // Build a map from old squad id to new id, in case squad is full
-    int num = 0;
-    Dictionary<int,int> squadCount = new Dictionary<int,int>();
-    for (int i = 0; i < SQUAD_NAMES.Length; ++i) {
-        squadCount[i] = 0;
-    }
-    foreach (PlayerModel p in team) {
-        squadCount[p.Squad] = squadCount[p.Squad] + 1;
-    }
-    int emptyId = 0;
-    foreach (int k in squadCount.Keys) {
-        if (squadCount[k] > 4) { // too many!
-            // Find an empty squad
-            if (remap.TryGetValue(k, out emptyId)) continue; // already have a remapping
-            emptyId = 0;
-            foreach (int j in squadCount.Keys) {
-                if (j == 0) continue;
-                num = squadCount[j];
-                if (num == 0) {
-                    emptyId = j;
-                    squadCount[j] = num + 1; // so we don't remap to this again
-                    break;
-                }
-            }
-            // Remap
-            remap[k] = emptyId;
+private void RemapSquad(Dictionary<int,SquadRoster> squadTable, SquadRoster squad) {
+    int emptyId = 1;
+    while (squadTable.ContainsKey(emptyId)) {
+        emptyId = emptyId + 1;
+        if (emptyId > (SQUAD_NAMES.Length - 1)) {
+            if (DebugLevel >= 8) ConsoleDebug("RemapSquad: ran out of empty squads!");
+            return;
         }
     }
-}
-
-
-private void FixUpSquads(Dictionary<int, SquadRoster> squads, PlayerModel player, Dictionary<int,int> remap) {
-    // Using the remap, fix up squads that have too many players
-    if (!IsKnownPlayer(player.Name)) return; // player left
-    SquadRoster squad = null;
-
-    if (player.Squad != 0) {
-        AddPlayerToSquadRoster(squads, player, player.Squad, player.Squad, false);
-
-        if (squad == null) return;
-        if (squad.Roster.Contains(player)) return;
-    }
-
-    // Otherwise, the squad is full, need to remap this player to another squad
-    int squadId = 0;
-    int next = Math.Min(player.Squad, SQUAD_NAMES.Length - 1);
-
-    while (squad == null || squad.Roster.Count >= 4) {
-        next = Math.Min(next + 1, SQUAD_NAMES.Length - 1);
-        if (next == SQUAD_NAMES.Length - 1) return;
-        squadId = player.Squad;
-        if (remap.TryGetValue(player.Squad, out squadId)) {
-            if (player.Squad == squadId) squadId = next;
-        } else {
-            squadId = next;
-        }
-        if (DebugLevel >= 7) ConsoleDebug("FixUpSquads: remapping " + player.Name + " from squad " + player.Squad + " to " + squadId);
-        squad = AddPlayerToSquadRoster(squads, player, squadId, squadId, false);
-        if (squad == null) return;
-        if (squad.Roster.Contains(player)) return;
-    }
+    squad.Squad = emptyId;
 }
 
 
