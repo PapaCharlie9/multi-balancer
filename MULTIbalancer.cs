@@ -309,6 +309,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         public MoveInfo DelayedMove;
         public int LastMoveTo;
         public int LastMoveFrom;
+        public int ScrambledSquad;
         
         // Battlelog
         public String Tag;
@@ -363,6 +364,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             LastMoveTo = 0;
             LastMoveFrom = 0;
             FetchStatus = new FetchInfo();
+            ScrambledSquad = -1;
         }
         
         public PlayerModel(String name, int team) : this() {
@@ -404,7 +406,24 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             Team = team;
             Roster = roster;
         }
-    } // end TeamList
+    } // end TeamRoster
+
+    public class SquadRoster {
+        public int Squad = 0; 
+        public double Metric = 0;
+        public List<PlayerModel> Roster = null;
+
+        public SquadRoster(int squad) {
+            Squad = squad;
+            Metric = 0;
+            Roster = new List<PlayerModel>();
+        }
+
+        public SquadRoster(int squad, List<PlayerModel> roster) {
+            Squad = squad;
+            Roster = roster;
+        }
+    } // end SquadRoster
 
     public class MoveInfo {
         public MoveType For = MoveType.Balance;
@@ -635,6 +654,7 @@ public Speed[] LatePhaseBalanceSpeed;
 public bool OnlyOnNewMaps; // false means scramble every round
 public double OnlyOnFinalTicketPercentage; // 0 means scramble regardless of final score
 public DefineStrong ScrambleBy;
+public bool KeepSquadsTogether;
 public bool KeepClanTagsInSameSquad;
 public double DelaySeconds;
 
@@ -832,6 +852,7 @@ public MULTIbalancer() {
     OnlyOnNewMaps = true; // false means scramble every round
     OnlyOnFinalTicketPercentage = 120; // 0 means scramble regardless of final score
     ScrambleBy = DefineStrong.RoundScore;
+    KeepSquadsTogether = true;
     KeepClanTagsInSameSquad = true;
     DelaySeconds = 30;
 
@@ -1225,7 +1246,11 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         
         lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(DefineStrong), ScrambleBy)));
 
-        lstReturn.Add(new CPluginVariable("4 - Scrambler|Keep Clan Tags In Same Squad", KeepClanTagsInSameSquad.GetType(), KeepClanTagsInSameSquad));
+        lstReturn.Add(new CPluginVariable("4 - Scrambler|Keep Squads Together", KeepSquadsTogether.GetType(), KeepSquadsTogether));
+
+        if (!KeepSquadsTogether) {
+            lstReturn.Add(new CPluginVariable("4 - Scrambler|Keep Clan Tags In Same Squad", KeepClanTagsInSameSquad.GetType(), KeepClanTagsInSameSquad));
+        }
 
         lstReturn.Add(new CPluginVariable("4 - Scrambler|Delay Seconds", DelaySeconds.GetType(), DelaySeconds));
 
@@ -4502,16 +4527,21 @@ private void Scrambler(List<TeamScore> teamScores) {
 
 private void ScramblerLoop () {
     /*
-    Strategy: Scan each team and leave behind any players who are exempt. Everyone
-    else goes into a pool of players to be distributed across two teams. The pool is
-    sorted according to the ScrambleBy setting. After adjusting for exempted players,
-    players are assigned to teams in round-robin fashion, strongest to weakest.
+    Strategy: Scan each team and build filtered team and optionally squad lists.
+    The ScrambleBy metric of each item in the pool is calculated. The pool is
+    sorted according to the ScrambleBy setting. The best player/squad is assigned
+    to the losing team, then the team total is calculated. More strong players/squads
+    are added to the losing team until its metric sum is greater than the winning team,
+    then players/squads are added to the winning team until it is greater, and so on.
+    If at any time a team is full, the remainder of the players/squads are added to 
+    the other team.
+    
     Finally, each member of the new team is checked and if they need to be moved,
     a move command is issued.  Since this is between rounds, a special move command
     that bypasses all move tracking is used.
     */
     try {
-        DateTime last = DateTime.Now;
+        DateTime last = DateTime.MinValue;
         while (fIsEnabled) {
             double delay = 0;
             DateTime since = DateTime.MinValue;
@@ -4528,7 +4558,7 @@ private void ScramblerLoop () {
 
             if (since == DateTime.MinValue) continue;
 
-            if (DateTime.Now.Subtract(last).TotalMinutes < 5) {
+            if (last != DateTime.MinValue && DateTime.Now.Subtract(last).TotalMinutes < 5) {
                 DebugScrambler("^0Last scramble was less than 5 minutes ago, skipping!");
                 continue;
             }
@@ -4577,12 +4607,14 @@ private void ScramblerLoop () {
                                 }
                             }
 
+                            /*
                             // Skip if on squad with clan tags
                             if (KeepClanTagsInSameSquad && CountMatchingTags(player) >= 2) {
                                 exempt.Add(egg);
                                 DebugScrambler("Exempting ^b" + egg + "^n, in same squad with tag [" + ExtractTag(player) + "]");
                                 continue;
                             }
+                            */
 
                             // Add this player to list of scramblers
                             toScramble.Add(egg);
@@ -4595,50 +4627,109 @@ private void ScramblerLoop () {
                 if (toScramble.Count == 0) continue;
 
                 // Merge into a single list
-                List<PlayerModel> all = new List<PlayerModel>();
+                List<SquadRoster> all = new List<SquadRoster>();
+                Dictionary<int,SquadRoster> squads = new Dictionary<int,SquadRoster>(); // key int is (team * 1000) + squad
+                int freeCount = 0;
 
                 foreach (String egg in toScramble) {
                     try {
                         if (!IsKnownPlayer(egg)) continue; // might have left while we were working
                         player = GetPlayer(egg);
                         if (player == null) continue;
-                        all.Add(player);
+                        int key = 9000; // free pool
+                        int squadId = player.Squad;
+                        if (KeepSquadsTogether) {
+                            key = (Math.Max(0, player.Team) * 1000) + Math.Max(0, player.Squad);
+                            if (key < 1000) {
+                                // each "free" player gets their own 1-man fake squad
+                                key = 9000 + freeCount;
+                                freeCount = freeCount + 1;
+                                squadId = 0;
+                            } 
+                            AddPlayerToSquadRoster(squads, player, key, squadId, true);
+                        } else if (KeepClanTagsInSameSquad) {
+                            if (CountMatchingTags(player) >= 2) {
+                                key = (Math.Max(0, player.Team) * 1000) + Math.Max(0, player.Squad); // 0 is okay, makes lone-wolf pool
+                                if (key < 1000) {
+                                    // each "free" player gets their own 1-man fake squad
+                                    key = 9000 + freeCount;
+                                    freeCount = freeCount + 1;
+                                    squadId = 0;
+                                } 
+                            } else {
+                                // each "free" player gets their own 1-man fake squad
+                                key = 9000 + freeCount;
+                                freeCount = freeCount + 1;
+                                squadId = 0;
+                            }
+                            AddPlayerToSquadRoster(squads, player, key, squadId, true);
+                        } else {
+                            // each "free" player gets their own 1-man fake squad
+                            key = 9000 + freeCount;
+                            freeCount = freeCount + 1;
+                            squadId = 0;
+                            AddPlayerToSquadRoster(squads, player, key, squadId, true);
+                        }
                     } catch (Exception e) {
                         if (DebugLevel >= 8) ConsoleException(e);
                     }
                 }
 
+                foreach (int k in squads.Keys) {
+                    SquadRoster sr = squads[k];
+                    // sum up the metric
+                    switch (ScrambleBy) {
+                        case DefineStrong.RoundScore:
+                            foreach (PlayerModel p in sr.Roster) {
+                                sr.Metric = sr.Metric + p.ScoreRound;
+                            }
+                            break;
+                        case DefineStrong.RoundSPM:
+                            foreach (PlayerModel p in sr.Roster) {
+                                sr.Metric = sr.Metric + p.SPMRound;
+                            }
+                            break;
+                        case DefineStrong.RoundKills:
+                            foreach (PlayerModel p in sr.Roster) {
+                                sr.Metric = sr.Metric + p.KillsRound;
+                            }
+                            break;
+                        case DefineStrong.RoundKDR:
+                            foreach (PlayerModel p in sr.Roster) {
+                                sr.Metric = sr.Metric + p.KDRRound;
+                            }
+                            break;
+                        case DefineStrong.PlayerRank:
+                            foreach (PlayerModel p in sr.Roster) {
+                                sr.Metric = sr.Metric + p.Rank;
+                            }
+                            break;
+                        case DefineStrong.RoundKPM:
+                            foreach (PlayerModel p in sr.Roster) {
+                                sr.Metric = sr.Metric + p.KPMRound;
+                            }
+                            break;
+                        default:
+                            foreach (PlayerModel p in sr.Roster) {
+                                sr.Metric = sr.Metric + p.ScoreRound;
+                            }
+                            break;
+                    }
+
+                    all.Add(sr);
+                }
+                squads.Clear();
+
                 if (all.Count == 0) continue;
 
-                // Sort lists by specified metric
-                switch (ScrambleBy) {
-                    case DefineStrong.RoundScore:
-                        all.Sort(DescendingRoundScore);
-                        break;
-                    case DefineStrong.RoundSPM:
-                        all.Sort(DescendingRoundSPM);
-                        break;
-                    case DefineStrong.RoundKills:
-                        all.Sort(DescendingRoundKills);
-                        break;
-                    case DefineStrong.RoundKDR:
-                        all.Sort(DescendingRoundKDR);
-                        break;
-                    case DefineStrong.PlayerRank:
-                        all.Sort(DescendingPlayerRank);
-                        break;
-                    case DefineStrong.RoundKPM:
-                        all.Sort(DescendingRoundKPM);
-                        break;
-                    default:
-                        all.Sort(DescendingRoundScore);
-                        break;
-                }
-
+                // Sort list
+                all.Sort(DescendingMetricSquad);
             
                 // Prepare the new team lists
                 List<PlayerModel> usScrambled = new List<PlayerModel>();
+                double usMetric = 0;
                 List<PlayerModel> ruScrambled = new List<PlayerModel>();
+                double ruMetric = 0;
 
                 foreach (String egg in exempt) {
                     try {
@@ -4657,6 +4748,54 @@ private void ScramblerLoop () {
 
                 DebugScrambler("Before adjusting: " + all.Count + " to scramble, exempt US count = " + usScrambled.Count + ", RU count = " + ruScrambled.Count);
 
+                SumMetricByTeam(usScrambled, ruScrambled, out usMetric, out ruMetric);
+
+                DebugScrambler("Exempt metrics for " + ScrambleBy + ": US = " + usMetric.ToString("F1") + ", RU = " + ruMetric.ToString("F1"));
+
+                // Dole out squads, keeping metric in balance, starting with the losing team
+                List<PlayerModel> target = (fWinner == 0 || fWinner == 1) ? usScrambled : ruScrambled;
+                int teamMax = MaximumServerSize/2;
+
+                foreach (SquadRoster squad in all) { // strongest to weakest
+                    if (usScrambled.Count >= teamMax && ruScrambled.Count >= teamMax) {
+                        DebugScrambler("BOTH teams full! Skipping remaining free pool!");
+                        break;
+                    }
+                    foreach (PlayerModel p in squad.Roster) {
+                        if (target.Count < teamMax && IsKnownPlayer(p.Name)) target.Add(p);
+                    }
+                    // Recalc team metrics
+                    SumMetricByTeam(usScrambled, ruScrambled, out usMetric, out ruMetric);
+                    if (DebugLevel >= 7) ConsoleDebug("Updated scrambler metrics " + ScrambleBy + ": US(" + usScrambled.Count + ") = " + usMetric.ToString("F1") + ", RU(" + ruScrambled.Count + ") = " + ruMetric.ToString("F1"));
+                    if (usScrambled.Count >= teamMax && ruScrambled.Count < teamMax) {
+                        target = ruScrambled;
+                    } else if (ruScrambled.Count >= teamMax && usScrambled.Count < teamMax) {
+                        target = usScrambled;
+                    } else if (usMetric < ruMetric) {
+                        target = usScrambled;
+                    } else {
+                        target = ruScrambled;
+                    }
+                }
+
+                // Fix up squads on both teams
+                squads.Clear();
+                Dictionary<int,int> remap = new Dictionary<int,int>();
+                RemapSquads(usScrambled, remap);
+                foreach (PlayerModel p in usScrambled) {
+                    FixUpSquads(squads, p, remap);
+                }
+                squads.Clear();
+                remap.Clear();
+                RemapSquads(ruScrambled, remap);
+                foreach (PlayerModel p in ruScrambled) {
+                    FixUpSquads(squads, p, remap);
+                }
+                squads.Clear();
+                remap.Clear();
+
+#region old_code
+                /*
                 // If teams are uneven, fill in
                 int target = Math.Max(usScrambled.Count, ruScrambled.Count);
 
@@ -4683,6 +4822,7 @@ private void ScramblerLoop () {
                 }
             
                 DebugScrambler("After adjusting: " + all.Count + " to scramble, US count = " + usScrambled.Count + ", RU count = " + ruScrambled.Count);
+                
 
                 // Now dole out strong players to each team round robin, loser first
                 String ff = null;
@@ -4709,6 +4849,9 @@ private void ScramblerLoop () {
                         }
                     }
                 }
+                */
+#endregion
+
 
                 if (!fIsEnabled) return;
 
@@ -4742,37 +4885,176 @@ private void ScramblerLoop () {
     }
 }
 
+
 private void ScrambleMove(List<PlayerModel> scrambled, int where) {
     int toSquad = 0;
-    int[] squads = new int[SQUAD_NAMES.Length];
-    for (int i = 0; i < squads.Length; ++i) {squads[i] = 0;}
-
-    // Get squad counts
-    foreach (PlayerModel dude in scrambled) {
-        if (!IsKnownPlayer(dude.Name)) continue; // might have left
-        if (dude.Team == where && dude.Squad > 0 && dude.Squad < squads.Length) {
-            squads[dude.Squad] = squads[dude.Squad] + 1;
-        }
-    }
+    int toTeam = where;
 
     // Move to available squad
     foreach (PlayerModel dude in scrambled) {
         if (!IsKnownPlayer(dude.Name)) continue; // might have left
-        if (dude.Team != where) {
-            toSquad = 1;
-            while (toSquad < squads.Length && squads[toSquad] == 4) ++toSquad; // pick a squad with less than 4 players
-            if (toSquad >= squads.Length) toSquad = 0;
-                    
-            // Do the move
-            if (!EnableLoggingOnlyMode) {
-                DebugScrambler("^1^bMOVE^n^0 ^b" + dude.Name + "^n to " + GetTeamName(where) + " team, squad " + SQUAD_NAMES[toSquad]);
-                ServerCommand("admin.movePlayer", dude.Name, where.ToString(), toSquad.ToString(), "false");
-                Thread.Sleep(20);
-            } else {
-                DebugScrambler("^9(SIMULATED) ^1^bMOVE^n^0 ^b" + dude.Name + "^n to " + GetTeamName(where) + " team, squad " + SQUAD_NAMES[toSquad]);
-            }
-            squads[toSquad] = squads[toSquad] + 1;
+        toSquad = dude.ScrambledSquad;
+        if (toSquad < 0 || toSquad > (SQUAD_NAMES.Length - 1)) {
+            ConsoleDebug("ScrambleMove: why is ^b" + dude.Name + "^n scrambled to squad " + toSquad + "?");
+            continue;
         }
+        if (toSquad == 0) {
+            ConsoleDebug("ScrambleMove: why is ^b" + dude.Name + "^n scrambled to squad 0?");
+            continue;
+        }
+        if (dude.Team == toTeam && dude.Squad == toSquad) continue;
+
+        // Do the move
+        if (!EnableLoggingOnlyMode) {
+            DebugScrambler("^1^bMOVE^n^0 ^b" + dude.Name + "^n to " + GetTeamName(toTeam) + " team, squad " + SQUAD_NAMES[toSquad]);
+            ServerCommand("admin.movePlayer", dude.Name, toTeam.ToString(), toSquad.ToString(), "false");
+            Thread.Sleep(20);
+        } else {
+            DebugScrambler("^9(SIMULATED) ^1^bMOVE^n^0 ^b" + dude.Name + "^n to " + GetTeamName(toTeam) + " team, squad " + SQUAD_NAMES[toSquad]);
+        }
+    }
+}
+
+private SquadRoster AddPlayerToSquadRoster(Dictionary<int,SquadRoster> squads, PlayerModel player, int key, int squadId, bool ignoreSize) {
+    SquadRoster squad = null;
+    player.ScrambledSquad = squadId;
+    if (squads.TryGetValue(key, out squad)) {
+        if (ignoreSize || squad.Roster.Count < 4) {
+            squad.Roster.Add(player);
+        }
+    } else {
+        squad = new SquadRoster(squadId);
+        squad.Roster.Add(player);
+        squads[key] = squad;
+    }
+    return squad;
+}
+
+private void SumMetricByTeam(List<PlayerModel> usScrambled, List<PlayerModel> ruScrambled, out double usMetric, out double ruMetric) {
+    usMetric = 0;
+    ruMetric = 0;
+    // sum up the metric by team
+    switch (ScrambleBy) {
+        case DefineStrong.RoundScore:
+            foreach (PlayerModel p in usScrambled) {
+                usMetric = usMetric + p.ScoreRound;
+            }
+            foreach (PlayerModel p in ruScrambled) {
+                ruMetric = ruMetric + p.ScoreRound;
+            }
+            break;
+        case DefineStrong.RoundSPM:
+            foreach (PlayerModel p in usScrambled) {
+                usMetric = usMetric + p.SPMRound;
+            }
+            foreach (PlayerModel p in ruScrambled) {
+                ruMetric = ruMetric + p.SPMRound;
+            }
+            break;
+        case DefineStrong.RoundKills:
+            foreach (PlayerModel p in usScrambled) {
+                usMetric = usMetric + p.KillsRound;
+            }
+            foreach (PlayerModel p in ruScrambled) {
+                ruMetric = ruMetric + p.KillsRound;
+            }
+            break;
+        case DefineStrong.RoundKDR:
+            foreach (PlayerModel p in usScrambled) {
+                usMetric = usMetric + p.KDRRound;
+            }
+            foreach (PlayerModel p in ruScrambled) {
+                ruMetric = ruMetric + p.KDRRound;
+            }
+            break;
+        case DefineStrong.PlayerRank:
+            foreach (PlayerModel p in usScrambled) {
+                usMetric = usMetric + p.Rank;
+            }
+            foreach (PlayerModel p in ruScrambled) {
+                ruMetric = ruMetric + p.Rank;
+            }
+            break;
+        case DefineStrong.RoundKPM:
+            foreach (PlayerModel p in usScrambled) {
+                usMetric = usMetric + p.KPMRound;
+            }
+            foreach (PlayerModel p in ruScrambled) {
+                ruMetric = ruMetric + p.KPMRound;
+            }
+            break;
+        default:
+            foreach (PlayerModel p in usScrambled) {
+                usMetric = usMetric + p.ScoreRound;
+            }
+            foreach (PlayerModel p in ruScrambled) {
+                ruMetric = ruMetric + p.ScoreRound;
+            }
+            break;
+    }
+}
+
+private void RemapSquads(List<PlayerModel> team, Dictionary<int,int> remap) {
+    // Build a map from old squad id to new id, in case squad is full
+    int num = 0;
+    Dictionary<int,int> squadCount = new Dictionary<int,int>();
+    for (int i = 0; i < SQUAD_NAMES.Length; ++i) {
+        squadCount[i] = 0;
+    }
+    foreach (PlayerModel p in team) {
+        squadCount[p.Squad] = squadCount[p.Squad] + 1;
+    }
+    int emptyId = 0;
+    foreach (int k in squadCount.Keys) {
+        if (squadCount[k] > 4) { // too many!
+            // Find an empty squad
+            if (remap.TryGetValue(k, out emptyId)) continue; // already have a remapping
+            emptyId = 0;
+            foreach (int j in squadCount.Keys) {
+                if (j == 0) continue;
+                num = squadCount[j];
+                if (num == 0) {
+                    emptyId = j;
+                    squadCount[j] = num + 1; // so we don't remap to this again
+                    break;
+                }
+            }
+            // Remap
+            remap[k] = emptyId;
+        }
+    }
+}
+
+
+private void FixUpSquads(Dictionary<int, SquadRoster> squads, PlayerModel player, Dictionary<int,int> remap) {
+    // Using the remap, fix up squads that have too many players
+    if (!IsKnownPlayer(player.Name)) return; // player left
+    SquadRoster squad = null;
+
+    if (player.Squad != 0) {
+        AddPlayerToSquadRoster(squads, player, player.Squad, player.Squad, false);
+
+        if (squad == null) return;
+        if (squad.Roster.Contains(player)) return;
+    }
+
+    // Otherwise, the squad is full, need to remap this player to another squad
+    int squadId = 0;
+    int next = Math.Min(player.Squad, SQUAD_NAMES.Length - 1);
+
+    while (squad == null || squad.Roster.Count >= 4) {
+        next = Math.Min(next + 1, SQUAD_NAMES.Length - 1);
+        if (next == SQUAD_NAMES.Length - 1) return;
+        squadId = player.Squad;
+        if (remap.TryGetValue(player.Squad, out squadId)) {
+            if (player.Squad == squadId) squadId = next;
+        } else {
+            squadId = next;
+        }
+        if (DebugLevel >= 7) ConsoleDebug("FixUpSquads: remapping " + player.Name + " from squad " + player.Squad + " to " + squadId);
+        squad = AddPlayerToSquadRoster(squads, player, squadId, squadId, false);
+        if (squad == null) return;
+        if (squad.Roster.Contains(player)) return;
     }
 }
 
@@ -6347,6 +6629,20 @@ public static int DescendingRoundKPM(PlayerModel lhs, PlayerModel rhs) {
     if (lhs.KPMRound > rhs.KPMRound) return -1;
     return 0;
 }
+
+// Sort delegate
+public static int DescendingMetricSquad(SquadRoster lhs, SquadRoster rhs) {
+    if (lhs == null) {
+        return ((rhs == null) ? 0 : -1);
+    } else if (rhs == null) {
+        return ((lhs == null) ? 0 : 1);
+    }
+
+    if (lhs.Metric < rhs.Metric) return 1;
+    if (lhs.Metric > rhs.Metric) return -1;
+    return 0;
+}
+
 
 
 
