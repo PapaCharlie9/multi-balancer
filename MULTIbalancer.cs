@@ -82,6 +82,8 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     public enum FetchState {New, InQueue, Requesting, Aborted, Succeeded, Failed};
 
+    public enum Scope {SameTeam, SameSquad};
+
     /* Constants & Statics */
 
     public const double SWAP_TIMEOUT = 300; // in seconds
@@ -688,6 +690,7 @@ public bool EnableUnstacking;
 public bool OnWhitelist;
 public bool TopScorers;
 public bool SameClanTagsInSquad;
+public bool SameClanTagsForRankDispersal;
 public double MinutesAfterJoining;
 public bool JoinedEarlyPhase; // disabled
 public bool JoinedMidPhase; // disabled
@@ -883,6 +886,7 @@ public MULTIbalancer() {
     OnWhitelist = true;
     TopScorers = true;
     SameClanTagsInSquad = true;
+    SameClanTagsForRankDispersal = false;
     MinutesAfterJoining = 5;
     JoinedEarlyPhase = true;
     JoinedMidPhase = true;
@@ -974,6 +978,7 @@ public MULTIbalancer(PresetItems preset) : this() {
             OnWhitelist = true;
             TopScorers = false;
             SameClanTagsInSquad = false;
+            SameClanTagsForRankDispersal = false;
             MinutesAfterJoining = 0;
             JoinedEarlyPhase = false;
             JoinedMidPhase = false;
@@ -1005,6 +1010,7 @@ public MULTIbalancer(PresetItems preset) : this() {
             OnWhitelist = true;
             TopScorers = true;
             SameClanTagsInSquad = true;
+            SameClanTagsForRankDispersal = true;
             MinutesAfterJoining = 15;
             JoinedEarlyPhase = true;
             JoinedMidPhase = true;
@@ -1036,6 +1042,7 @@ public MULTIbalancer(PresetItems preset) : this() {
             OnWhitelist = true;
             TopScorers = true;
             SameClanTagsInSquad = false;
+            SameClanTagsForRankDispersal = false;
             MinutesAfterJoining = 0;
             JoinedEarlyPhase = false;
             JoinedMidPhase = false;
@@ -1067,6 +1074,7 @@ public MULTIbalancer(PresetItems preset) : this() {
             OnWhitelist = true;
             TopScorers = true;
             SameClanTagsInSquad = true;
+            SameClanTagsForRankDispersal = true;
             MinutesAfterJoining = 15;
             JoinedEarlyPhase = true;
             JoinedMidPhase = true;
@@ -1097,6 +1105,7 @@ public MULTIbalancer(PresetItems preset) : this() {
             OnWhitelist = true;
             TopScorers = true;
             SameClanTagsInSquad = true;
+            SameClanTagsForRankDispersal = true;
             MinutesAfterJoining = 5;
             JoinedEarlyPhase = true;
             JoinedMidPhase = true;
@@ -1127,6 +1136,7 @@ public MULTIbalancer(PresetItems preset) : this() {
             OnWhitelist = true;
             TopScorers = true;
             SameClanTagsInSquad = true;
+            SameClanTagsForRankDispersal = true;
             MinutesAfterJoining = 5;
             JoinedEarlyPhase = true;
             JoinedMidPhase = true;
@@ -1259,6 +1269,8 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         lstReturn.Add(new CPluginVariable("2 - Exclusions|Top Scorers", TopScorers.GetType(), TopScorers));
 
         lstReturn.Add(new CPluginVariable("2 - Exclusions|Same Clan Tags In Squad", SameClanTagsInSquad.GetType(), SameClanTagsInSquad));
+
+        lstReturn.Add(new CPluginVariable("2 - Exclusions|Same Clan Tags For Rank Dispersal", SameClanTagsForRankDispersal.GetType(), SameClanTagsForRankDispersal)); 
 
         lstReturn.Add(new CPluginVariable("2 - Exclusions|Minutes After Joining", MinutesAfterJoining.GetType(), MinutesAfterJoining));
 
@@ -1762,6 +1774,7 @@ private void ResetSettings() {
     OnWhitelist = rhs.OnWhitelist;
     TopScorers = rhs.TopScorers;
     SameClanTagsInSquad = rhs.SameClanTagsInSquad;
+    SameClanTagsForRankDispersal = rhs.SameClanTagsForRankDispersal;
     MinutesAfterJoining = rhs.MinutesAfterJoining;
     JoinedEarlyPhase = rhs.JoinedEarlyPhase;
     JoinedMidPhase = rhs.JoinedMidPhase;
@@ -3065,7 +3078,7 @@ private void BalanceAndUnstack(String name) {
 
     // Exclude if in squad with same tags
     if (SameClanTagsInSquad) {
-        int cmt =  CountMatchingTags(player);
+        int cmt =  CountMatchingTags(player, Scope.SameSquad);
         if (cmt >= 2) {
             String et = ExtractTag(player);
             DebugBalance("Excluding ^b" + name + "^n, " + cmt + " players in squad with tag [" + et + "]");
@@ -4772,7 +4785,7 @@ private void ScramblerLoop () {
                             } 
                             AddPlayerToSquadRoster(squads, player, key, squadId, true);
                         } else if (KeepClanTagsInSameSquad) {
-                            if (CountMatchingTags(player) >= 2) {
+                            if (CountMatchingTags(player, Scope.SameSquad) >= 2) {
                                 key = (Math.Max(0, player.Team) * 1000) + Math.Max(0, player.Squad); // 0 is okay, makes lone-wolf pool
                                 if (key < 1000) {
                                     loneWolves.Add(player);
@@ -5637,6 +5650,7 @@ public bool CheckForEquality(MULTIbalancer rhs) {
     return (this.OnWhitelist == rhs.OnWhitelist
      && this.TopScorers == rhs.TopScorers
      && this.SameClanTagsInSquad == rhs.SameClanTagsInSquad
+     && this.SameClanTagsForRankDispersal == rhs.SameClanTagsForRankDispersal
      && this.MinutesAfterJoining == rhs.MinutesAfterJoining
      && this.JoinedEarlyPhase == rhs.JoinedEarlyPhase
      && this.JoinedMidPhase == rhs.JoinedMidPhase
@@ -6933,6 +6947,10 @@ private bool IsDispersal(PlayerModel player) {
 private bool IsRankDispersal(PlayerModel player) {
     PerModeSettings perMode = GetPerModeSettings();
     if (perMode.DisperseEvenlyByRank == 0) return false;
+    if (SameClanTagsForRankDispersal && CountMatchingTags(player, Scope.SameTeam) >= 2) {
+        if (player.Rank >= perMode.DisperseEvenlyByRank) DebugWrite("^9Exempting player from rank dispersal, due to SameClanTagsForRankDispersal: ^b" + "^b" + player.FullName + "^n", 6);
+        return false;
+    }
     return (player.Rank >= perMode.DisperseEvenlyByRank);
 }
 
@@ -7004,7 +7022,7 @@ private void CheckRageQuit(String name) {
 }
 
 
-private int CountMatchingTags(PlayerModel player) {
+private int CountMatchingTags(PlayerModel player, Scope scope) {
     if (player == null) return 0;
     if (player.Team == 0 || player.Squad == 0) return 0;
     int team = player.Team;
@@ -7020,7 +7038,7 @@ private int CountMatchingTags(PlayerModel player) {
     int total = 0;
 
     foreach (PlayerModel mate in teamList) {
-        if (mate.Squad != squad) continue;
+        if (scope == Scope.SameSquad && mate.Squad != squad) continue;
         ++total;
         if (mate.TagVerified) ++verified;
         if (ExtractTag(mate) == tag) ++same;
@@ -7031,11 +7049,13 @@ private int CountMatchingTags(PlayerModel player) {
         sname = SQUAD_NAMES[squad];
     }
 
+    String loc = (scope == Scope.SameSquad) ? sname : GetTeamName(team);
+
     if (verified < 2) {
-        if (DebugLevel >= 6) DebugBalance("For ^b" + player.Name + "^n in " + sname + ", not enough verified tags to find matches");
+        if (DebugLevel >= 6) DebugBalance("For ^b" + player.Name + "^n in " + loc + ", not enough verified tags to find matches");
         return 0;
     } else {
-        if (DebugLevel >= 6) DebugBalance("For ^b" + player.Name + "^n in " + sname + ", found " + same + " matching tags [" + tag + "]");
+        if (DebugLevel >= 6) DebugBalance("For ^b" + player.Name + "^n in " + loc + ", found " + same + " matching tags [" + tag + "]");
     }
     return same;
 }
@@ -7580,6 +7600,7 @@ static class MULTIbalancerUtils {
             lhs.OnWhitelist = rhs.OnWhitelist;
             lhs.TopScorers = rhs.TopScorers;
             lhs.SameClanTagsInSquad = rhs.SameClanTagsInSquad;
+            lhs.SameClanTagsForRankDispersal = rhs.SameClanTagsForRankDispersal;
             lhs.MinutesAfterJoining = rhs.MinutesAfterJoining;
             lhs.JoinedEarlyPhase = rhs.JoinedEarlyPhase;
             lhs.JoinedMidPhase = rhs.JoinedMidPhase;
@@ -7846,6 +7867,8 @@ static class MULTIbalancerUtils {
 <p><b>Top Scorers</b>: True or False, default True. If True, the top 1, 2, or 3 players (depending on server population and mode) on each team are excluded from moves for balancing or unstacking. This is to reduce the whining and QQing when a team loses their top players to autobalancing.</p>
 
 <p><b>Same Clan Tags In Squad</b>: True or False, default True. If True, a player will be excluded from being moved for balancing or unstacking if they are a member of a squad (or team, in the case of SQDM) that has at least one other player in it with the same clan tag.</p>
+
+<p><b>Same Clan Tags For Rank Dispersal</b>: True or False, default False. If True, dispersal by per-mode <b>Disperse Evenly By Rank &gt;=</b> will not be applied if the player has a clan tag that at least one other player on the same team has.</p>
 
 <p><b>Minutes After Joining</b>: Number greater than or equal to 0, default 5. After joining the server, a player is excluded from being moved for balance or unstacking for this number of minutes. Set to 0 to disable. Keep in mind that most joining players were already assigned to the team with the least players. They have already 'paid their dues'.</p>
 
