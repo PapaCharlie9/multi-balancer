@@ -1160,7 +1160,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.2.2";
+    return "1.0.2.3";
 }
 
 public String GetPluginAuthor() {
@@ -2668,7 +2668,7 @@ public override void OnLevelLoaded(String mapFileName, String Gamemode, int roun
     try {
         DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1Level loaded detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
 
-        if (fGameState == GameState.RoundEnding || fGameState == GameState.Unknown) {
+        if (fGameState == GameState.RoundEnding || (fGameState == GameState.Warmup && TotalPlayerCount >= 4) || fGameState == GameState.Unknown) {
             fGameState = GameState.RoundStarting;
             DebugWrite("OnLevelLoaded: ^b^3Game state = " + fGameState, 6);  
         }
