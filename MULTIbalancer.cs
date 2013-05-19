@@ -5230,7 +5230,6 @@ private void SendBattlelogRequest(String name, String requestType) {
             return;
         }
 
-        /*
         // Extract the personaId
         MatchCollection pid = Regex.Matches(result, @"bf3/soldier/" + name + @"/stats/(\d+)(['""]|/\s*['""]|/[^/'""]+)", RegexOptions.IgnoreCase | RegexOptions.Singleline);
 
@@ -5245,10 +5244,10 @@ private void SendBattlelogRequest(String name, String requestType) {
             DebugFetch("Request for ^b" + name +"^n failed, could not find persona-id!");
             return;
         }
-        */
 
         // Extract the player tag
-        Match tag = Regex.Match(result, @"\[\s*([a-zA-Z0-9]+)\s*\]\s*" + name, RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        Match tag = Regex.Match(result, personaId + @"[/'"">\s]+\[\s*([a-zA-Z0-9]+)\s*\]\s*" + name, RegexOptions.IgnoreCase | RegexOptions.Singleline); // Fixed #9
+        //Match tag = Regex.Match(result, @"\[\s*([a-zA-Z0-9]+)\s*\]\s*" + name, RegexOptions.IgnoreCase | RegexOptions.Singleline);
         if (tag.Success) {
             Hashtable data = new Hashtable();
             data["clanTag"] = tag.Groups[1].Value;
