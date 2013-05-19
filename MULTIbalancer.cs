@@ -4703,8 +4703,8 @@ private void ScramblerLoop () {
                         if (!IsKnownPlayer(egg)) continue; // might have left while we were working
                         player = GetPlayer(egg);
                         if (player == null) continue;
-                        if (player.Team == -1) player.Team = 0;
-                        if (player.Squad == -1) player.Squad = 0;
+                        if (player.Team < 1) continue; // skip players that are still joining
+                        if (player.Squad < 0) player.Squad = 0;
                         key = 9000; // free pool
                         int squadId = player.Squad;
                         if (KeepSquadsTogether) {
