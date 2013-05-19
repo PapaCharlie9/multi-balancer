@@ -136,6 +136,8 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     DefinitionOfLowPopulationForPlayers = 8;
                     DefinitionOfEarlyPhaseFromStart = 50; // assuming 200 tickets typical
                     DefinitionOfLatePhaseFromEnd = 50; // assuming 200 tickets typical
+                    MetroAdjustedDefinitionOfLatePhase = 100;
+                    EnableMetroAdjustments = false;
                     break;
                 case "Conquest Large":
                     MaxPlayers = 64;
@@ -147,6 +149,8 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     DefinitionOfLowPopulationForPlayers = 16;
                     DefinitionOfEarlyPhaseFromStart = 100; // assuming 300 tickets typical
                     DefinitionOfLatePhaseFromEnd = 100; // assuming 300 tickets typical
+                    EnableMetroAdjustments = false;
+                    MetroAdjustedDefinitionOfLatePhase = 200;
                     break;
                 case "CTF":
                     MaxPlayers = 64;
@@ -266,6 +270,8 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         public double PercentOfTopOfTeamIsStrong = 50;
         public int NumberOfSwapsPerGroup = 3;
         public bool EnableScrambler = false;
+        public bool EnableMetroAdjustments = false;
+        public int MetroAdjustedDefinitionOfLatePhase = 50;
 
         // Rush only
         public double Stage1TicketPercentageToUnstackAdjustment = 0;
@@ -1370,6 +1376,7 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
             bool isGM = (sm == "Gun Master");
             bool isRush = (sm.Contains("Rush"));
             bool isSQDM = (sm == "Squad Deathmatch");
+            bool isConquest = (sm.Contains("Conq"));
 
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Max Players", oneSet.MaxPlayers.GetType(), oneSet.MaxPlayers));
 
@@ -1423,6 +1430,14 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Stage 4 Ticket Percentage To Unstack Adjustment", oneSet.Stage4TicketPercentageToUnstackAdjustment.GetType(), oneSet.Stage4TicketPercentageToUnstackAdjustment));
                 
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Seconds To Check For New Stage", oneSet.SecondsToCheckForNewStage.GetType(), oneSet.SecondsToCheckForNewStage));
+            }
+
+            if (isConquest) {
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Enable Metro Adjustments", oneSet.EnableMetroAdjustments.GetType(), oneSet.EnableMetroAdjustments));
+
+                if (oneSet.EnableMetroAdjustments) {
+                    lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Metro Adjusted Definition Of Late Phase", oneSet.MetroAdjustedDefinitionOfLatePhase.GetType(), oneSet.MetroAdjustedDefinitionOfLatePhase));
+                }
             }
 
         }
@@ -1694,6 +1709,7 @@ private bool ValidateSettings(String strVariable, String strValue) {
             else if (strVariable.Contains("Definition Of High Population For Players")) ValidateIntRange(ref perMode.DefinitionOfHighPopulationForPlayers, mode + ":" + "Definition Of High Population For Players", 0, perMode.MaxPlayers, def.DefinitionOfHighPopulationForPlayers, false); 
             else if (strVariable.Contains("Definition Of Low Population For Players")) ValidateIntRange(ref perMode.DefinitionOfLowPopulationForPlayers, mode + ":" + "Definition Of Low Population For Players", 0, perMode.MaxPlayers, def.DefinitionOfLowPopulationForPlayers, false);
             else if (strVariable.Contains("Definition Of Early Phase")) ValidateInt(ref perMode.DefinitionOfEarlyPhaseFromStart, mode + ":" + "Definition Of Early Phase From Start", def.DefinitionOfEarlyPhaseFromStart);
+            else if (strVariable.Contains("Metro Adjusted Definition Of Late Phase")) ValidateInt(ref perMode.MetroAdjustedDefinitionOfLatePhase, mode + ":" + "Metro Adjusted Definition Of Late Phase", def.MetroAdjustedDefinitionOfLatePhase);
             else if (strVariable.Contains("Definition Of Late Phase")) ValidateInt(ref perMode.DefinitionOfLatePhaseFromEnd, mode + ":" + "Definition Of Late Phase From End", def.DefinitionOfLatePhaseFromEnd);
             if (mode == "CTF") {
                 int maxMinutes = 20; // TBD, might need to factor in gameModeCounter
@@ -4321,6 +4337,10 @@ private Phase GetPhase(PerModeSettings perMode, bool verbose) {
 
     if (fServerInfo == null) return phase;
 
+    if (AdjustForMetro(perMode)) {
+        lateTickets = perMode.MetroAdjustedDefinitionOfLatePhase;
+    }
+
     // Special handling for CTF mode
     if (IsCTF()) {
         if (fRoundStartTimestamp == DateTime.MinValue) return Phase.Early;
@@ -4485,6 +4505,16 @@ private double GetUnstackTicketRatio(PerModeSettings perMode) {
     
     if (unstackTicketRatio <= 100) unstackTicketRatio = 0;
 
+    if (AdjustForMetro(perMode)) {
+        double old = unstackTicketRatio;
+        switch (phase) {
+            case Phase.Early: unstackTicketRatio = 0; break;
+            // case Phase.Mid: speed = Speed.Slow; break; // use whatever is specified
+            case Phase.Late: unstackTicketRatio = 0; break;
+        }
+        if (old != unstackTicketRatio) ConsoleDebug("GetUnstackTicketRatio: Adjusted for Metro from " + old + " to " + unstackTicketRatio);
+    }
+
     return (unstackTicketRatio/100.0);
 }
 
@@ -4519,6 +4549,15 @@ private Speed GetBalanceSpeed(PerModeSettings perMode) {
             }
             break;
         default: break;
+    }
+    if (AdjustForMetro(perMode)) {
+        Speed old = speed;
+        switch (phase) {
+            case Phase.Early: speed = Speed.Stop; break;
+            case Phase.Mid: speed = Speed.Slow; break;
+            case Phase.Late: speed = Speed.Stop; break;
+        }
+        if (old != speed) ConsoleDebug("GetBalanceSpeed: Adjusted for Metro from " + old + " to " + speed);
     }
     return speed;
 }
@@ -7211,6 +7250,13 @@ private double RushAttackerAvgLoss() {
     return (fRushAttackerStageLoss/fRushAttackerStageSamples);
 }
 
+private bool AdjustForMetro(PerModeSettings perMode) {
+    if (perMode == null) return false;
+    if (!perMode.EnableMetroAdjustments) return false;
+    if (fServerInfo == null) return false;
+    return (fServerInfo.Map == "MP_Subway");
+}
+
 
 
 public void LaunchCheckForPluginUpdate() {
@@ -7401,7 +7447,7 @@ private uint VersionToNumeric(String ver) {
 private void LogStatus(bool isFinal) {
   try {
     // If server is empty, log status only every 60 minutes
-    if (!isFinal && TotalPlayerCount == 0) {
+    if (!isFinal && DebugLevel < 9 && TotalPlayerCount == 0) {
         if (fRoundStartTimestamp != DateTime.MinValue && DateTime.Now.Subtract(fRoundStartTimestamp).TotalMinutes <= 60) {
             return;
         } else {
@@ -7433,7 +7479,12 @@ private void LogStatus(bool isFinal) {
 
     String rt = GetTimeInRoundString();
 
-    DebugWrite("^bStatus^n: Plugin state = " + fPluginState + ", game state = " + fGameState + ", Enable Logging Only Mode = " + EnableLoggingOnlyMode, 6);
+    PerModeSettings perMode = GetPerModeSettings();
+
+    String metroAdj = (perMode.EnableMetroAdjustments) ? ", Metro Adjustments Enabled" : String.Empty;
+    String logOnly = (EnableLoggingOnlyMode) ? ", Logging Only Mode Enabled" : String.Empty;
+
+    DebugWrite("^bStatus^n: Plugin state = " + fPluginState + ", game state = " + fGameState + metroAdj + logOnly, 6);
     int useLevel = (isFinal) ? 2 : 4;
     if (IsRush()) {
         DebugWrite("^bStatus^n: Map = " + FriendlyMap + ", mode = " + FriendlyMode + ", stage = " + fRushStage + ", time in round = " + rt + ", tickets = " + tm, useLevel);
@@ -7445,10 +7496,13 @@ private void LogStatus(bool isFinal) {
     if (fPluginState == PluginState.Active) {
         double secs = DateTime.Now.Subtract(fLastBalancedTimestamp).TotalSeconds;
         if (!fBalanceIsActive || fLastBalancedTimestamp == DateTime.MinValue) secs = 0;
+        /*
         PerModeSettings perMode = null;
         String simpleMode = String.Empty;
         if (fModeToSimple.TryGetValue(fServerInfo.GameMode, out simpleMode) 
           && fPerMode.TryGetValue(simpleMode, out perMode) && perMode != null) {
+        */
+        if (perMode != null) {
             balanceSpeed = GetBalanceSpeed(perMode);
             double unstackRatio = GetUnstackTicketRatio(perMode);
             String activeTime = (secs > 0) ? "^1active (" + secs.ToString("F0") + " secs)^0" : "not active";
@@ -7932,7 +7986,13 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Definition Of Late Phase As Tickets From End</b>: Number greater than or equal to 0. This is where you define the Late phase, as tickets from the end of the round. For example, if you set this to 300 and at least one team in Conquest has less than 300 tickets less, the phase is Late. If the ticket level of both teams is between the Early and Late settings, the phase is Mid. Set to 0 to disable Late phase.</p>
 
-<p><b>Enable Scrambler</b>:  True or False, default False. If set to True, between-round scrambling of teams will be attempted for rounds played in this mode, depending on the settings in Section 5.</p>
+<p><b>Enable Scrambler</b>: True or False, default False. If set to True, between-round scrambling of teams will be attempted for rounds played in this mode, depending on the settings in Section 5.</p>
+
+<p>These settings are unique to Conquest.</p>
+
+<p><b>Enable Metro Adjustments</b>: True or False, default False. This setting should be set to True when Metro is one of several maps in a Conquest Large or Conquest Small rotation. This setting insures that no players are moved to the losing team, which is usually futile. The actual effect is that when the map is Metro, during Early and Late phase, the Balance Speed is forced to be Stop and the Unstack Percentage Ratio is forced to be 0%. During Mid Phase, the Balance Speed is forced to be Slow. The Unstack Percentage Ratio is left unchanged for Mid Phase. If Metro is the only Conquest map in the rotation or if Metro is not in the rotation at all, set this setting to False. See also <b>Metro Adjusted Definition Of Late Phase</b>.</p>
+
+<p><b>Metro Adjusted Definition Of Late Phase</b>: Number greater than or equal to 0. This setting is visible only when <b>Enable Metro Adjustments</b> is set to True. When the map is Metro, the value specified here is used instead of <b>Definition Of Late Phase As Tickets From End</b>. This allows you to specify a much longer Late phase than for the other Conquest maps in your rotation. You generally want Metro Late phase to be the second half of your tickets, for example, if you have 1000 tickets, set this setting to 500.</p>
 
 <p>These settings are unique to CTF.</p>
 
