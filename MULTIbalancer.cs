@@ -2895,6 +2895,11 @@ private void BalanceAndUnstack(String name) {
     }
     String andSlow = (balanceSpeed == Speed.Slow) ? " and speed is Slow" : String.Empty;
 
+    // Do not disperse mustMove players if speed is Stop
+    if (mustMove && balanceSpeed == Speed.Stop) {
+        mustMove = false;
+    }
+
     /* Activation check */
 
     if (balanceSpeed != Speed.Stop && needsBalancing) {
@@ -4717,7 +4722,7 @@ private void ScramblerLoop () {
                         player = GetPlayer(egg);
                         if (player == null) continue;
                         if (player.Team < 1) continue; // skip players that are still joining
-                        if (player.Squad < 0) player.Squad = 0;
+                        if (player.Squad < 1) continue; // skip players not in a squad
                         key = 9000; // free pool
                         int squadId = player.Squad;
                         if (KeepSquadsTogether) {
@@ -4916,6 +4921,7 @@ private void ScramblerLoop () {
                 }
 
                 DebugScrambler("DONE!");
+                if (DebugLevel >= 7) CommandToLog("scrambled");
             } catch (Exception e) {
                 ConsoleException(e);
             }
@@ -4935,24 +4941,27 @@ private void ScrambleMove(List<PlayerModel> scrambled, int where) {
     // Move to available squad
     foreach (PlayerModel dude in scrambled) {
         if (!IsKnownPlayer(dude.Name)) continue; // might have left
+        String xt = ExtractTag(dude);
+        String name = dude.Name;
+        if (!String.IsNullOrEmpty(xt)) name = "[" + xt + "]" + name;
         toSquad = dude.ScrambledSquad;
         if (toSquad < 0 || toSquad > (SQUAD_NAMES.Length - 1)) {
-            ConsoleDebug("ScrambleMove: why is ^b" + dude.Name + "^n scrambled to squad " + toSquad + "?");
+            ConsoleDebug("ScrambleMove: why is ^b" + name + "^n scrambled to squad " + toSquad + "?");
             continue;
         }
         if (toSquad == 0) {
-            ConsoleDebug("ScrambleMove: why is ^b" + dude.Name + "^n scrambled to squad 0?");
+            ConsoleDebug("ScrambleMove: why is ^b" + name + "^n scrambled to squad 0?");
             continue;
         }
         if (dude.Team == toTeam && dude.Squad == toSquad) continue;
 
         // Do the move
         if (!EnableLoggingOnlyMode) {
-            DebugScrambler("^1^bMOVE^n^0 ^b" + dude.Name + "^n to " + GetTeamName(toTeam) + " team, squad " + SQUAD_NAMES[toSquad]);
+            DebugScrambler("^1^bMOVE^n^0 ^b" + name + "^n to " + GetTeamName(toTeam) + " team, squad " + SQUAD_NAMES[toSquad]);
             ServerCommand("admin.movePlayer", dude.Name, toTeam.ToString(), toSquad.ToString(), "false");
             Thread.Sleep(20);
         } else {
-            DebugScrambler("^9(SIMULATED) ^1^bMOVE^n^0 ^b" + dude.Name + "^n to " + GetTeamName(toTeam) + " team, squad " + SQUAD_NAMES[toSquad]);
+            DebugScrambler("^9(SIMULATED) ^1^bMOVE^n^0 ^b" + name + "^n to " + GetTeamName(toTeam) + " team, squad " + SQUAD_NAMES[toSquad]);
         }
     }
 }
