@@ -2913,14 +2913,19 @@ private void BalanceAndUnstack(String name) {
     if (OnWhitelist || (needsBalancing && balanceSpeed == Speed.Slow)) {
         List<String> vip = new List<String>(Whitelist);
         if (EnableWhitelistingOfReservedSlotsList) vip.AddRange(fReservedSlots);
-        /*
-        while (vip.Contains(String.Empty)) {
-            vip.Remove(String.Empty);
+        List <String> tmp = new List<String>();
+        String invalid = "////////";
+        // clean up the list
+        foreach (String v in vip) {
+            if (String.IsNullOrEmpty(v)) continue;
+            if (v == invalid) continue;
+            tmp.Add(v);
         }
-        */
-        if (vip.Contains(name) 
-        || (!String.IsNullOrEmpty(extractedTag) && vip.Contains(extractedTag))
-        || vip.Contains(player.EAGUID)) {
+        vip = tmp;
+        String guid = (String.IsNullOrEmpty(player.EAGUID)) ? invalid : player.EAGUID;
+        String xt = extractedTag;
+        if (String.IsNullOrEmpty(xt)) xt = invalid;
+        if (vip.Contains(name) || vip.Contains(xt) || vip.Contains(guid)) {
             DebugBalance("Excluding ^b" + player.FullName + "^n: whitelisted" + andSlow);
             fExcludedRound = fExcludedRound + 1;
             IncrementTotal();
@@ -3666,12 +3671,19 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     if (OnWhitelist) {
         List<String> vip = new List<String>(Whitelist);
         if (EnableWhitelistingOfReservedSlotsList) vip.AddRange(fReservedSlots);
-        /*
-        while (vip.Contains(String.Empty)) {
-            vip.Remove(String.Empty);
+        List <String> tmp = new List<String>();
+        String invalid = "////////";
+        // clean up the list
+        foreach (String v in vip) {
+            if (String.IsNullOrEmpty(v)) continue;
+            if (v == invalid) continue;
+            tmp.Add(v);
         }
-        */
-        if (vip.Contains(name) || vip.Contains(ExtractTag(player)) || vip.Contains(player.EAGUID)) {
+        vip = tmp;
+        String guid = (String.IsNullOrEmpty(player.EAGUID)) ? invalid : player.EAGUID;
+        String xt = ExtractTag(player);
+        if (String.IsNullOrEmpty(xt)) xt = invalid;
+        if (vip.Contains(name) || vip.Contains(xt) || vip.Contains(guid)) {
             DebugUnswitch("ALLOWED: On whitelist: ^b" + name);
             SetSpawnMessages(name, String.Empty, String.Empty, false);
             CheckAbortMove(name);
@@ -4664,6 +4676,7 @@ private void ScramblerLoop () {
                 }
 
                 DebugScrambler("Starting scramble of " + TotalPlayerCount + " players, winner was " + GetTeamName(fWinner));
+                DebugScrambler("Using (" + ScrambleBy + ", KeepSquadsTogether = " + KeepSquadsTogether + ", KeepClansTagsInSameSquad = " + KeepClanTagsInSameSquad + ")");
                 last = DateTime.Now;
 
                 // Build a filtered list
