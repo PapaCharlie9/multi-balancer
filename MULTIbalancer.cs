@@ -174,6 +174,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     Stage2TicketPercentageToUnstackAdjustment = 30;
                     Stage3TicketPercentageToUnstackAdjustment = 80;
                     Stage4TicketPercentageToUnstackAdjustment = -120;
+                    SecondsToCheckForNewStage = 10;
                     break;
                 case "Squad Deathmatch":
                     MaxPlayers = 16;
@@ -223,6 +224,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     Stage2TicketPercentageToUnstackAdjustment = 30;
                     Stage3TicketPercentageToUnstackAdjustment = 80;
                     Stage4TicketPercentageToUnstackAdjustment = -120;
+                    SecondsToCheckForNewStage = 10;
                     break;
                 case "Gun Master":
                     MaxPlayers = 16;
@@ -270,6 +272,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         public double Stage2TicketPercentageToUnstackAdjustment = 0;
         public double Stage3TicketPercentageToUnstackAdjustment = 0;
         public double Stage4TicketPercentageToUnstackAdjustment = 0;
+        public double SecondsToCheckForNewStage = 10;
         
         public bool isDefault = true; // not a setting
     } // end PerModeSettings
@@ -395,6 +398,43 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             MovesRound = 0;
             MovedByMB = false;
             MovedTimestamp = DateTime.MinValue;
+        }
+
+        public PlayerModel ClonePlayer() {
+            PlayerModel lhs = new PlayerModel();
+            lhs.Name = this.Name;
+            lhs.Team = this.Team;
+            lhs.Squad = this.Squad;
+            lhs.EAGUID = this.EAGUID;
+            lhs.FirstSeenTimestamp = this.FirstSeenTimestamp;
+            lhs.FirstSpawnTimestamp = this.FirstSpawnTimestamp;
+            lhs.LastSeenTimestamp = this.LastSeenTimestamp;
+            lhs.Tag = this.Tag;
+            lhs.TagVerified = this.TagVerified;
+            lhs.ScoreRound = this.ScoreRound;
+            lhs.KillsRound = this.KillsRound;
+            lhs.DeathsRound = this.DeathsRound;
+            lhs.Rounds = this.Rounds;
+            lhs.Rank = this.Rank;
+            lhs.KDRRound = this.KDRRound;
+            lhs.SPMRound = this.SPMRound;
+            lhs.KPMRound = this.KPMRound;
+            lhs.ScoreTotal = this.ScoreTotal;
+            lhs.KillsTotal = this.KillsTotal;
+            lhs.DeathsTotal = this.DeathsTotal;
+            lhs.IsDeployed = this.IsDeployed;
+            lhs.MovesRound = this.MovesRound;
+            lhs.MovedByMB = this.MovedByMB;
+            lhs.MovedTimestamp = this.MovedTimestamp;
+            lhs.SpawnChatMessage = this.SpawnChatMessage;
+            lhs.SpawnYellMessage = this.SpawnYellMessage;
+            lhs.QuietMessage = this.QuietMessage;
+            lhs.DelayedMove = this.DelayedMove;
+            lhs.LastMoveTo = this.LastMoveTo;
+            lhs.LastMoveFrom = this.LastMoveFrom;
+            lhs.FetchStatus = this.FetchStatus;
+            lhs.ScrambledSquad = this.ScrambledSquad;
+            return lhs;
         }
     } // end PlayerModel
 
@@ -556,9 +596,10 @@ private DateTime fEnabledTimestamp = DateTime.MinValue;
 private String fLastMsg = null;
 private DateTime fLastVersionCheckTimestamp = DateTime.MinValue;
 private double fTimeOutOfJoint = 0;
-private List<String>[] fDebugScramblerBefore = null;
-private List<String>[] fDebugScramblerAfter = null;
+private List<PlayerModel>[] fDebugScramblerBefore = null;
+private List<PlayerModel>[] fDebugScramblerAfter = null;
 private DelayedRequest fUpdateThreadLock;
+private DateTime fLastServerInfoTimestamp;
 
 // Data model
 private List<String> fAllPlayers = null;
@@ -587,13 +628,16 @@ private bool fIsFullRound = false;
 private UnstackState fUnstackState = UnstackState.Off;
 private DateTime fFullUnstackSwapTimestamp;
 private int fRushStage = 0;
-private double fRushAttackerTickets = 0;
+private double fRushPrevAttackerTickets = 0;
+private double fRushAttackerStageLoss = 0;
+private double fRushAttackerStageSamples = 0;
 private List<MoveInfo> fMoveStash = null;
 private int fUnstackGroupCount = 0;
 private Queue<String> fFetchQ = null; // of player names waiting for stats fetching
 private bool fIsCacheEnabled = false;
 private DelayedRequest fScramblerLock = null;
 private int fWinner = 0;
+private bool fStageInProgress = false;
 
 // Operational statistics
 private int fReassignedRound = 0;
@@ -716,8 +760,8 @@ public MULTIbalancer() {
     fGotVersion = false;
     fServerUptime = 0;
     fServerCrashed = false;
-    fDebugScramblerBefore = new List<String>[2]{new List<String>(), new List<String>()};
-    fDebugScramblerAfter = new List<String>[2]{new List<String>(), new List<String>()};
+    fDebugScramblerBefore = new List<PlayerModel>[2]{new List<PlayerModel>(), new List<PlayerModel>()};
+    fDebugScramblerAfter = new List<PlayerModel>[2]{new List<PlayerModel>(), new List<PlayerModel>()};
 
     fBalancedRound = 0;
     fUnstackedRound = 0;
@@ -789,7 +833,9 @@ public MULTIbalancer() {
     fUnstackState = UnstackState.Off;
     fLastMsg = null;
     fRushStage = 0;
-    fRushAttackerTickets = 0;
+    fRushPrevAttackerTickets = 0;
+    fRushAttackerStageLoss = 0;
+    fRushAttackerStageSamples = 0;
     fMoveStash = new List<MoveInfo>();
     fLastVersionCheckTimestamp = DateTime.MinValue;
     fTimeOutOfJoint = 0;
@@ -799,6 +845,8 @@ public MULTIbalancer() {
     fScramblerLock = new DelayedRequest();
     fWinner = 0;
     fUpdateThreadLock = new DelayedRequest();
+    fLastServerInfoTimestamp = DateTime.Now;
+    fStageInProgress = false;
     
     /* Settings */
 
@@ -1373,7 +1421,8 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Stage 3 Ticket Percentage To Unstack Adjustment", oneSet.Stage3TicketPercentageToUnstackAdjustment.GetType(), oneSet.Stage3TicketPercentageToUnstackAdjustment));
 
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Stage 4 Ticket Percentage To Unstack Adjustment", oneSet.Stage4TicketPercentageToUnstackAdjustment.GetType(), oneSet.Stage4TicketPercentageToUnstackAdjustment));
-
+                
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Seconds To Check For New Stage", oneSet.SecondsToCheckForNewStage.GetType(), oneSet.SecondsToCheckForNewStage));
             }
 
         }
@@ -1596,7 +1645,7 @@ private bool ValidateSettings(String strVariable, String strValue) {
 
         if (strVariable.Contains("Only On Final Ticket Percentage")) ValidateDoubleRange(ref OnlyOnFinalTicketPercentage, "Only On Final Ticket Percentage", 100.0, 1000.0, 120.0, true);
 
-        if (strVariable.Contains("Delay Seconds")) ValidateDoubleRange(ref DelaySeconds, "Delay Seconds", 0, 43, 30, false);
+        if (strVariable.Contains("Delay Seconds")) ValidateDoubleRange(ref DelaySeconds, "Delay Seconds", 0, 50, 30, false);
 
         /* ===== SECTION 5 - Messages ===== */
     
@@ -1655,6 +1704,8 @@ private bool ValidateSettings(String strVariable, String strValue) {
                     ConsoleError("^b" + "Definition Of Early Phase" + "^n must be less than or equal to " + (maxMinutes - perMode.DefinitionOfLatePhaseFromEnd) + " minutes, corrected to " + (maxMinutes - perMode.DefinitionOfLatePhaseFromEnd));
                     perMode.DefinitionOfEarlyPhaseFromStart = maxMinutes - perMode.DefinitionOfLatePhaseFromEnd;
                 }
+            } else if (mode == "Rush" || mode == "Squad Rush") {
+                if (strVariable.Contains("Seconds To Check For New Stage")) ValidateDoubleRange(ref perMode.SecondsToCheckForNewStage, mode + ":" + "Seconds To Check For New Stage", 5, 30, def.SecondsToCheckForNewStage, false);
             }
         }
 
@@ -2096,6 +2147,8 @@ public void OnPluginDisable() {
     fIsEnabled = false;
 
     try {
+        LaunchCheckForPluginUpdate();
+
         fEnabledTimestamp = DateTime.MinValue;
 
         StopThreads();
@@ -2433,6 +2486,8 @@ public override void OnServerInfo(CServerInfo serverInfo) {
     DebugWrite("^9^bGot OnServerInfo^n: Debug level = " + DebugLevel, 8);
     
     try {
+        fLastServerInfoTimestamp = DateTime.Now;
+
         // Update game state if just enabled (as of R38, CTF TeamScores may be null, does not mean round end)
         if (fGameState == GameState.Unknown && serverInfo.GameMode != "CaptureTheFlag0") {
             if (serverInfo.TeamScores == null || serverInfo.TeamScores.Count < 2) {
@@ -2467,6 +2522,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
         fServerUptime = serverInfo.ServerUptime;
 
         // Update max tickets
+        PerModeSettings perMode = GetPerModeSettings();
         bool isRush = IsRush();
         double minTickets = Double.MaxValue;
         double maxTickets = 0;
@@ -2483,7 +2539,15 @@ public override void OnServerInfo(CServerInfo serverInfo) {
         if (isRush) {
             attacker = fServerInfo.TeamScores[0].Score;
             defender = fServerInfo.TeamScores[1].Score;
-            DebugWrite("^7serverInfo: Rush attacker = " + attacker + ", was = " + fRushAttackerTickets + ", defender = " + defender, 7); 
+            if (fStageInProgress) {
+                if (attacker < fRushPrevAttackerTickets && attacker > 0) {
+                    fRushAttackerStageLoss = fRushAttackerStageLoss + (fRushPrevAttackerTickets - attacker);
+                    ++fRushAttackerStageSamples;
+                }
+            }
+            String avl = String.Empty;
+            if (fStageInProgress) avl = ", avg loss = " + RushAttackerAvgLoss().ToString("F1") + "/" + perMode.SecondsToCheckForNewStage.ToString("F0") + " secs";
+            DebugWrite("^7serverInfo: Rush attacker = " + attacker + ", was = " + fMaxTickets + avl + ", defender = " + defender, 7); 
         }
 
         if (fMaxTickets == -1) {
@@ -2494,22 +2558,43 @@ public override void OnServerInfo(CServerInfo serverInfo) {
                 fRushMaxTickets = defender;
                 fMaxTickets = attacker;
                 fRushStage = 1;
-                fRushAttackerTickets = attacker;
+                fRushPrevAttackerTickets = attacker;
+                fRushAttackerStageSamples = 0;
+                fRushAttackerStageLoss = 0;
+                fStageInProgress = false;
                 ConsoleDebug("ServerInfo update: fMaxTickets = " + fMaxTickets.ToString("F0") + ", fRushMaxTickets = " + fRushMaxTickets + ", fRushStage = " + fRushStage);
             }
         }
 
         // Rush heuristic: if attacker tickets are higher than last check, new stage started
         if (isRush) {
-            if (attacker > fRushAttackerTickets) {
+            if (fRushStage == 0) {
                 fRushMaxTickets = defender;
                 fMaxTickets = attacker;
+                fRushStage = 1;
+                fRushPrevAttackerTickets = attacker;
+                fRushAttackerStageSamples = 0;
+                fRushAttackerStageLoss = 0;
+            }
+            if (!fStageInProgress) {
+                // hysterhesis, wait for attacker tickets to go below threshold before stage is in progress for sure
+                fStageInProgress = ((attacker + (2 * perMode.SecondsToCheckForNewStage / 5)) < fMaxTickets);
+                if (fStageInProgress) {
+                    DebugWrite("^7serverInfo: stage " + fRushStage + " in progress!", 7);
+                }
+            } else if (AttackerTicketsWithinRangeOfMax(attacker) && fRushStage < 4) {
+                fStageInProgress = false;
+                fRushMaxTickets = defender;
+                fMaxTickets = attacker;
+                fRushPrevAttackerTickets = attacker;
                 fRushStage = fRushStage + 1;
+                fRushAttackerStageSamples = 0;
+                fRushAttackerStageLoss = 0;
                 DebugWrite(".................................... ^b^1New rush stage detected^0^n ....................................", 3);
                 DebugBalance("Rush Stage " + fRushStage + " of 4");
             }
             // update last known attacker ticket value
-            fRushAttackerTickets = attacker;
+            fRushPrevAttackerTickets = attacker;
         }
 
         // Check for plugin updates periodically
@@ -2521,6 +2606,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
         ConsoleException(e);
     }
 }
+
 
 //public override void OnResponseError(List<String> requestWords, String error) { }
 
@@ -2623,6 +2709,7 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
                 SpawnUpdate(soldierName);
                 FireMessages(soldierName);
                 CheckDelayedMove(soldierName);
+                if (IsRush()) CheckServerInfoUpdate();
             }
         }
     } catch (Exception e) {
@@ -4591,9 +4678,7 @@ private void ScramblerLoop () {
 
                             // For debugging
                             if (player.Team > 0 && player.Team <= 2) {
-                                String xt = ExtractTag(player);
-                                String fullName = (String.IsNullOrEmpty(xt)) ? player.Name : "[" + xt + "]" + player.Name;
-                                fDebugScramblerBefore[player.Team-1].Add(fullName);
+                                fDebugScramblerBefore[player.Team-1].Add(player.ClonePlayer());
                             }
 
 #region old_exempt
@@ -4749,6 +4834,9 @@ private void ScramblerLoop () {
                             break;
                     }
 
+                    String ot = (sr.Roster[0].Team == 1) ? "US" : "RU";
+                    DebugScrambler(ot + "/" + SQUAD_NAMES[sr.Squad] + " " + ScrambleBy + ":" + sr.Metric.ToString("F1"));
+
                     all.Add(sr);
                 }
                 squads.Clear();
@@ -4757,6 +4845,12 @@ private void ScramblerLoop () {
 
                 // Sort squads
                 all.Sort(DescendingMetricSquad);
+
+                DebugScrambler("After sorting:");
+                foreach (SquadRoster ds in all) {
+                    String oldt = (ds.Roster[0].Team == 1) ? "US" : "RU";
+                    DebugScrambler("    " + ScrambleBy + ":" + ds.Metric.ToString("F1") + " " + oldt + "/" + SQUAD_NAMES[ds.Squad]);
+                }
             
                 // Prepare the new team lists
                 List<PlayerModel> usScrambled = new List<PlayerModel>();
@@ -4801,11 +4895,16 @@ private void ScramblerLoop () {
                         DebugScrambler("BOTH teams full! Skipping remaining free pool!");
                         break;
                     }
+                    int wasSquad = squad.Roster[0].Squad;
                     // Is there a squad id collision?
                     if (squadTable.ContainsKey(squad.Squad)) {
                         RemapSquad(squadTable, squad);
                     }
                     squadTable[squad.Squad] = squad;
+                    int wasTeam = squad.Roster[0].Team;
+                    String st = (wasTeam == 1) ? "US" : "RU";
+                    String gt = (target == usScrambled) ? "US" : "RU";
+                    DebugScrambler(st + "/" + SQUAD_NAMES[wasSquad] + " scrambled to " + gt + "/" + SQUAD_NAMES[squad.Squad]);
 
                     foreach (PlayerModel p in squad.Roster) {
                         p.ScrambledSquad = squad.Squad;
@@ -4900,14 +4999,14 @@ private void ScramblerLoop () {
 
                 // For debugging
                 foreach (PlayerModel dude in usScrambled) {
-                    String xt = ExtractTag(dude);
-                    String fullName = (String.IsNullOrEmpty(xt)) ? dude.Name : "[" + xt + "]" + dude.Name;
-                    fDebugScramblerAfter[0].Add(fullName);
+                    player = dude.ClonePlayer();
+                    player.Squad = player.ScrambledSquad;
+                    fDebugScramblerAfter[0].Add(player);
                 }
                 foreach (PlayerModel dude in ruScrambled) {
-                    String xt = ExtractTag(dude);
-                    String fullName = (String.IsNullOrEmpty(xt)) ? dude.Name : "[" + xt + "]" + dude.Name;
-                    fDebugScramblerAfter[1].Add(fullName);
+                    player = dude.ClonePlayer();
+                    player.Squad = player.ScrambledSquad;
+                    fDebugScramblerAfter[1].Add(player);
                 }
 
                 DebugScrambler("DONE!");
@@ -4954,7 +5053,6 @@ private void ScrambleMove(List<PlayerModel> scrambled, int where) {
 
 private SquadRoster AddPlayerToSquadRoster(Dictionary<int,SquadRoster> squads, PlayerModel player, int key, int squadId, bool ignoreSize) {
     SquadRoster squad = null;
-    player.ScrambledSquad = squadId;
     if (squads.TryGetValue(key, out squad)) {
         if (ignoreSize || squad.Roster.Count < 4) {
             squad.Roster.Add(player);
@@ -5754,7 +5852,7 @@ private void ResetRound() {
     fReassignedRound = 0;
     fUnstackState = UnstackState.Off;
     fRushStage = 0;
-    fRushAttackerTickets = 0;
+    fRushPrevAttackerTickets = 0;
     fTimeOutOfJoint = 0;
     fRoundsEnabled = fRoundsEnabled + 1;
     fGrandTotalQuits = fGrandTotalQuits + fTotalQuits;
@@ -6990,16 +7088,16 @@ private int CountMatchingTags(PlayerModel player) {
 }
 
 
-private void ListSideBySide(List<String> us, List<String> ru) {
+private void ListSideBySide(List<PlayerModel> us, List<PlayerModel> ru) {
     int max = Math.Max(us.Count, ru.Count);
 
     // Sort lists by specified metric, which might have changed by now, oh well
     List<PlayerModel> all = new List<PlayerModel>();
     PlayerModel player = null;
     double usTotal = 0;
-    foreach (String u in us) {
-        String en = ExtractName(u);
-        player = GetPlayer(en);
+    foreach (PlayerModel u in us) {
+        String en = u.Name;
+        player = u;
         if (player == null) continue;
         all.Add(player);
         double stat = 0;
@@ -7030,9 +7128,9 @@ private void ListSideBySide(List<String> us, List<String> ru) {
     double usAvg = usTotal / Math.Max(1, us.Count);
 
     double ruTotal = 0;
-    foreach (String r in ru) {
-        String en = ExtractName(r);
-        player = GetPlayer(en);
+    foreach (PlayerModel r in ru) {
+        String en = r.Name;
+        player = r;
         if (player == null) continue;
         all.Add(player);
         double stat = 0;
@@ -7099,13 +7197,13 @@ private void ListSideBySide(List<String> us, List<String> ru) {
 
     // Sort teams
     
-    us.Sort(delegate(String lhs, String rhs) { // descending position in allNames
+    us.Sort(delegate(PlayerModel lhs, PlayerModel rhs) { // descending position in allNames
         if (lhs == null && rhs == null) return 0;
         if (lhs == null) return -1;
         if (rhs == null) return 1;
 
-        int l = allNames.IndexOf(ExtractName(lhs))+1;
-        int r = allNames.IndexOf(ExtractName(rhs))+1;
+        int l = allNames.IndexOf(lhs.Name)+1;
+        int r = allNames.IndexOf(rhs.Name)+1;
         if (l == 0 && r == 0) return 0;
         if (l == 0) return 1; // 0 sorts to end
         if (r == 0) return 1;
@@ -7113,13 +7211,13 @@ private void ListSideBySide(List<String> us, List<String> ru) {
         if (l > r) return 1;
         return 0;
     });
-    ru.Sort(delegate(String lhs, String rhs) { // descending position in allNames
+    ru.Sort(delegate(PlayerModel lhs, PlayerModel rhs) { // descending position in allNames
         if (lhs == null && rhs == null) return 0;
         if (lhs == null) return -1;
         if (rhs == null) return 1;
 
-        int l = allNames.IndexOf(ExtractName(lhs))+1;
-        int r = allNames.IndexOf(ExtractName(rhs))+1;
+        int l = allNames.IndexOf(lhs.Name)+1;
+        int r = allNames.IndexOf(rhs.Name)+1;
         if (l == 0 && r == 0) return 0;
         if (l == 0) return 1; // 0 sorts to end
         if (r == 0) return 1;
@@ -7131,11 +7229,33 @@ private void ListSideBySide(List<String> us, List<String> ru) {
     for (int i = 0; i < max; ++i) {
         String u = " ";
         String r = " ";
+        String xt = "";
+        int sq = 0;
         if (i < us.Count) {
-            u = us[i] + " (" + kstat + ":#" + (allNames.IndexOf(ExtractName(us[i]))+1) + ")";
+            try {
+                player = us[i];
+                xt = ExtractTag(player);
+                if (!String.IsNullOrEmpty(xt)) {
+                    xt = "[" + xt + "]" + player.Name;
+                } else {
+                    xt = player.Name;
+                }
+                sq = Math.Max(0, Math.Min(player.Squad, SQUAD_NAMES.Length - 1));
+            } catch (Exception e) {}
+            u = xt + " (" + SQUAD_NAMES[sq] + ", " + kstat + ":#" + (allNames.IndexOf(player.Name)+1) + ")";
         }
         if (i < ru.Count) {
-            r = ru[i] + " (" + kstat + ":#" + (allNames.IndexOf(ExtractName(ru[i]))+1) + ")";
+            try {
+                player = ru[i];
+                xt = ExtractTag(player);
+                if (!String.IsNullOrEmpty(xt)) {
+                    xt = "[" + xt + "]" + player.Name;
+                } else {
+                    xt = player.Name;
+                }
+                sq = Math.Max(0, Math.Min(player.Squad, SQUAD_NAMES.Length - 1));
+            } catch (Exception e) {}
+            r = xt + " (" + SQUAD_NAMES[sq] + ", " + kstat + ":#" + (allNames.IndexOf(player.Name)+1) + ")";
         }
         ConsoleDump(String.Format("{0,-32} - {1,32}", u, r));
     }
@@ -7153,6 +7273,27 @@ private String ExtractName(String fullName) {
         ret = m.Groups[1].Value;
     }
     return ret;
+}
+
+private void CheckServerInfoUpdate() {
+    // Already checked IsRush
+    PerModeSettings perMode = GetPerModeSettings();
+    if (DateTime.Now.Subtract(fLastServerInfoTimestamp).TotalSeconds >= perMode.SecondsToCheckForNewStage) {
+        ServerCommand("serverInfo");
+        fLastServerInfoTimestamp = DateTime.Now;
+    }
+}
+
+private bool AttackerTicketsWithinRangeOfMax(double attacker) {
+    if (attacker >= fMaxTickets) return true;
+    PerModeSettings perMode = GetPerModeSettings();
+    return (attacker + Math.Min(12, 2 * perMode.SecondsToCheckForNewStage / 5) >= fMaxTickets);
+}
+
+
+private double RushAttackerAvgLoss() {
+    if (fRushAttackerStageSamples == 0) return fRushAttackerStageLoss;
+    return (fRushAttackerStageLoss/fRushAttackerStageSamples);
 }
 
 
@@ -7691,7 +7832,7 @@ static class MULTIbalancerUtils {
 <p>The ticket percentage ratio is calculated by taking the tickets of the winning team and dividing them by the tickets of the losing team, expressed as a percentage. For example, if the winning team has 550 tickets and the losing team has 500 tickets, the ticket percentage ratio is 110. This ratio is used to determine when teams are stacked. If the ticket percentage ratio exceeds the level that you set, unstacking swaps will begin.</p>
 
 <h3>Unstacking</h3>
-<p>To unstack teams, a strong player is selected from the winning team and is moved to the losing team. Then, a weak player is selected from the losing team and moved to the winning team. This is repeated until the round ends, or teams become unbalanced, or <b>Max&nbsp;Unstacking&nbsp;Swaps&nbsp;Per&nbsp;Round</b> is reached, whichever comes first.</p>
+<p>Stacking refers to one team having more strong players than the other team. The result of stacked teams is lopsided wins and usually rage quitting from the losing team or attempts to switch to the winning team. If unstacking is enabled and the <b>Ticket Percentage (Ratio)</b> is exceeded, the plugin will attempt to unstack teams. To unstack teams, a strong player is selected from the winning team and is moved to the losing team. Then, a weak player is selected from the losing team and moved to the winning team. This is repeated until the round ends, or teams become unbalanced, or <b>Max&nbsp;Unstacking&nbsp;Swaps&nbsp;Per&nbsp;Round</b> is reached, whichever comes first.</p>
 
 <h2>Settings</h2>
 <p>Each setting is defined below. Settings are grouped into sections.</p>
@@ -7775,9 +7916,11 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Scramble By</b>: One of the values defined in <b>Definition Of Strong</b> above. Determines how strong vs. weak players are chosen for scrambling.</p>
 
-<p><b>Keep Clan Tags In Same Squad</b>: True or False, default True. If True, a player will be excluded from being moved for scrambling if they are a member of a squad that has at least one other player in it with the same clan tag.</p>
+<p><b>Keep Squads Together</b>: True or False, default True. If True, during scrambling, an attempt is made to keep players in a squad together so that they are moved as a squad. This is not always possible and sometimes squads may be split up even when this setting is True. The squad ID may change, e.g., if the players were originally in Alpha, they may end up in Echo on the other team.</p>
 
-<p><b>Delay Seconds</b>: Number of seconds greater than or equal to 0 and less than or equal to 43, default 30. Number of seconds to wait after the round ends before doing the scramble. If done too soon, many players may leave after the scramble, resulting in wildly unequal teams. If done too late, the next level may load and the game server will swap players to opposite teams, interfering with the scramble in progress, which may result in wildly unequal teams.</p>
+<p><b>Keep Clan Tags In Same Squad</b>: True or False, default True. Only visible if <b>Keep Squads Together</b> is set to False. If True, players in a squad with other players with the same clan tag will be kept together, if possible. Players in the same squad that do not have the same tag may get moved to another squad. The squad ID may change, e.g., if the players were originally in Hotel, they may end up in Charlie on the other team.</p>
+
+<p><b>Delay Seconds</b>: Number of seconds greater than or equal to 0 and less than or equal to 50, default 30. Number of seconds to wait after the round ends before doing the scramble. If done too soon, many players may leave after the scramble, resulting in wildly unequal teams. If done too late, the next level may load and the game server will swap players to opposite teams, interfering with the scramble in progress, which may result in wildly unequal teams.</p>
 
 <h3>5 - Messages</h3>
 <p>These settings define all of the chat and yell messages that are sent to players when various actions are taken by the plugin. All of the messages are in pairs, one for chat, one for yell. If both the chat and the yell messages are defined and <b>Quiet&nbsp;Mode</b> is not set to True, both will be sent at the same time. The message setting descriptions apply to both chat and yell. To disable a chat message for a specific actcion, delete the message and leave it empty. To disable theyell message for a specific action, delete the message and leave it empty.</p>
@@ -7893,6 +8036,8 @@ For each phase, there are three unstacking settings for server population: Low, 
 <p><b>Stage 3 Ticket Percentage To Unstack Adjustment</b>: Any positive or negative number whose absolute value is 0 or less than or equal to the corresponding <b>Ticket Percentage To Unstack</b> value. Evenly matched teams will often get to stage 3, so set the ratio high to catch unsual situations only, ratios in the range 200 or more are good for stage 3. For example, if your normal ratio is 120, set the adjustment to 80 to get 200 for Rush.</p>
 
 <p><b>Stage 4 Ticket Percentage To Unstack Adjustment</b>: Any positive or negative number whose absolute value is 0 or less than or equal to the corresponding <b>Ticket Percentage To Unstack</b> value. This is tricky, since a team that is stacked for attackers or evenly matched teams will both get to stage 4. To give the benefit of the doubt, aim for a ratio of 0. For example, if your normal ratio is 120, set the adjustment to -120 to get 0 for Rush.</p>
+
+<p><b>Seconds To Check For New Stage </b>: Number greater than or equal to 5 and less than or equal to 30, default is 10. Number of seconds between each check to see if a new stage has started. The check is a guess since BF3 does not report stage changes, so it is possible for the plugin to guess incorrectly.</p>
 
 
 <h3>9 - Debugging</h3>
