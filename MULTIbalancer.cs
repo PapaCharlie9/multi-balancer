@@ -4680,7 +4680,7 @@ private void ScramblerLoop () {
                             // For debugging
                             if (player.Team > 0 && player.Team <= 2) {
                                 fDebugScramblerBefore[player.Team-1].Add(player.ClonePlayer());
-                            }
+                            } else continue; // skip joining players
 
                             // Add this player to list of scramblers
                             toScramble.Add(egg);
