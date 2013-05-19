@@ -1126,7 +1126,7 @@ public MULTIbalancer(PresetItems preset) : this() {
             JoinedMidPhase = true;
             JoinedLatePhase = false;
 
-            EarlyPhaseTicketPercentageToUnstack = new double[3]     {120,120,120};
+            EarlyPhaseTicketPercentageToUnstack = new double[3]     {  0,120,120};
             MidPhaseTicketPercentageToUnstack = new double[3]       {120,120,120};
             LatePhaseTicketPercentageToUnstack = new double[3]      {  0,  0,  0};
 
@@ -2578,7 +2578,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
             }
             if (!fStageInProgress) {
                 // hysterhesis, wait for attacker tickets to go below threshold before stage is in progress for sure
-                fStageInProgress = ((attacker + (2 * perMode.SecondsToCheckForNewStage / 5)) < fMaxTickets);
+                fStageInProgress = ((attacker + (1.5 * perMode.SecondsToCheckForNewStage / 5)) < fMaxTickets);
                 if (fStageInProgress) {
                     DebugWrite("^7serverInfo: stage " + fRushStage + " in progress!", 7);
                 }
@@ -2797,6 +2797,13 @@ private void BalanceAndUnstack(String name) {
         return;
     }
 
+    int floorPlayers = 6;
+    if (totalPlayerCount < floorPlayers) {
+        if (DebugLevel >= 7) DebugBalance("Not enough players in server, minimum is " + floorPlayers);
+        CheckDeativateBalancer("Not enough players");
+        return;
+    }
+
     if (totalPlayerCount > 0) {
         AnalyzeTeams(out diff, out ascendingSize, out descendingTickets, out biggestTeam, out smallestTeam, out winningTeam, out losingTeam);
     } else {
@@ -2861,12 +2868,6 @@ private void BalanceAndUnstack(String name) {
     /* Check if balancing is needed */
 
     if (diff > MaxDiff()) {
-        int floorPlayers = 6;
-        if (totalPlayerCount < floorPlayers) {
-            if (DebugLevel >= 7) DebugBalance("Not enough players in server, minimum is " + floorPlayers);
-            CheckDeativateBalancer("Not enough players");
-            return;
-        }
 
         if (!mustMove && fUnassigned.Count >= (diff - MaxDiff())) {
             DebugBalance("Wait for " + fUnassigned.Count + " unassigned players to be assigned before activating autobalance");
@@ -4681,29 +4682,6 @@ private void ScramblerLoop () {
                                 fDebugScramblerBefore[player.Team-1].Add(player.ClonePlayer());
                             }
 
-#region old_exempt
-                            /*
-                            // Skip Whitelisted
-                            if (OnWhitelist) {
-                                List<String> vip = new List<String>(Whitelist);
-                                if (EnableWhitelistingOfReservedSlotsList) vip.AddRange(fReservedSlots);
-                                if (vip.Contains(egg) || vip.Contains(ExtractTag(player)) || vip.Contains(player.EAGUID)) {
-                                    exempt.Add(egg);
-                                    DebugScrambler("Exempting ^b" + egg + "^n, whitelisted");
-                                    continue;
-                                }
-                            }
-
-                            
-                            // Skip if on squad with clan tags
-                            if (KeepClanTagsInSameSquad && CountMatchingTags(player) >= 2) {
-                                exempt.Add(egg);
-                                DebugScrambler("Exempting ^b" + egg + "^n, in same squad with tag [" + ExtractTag(player) + "]");
-                                continue;
-                            }
-                            */
-#endregion
-
                             // Add this player to list of scramblers
                             toScramble.Add(egg);
                         } catch (Exception e) {
@@ -4860,30 +4838,6 @@ private void ScramblerLoop () {
                 Dictionary<int,SquadRoster> ruSquads = new Dictionary<int,SquadRoster>();
                 double ruMetric = 0;
 
-#region more_exempt_code
-                /*
-                foreach (String egg in exempt) {
-                    try {
-                        if (!IsKnownPlayer(egg)) continue; // might have left while we were working
-                        player = GetPlayer(egg);
-                        if (player == null) continue;
-                        if (player.Team == 1) {
-                            usScrambled.Add(player);
-                        } else if (player.Team == 2) {
-                            ruScrambled.Add(player);
-                        }
-                    } catch (Exception e) {
-                        if (DebugLevel >= 8) ConsoleException(e);
-                    }
-                }
-
-                DebugScrambler("Before adjusting: " + all.Count + " to scramble, exempt US count = " + usScrambled.Count + ", RU count = " + ruScrambled.Count);
-
-                SumMetricByTeam(usScrambled, ruScrambled, out usMetric, out ruMetric);
-
-                DebugScrambler("Exempt metrics for " + ScrambleBy + ": US = " + usMetric.ToString("F1") + ", RU = " + ruMetric.ToString("F1"));
-                */
-#endregion
 
                 // Dole out squads, keeping metric in balance, starting with the losing team
                 List<PlayerModel> target = (fWinner == 0 || fWinner == 1) ? ruScrambled : usScrambled;
@@ -4927,67 +4881,6 @@ private void ScramblerLoop () {
                         squadTable = ruSquads;
                     }
                 }
-
-
-
-#region old_code
-                /*
-                // If teams are uneven, fill in
-                int target = Math.Max(usScrambled.Count, ruScrambled.Count);
-
-                while (usScrambled.Count < target) {
-                    if (all.Count == 0) break;
-                    if (fWinner == 0 || fWinner == 1) {
-                        player = all[all.Count-1]; // weak if US won
-                    } else {
-                        player = all[0]; // strong if US lost
-                    }
-                    all.Remove(player);
-                    usScrambled.Add(player);
-                }
-
-                while (ruScrambled.Count < target) {
-                    if (all.Count == 0) break;
-                    if (fWinner == 0 || fWinner == 2) {
-                        player = all[all.Count-1]; // weak if RU won
-                    } else {
-                        player = all[0]; // strong if RU lost
-                    }
-                    all.Remove(player);
-                    ruScrambled.Add(player);
-                }
-            
-                DebugScrambler("After adjusting: " + all.Count + " to scramble, US count = " + usScrambled.Count + ", RU count = " + ruScrambled.Count);
-                
-
-                // Now dole out strong players to each team round robin, loser first
-                String ff = null;
-                int na = all.Count;
-            
-                foreach (PlayerModel p in all) {
-                    player = p;
-                    --na;
-                    ff = "^b" + player.Name + "^n (" + na + " left)";
-                    if (!IsKnownPlayer(player.Name)) continue; // might have left
-                    if (usScrambled.Count < ruScrambled.Count && usScrambled.Count <= (perMode.MaxPlayers/2)) {
-                        usScrambled.Add(player);
-                        DebugScrambler(ff + " to US (" + usScrambled.Count + ")");
-                    } else if (ruScrambled.Count < usScrambled.Count && ruScrambled.Count <= (perMode.MaxPlayers/2)) {
-                        ruScrambled.Add(player);
-                        DebugScrambler(ff + " to RU (" + ruScrambled.Count + ")");
-                    } else {
-                        if (fWinner == 1 && ruScrambled.Count <= (perMode.MaxPlayers/2)) { // US won, so give to RU first
-                            ruScrambled.Add(player);
-                            DebugScrambler(ff + " to RU (" + ruScrambled.Count + ")");
-                        } else if (fWinner == 2 && usScrambled.Count <= (perMode.MaxPlayers/2)) { // RU won, so give to US first
-                            usScrambled.Add(player);
-                            DebugScrambler(ff + " to US (" + usScrambled.Count + ")");
-                        }
-                    }
-                }
-                */
-#endregion
-
 
                 if (!fIsEnabled) return;
 
@@ -7287,7 +7180,7 @@ private void CheckServerInfoUpdate() {
 private bool AttackerTicketsWithinRangeOfMax(double attacker) {
     if (attacker >= fMaxTickets) return true;
     PerModeSettings perMode = GetPerModeSettings();
-    return (attacker + Math.Min(12, 2 * perMode.SecondsToCheckForNewStage / 5) >= fMaxTickets);
+    return (attacker + Math.Min(12, 1.5 * perMode.SecondsToCheckForNewStage / 5) >= fMaxTickets);
 }
 
 
@@ -7861,7 +7754,7 @@ static class MULTIbalancerUtils {
 
 <p><b>Enable Whitelisting Of Reserved Slots List</b>: True or False, default True. Treats the reserved slots list as if it were added to the specified <b>Whitelist</b>.</p>
 
-<p><b>Whitelist</b>: List of player names (without clan tags), clan tags (by themselves), or EA GUIDs, one per line, in any combination. If <b>On&nbsp;Whitelist</b> is enabled or the balance speed is <i>Slow</i>, any players on the whitelist are completely excluded from being moved by the plugin. Example list with the name of one player, tag of a clan, and GUID of another player:
+<p><b>Whitelist</b>: List of player names (without clan tags), clan tags (by themselves), or EA GUIDs, one per line, in any combination. If <b>On&nbsp;Whitelist</b> is enabled or the balance speed is <i>Slow</i>, any players on the whitelist are completely excluded from being moved by the plugin (except for between-round scrambling). Example list with the name of one player, tag of a clan, and GUID of another player:
 <pre>
   PapaCharlie9
   LGN
@@ -7908,7 +7801,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 <p>If you forget the names of the balance speeds, click on the <b>Spelling Of Speed Names Reminder</b> setting. This will display all of the balance speed names for you.</p>
 
 <h3>4 - Scrambler</h3>
-<p>These settings define options for between-round scrambling of teams. The setting <b>Enable Scrambler</b> is a per-mode setting, which allows you to decide on a mode-by-mode basis whether to use scrambling between rounds or not. See the per-mode settings in Section 8 below for more details. Note that whitelisted players are exempt from scrambling.</p>
+<p>These settings define options for between-round scrambling of teams. The setting <b>Enable Scrambler</b> is a per-mode setting, which allows you to decide on a mode-by-mode basis whether to use scrambling between rounds or not. See the per-mode settings in Section 8 below for more details. Note that whitelisted players are <b>not</b> excluded from scrambling.</p>
 
 <p><b>Only On New Maps</b>: True or False, default True. If True, scrambles will happen only after the last round of a map. For example, if a map has 2 rounds, there will be no scramble after round 1, only after round 2. If False, scrambling will be attempted at the end of every round.</p>
 
