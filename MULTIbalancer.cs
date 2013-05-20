@@ -8091,6 +8091,10 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Enable Logging Only Mode</b>: True or False, default False. If set to True, the plugin will only log messages. No move, chat or yell commands will be sent to the game server. If set to False, the plugin will operate normally.</p>
 
+<p><b>Enable External Logging</b>: True or False, default False. If set to True, plugin.log messages will also be sent to an external log file in Procon's Log folder, by game server connection. See <b>External Log Suffix</b>. </p>
+
+<p><b>External Log Suffix</b>: Suffix for file name used for the external log file, default is <i>_mb.log</i>. The path to procon/Logs/<i>ip_port</i> is used to write a log file with the current date in YYYYMMDD format prepended to the suffix you supply, for example, 20130515_mb.log.</p>
+
 <h2>Development</h2>
 <p>This plugin is an open source project hosted on GitHub.com. The repo is located at
 <a href='https://github.com/PapaCharlie9/multi-balancer'>https://github.com/PapaCharlie9/multi-balancer</a> and
