@@ -4764,7 +4764,7 @@ private void ScramblerLoop () {
                             if (player == null) continue;
 
                             // For debugging
-                            if (player.Team > 0 && player.Team <= 2) {
+                            if (IsKnownPlayer(player.Name) && player.Team > 0 && player.Team <= 2) {
                                 fDebugScramblerBefore[player.Team-1].Add(player.ClonePlayer());
                             } else continue; // skip joining players
 
@@ -4798,15 +4798,22 @@ private void ScramblerLoop () {
                             if (key < 1000) {
                                 loneWolves.Add(player);
                                 continue;
-                            } 
+                            } else {
+                                DebugScrambler("Keeping ^b" + player.Name + "^n together with squad, using key " + key);
+                            }
                             AddPlayerToSquadRoster(squads, player, key, squadId, true);
                         } else if (KeepClanTagsInSameSquad) {
-                            if (CountMatchingTags(player, Scope.SameSquad) >= 2) {
+                            int nt = CountMatchingTags(player, Scope.SameSquad);
+                            String tt = ExtractTag(player);
+                            if (tt == null) tt = String.Empty;
+                            if (nt >= 2) {
                                 key = (Math.Max(0, player.Team) * 1000) + Math.Max(0, player.Squad); // 0 is okay, makes lone-wolf pool
                                 if (key < 1000) {
                                     loneWolves.Add(player);
                                     continue;
-                                } 
+                                } else {
+                                    DebugScrambler("Keeping ^b" + player.Name + "^n together with " + nt + " tags [" + tt + "] with squad, using key " + key);
+                                }
                             } else {
                                 loneWolves.Add(player);
                                 continue;
@@ -4836,7 +4843,7 @@ private void ScramblerLoop () {
                                 key = (wolf.Team * 1000) + emptyId;
                             }
                             filling = true;
-                            ConsoleDebug("ScramblerLoop: using empty squad " + wolf.Team + "/" + emptyId);
+                            DebugScrambler("For both teams, using empty squad " + emptyId);
                         }
                         if (emptyId > (SQUAD_NAMES.Length - 1)) break;
                         if (filling) {
@@ -4849,7 +4856,7 @@ private void ScramblerLoop () {
                                 continue;
                             } else {
                                 // Next wolf
-                                ConsoleDebug("ScramblerLoop: lone wolf ^b" + wolf.Name + "^n filled in empty squad " + wolf.Team + "/" + emptyId);
+                                DebugScrambler("Lone wolf ^b" + wolf.Name + "^n filled in empty squad " + wolf.Team + "/" + emptyId);
                                 goback = false;
                                 continue;
                             }
@@ -4978,11 +4985,13 @@ private void ScramblerLoop () {
 
                 // For debugging
                 foreach (PlayerModel dude in usScrambled) {
+                    if (!IsKnownPlayer(dude.Name)) continue;
                     player = dude.ClonePlayer();
                     player.Squad = player.ScrambledSquad;
                     fDebugScramblerAfter[0].Add(player);
                 }
                 foreach (PlayerModel dude in ruScrambled) {
+                    if (!IsKnownPlayer(dude.Name)) continue;
                     player = dude.ClonePlayer();
                     player.Squad = player.ScrambledSquad;
                     fDebugScramblerAfter[1].Add(player);
