@@ -34,6 +34,7 @@ using System.Diagnostics;
 using System.ComponentModel;
 using System.Reflection;
 using System.Xml;
+using System.Windows.Forms;
 
 using PRoCon.Core;
 using PRoCon.Core.Plugin;
@@ -608,6 +609,8 @@ private List<PlayerModel>[] fDebugScramblerBefore = null;
 private List<PlayerModel>[] fDebugScramblerAfter = null;
 private DelayedRequest fUpdateThreadLock;
 private DateTime fLastServerInfoTimestamp;
+private String fHost;
+private String fPort;
 
 // Data model
 private List<String> fAllPlayers = null;
@@ -731,6 +734,8 @@ public String YellAfterUnswitching;
 public String ShowInLog; // command line to show info in plugin.log
 public bool LogChat;
 public bool EnableLoggingOnlyMode;
+public bool EnableExternalLogging;
+public String ExternalLogSuffix; 
 
 public bool EnableImmediateUnswitch;
 public bool ForbidSwitchAfterAutobalance;
@@ -856,6 +861,8 @@ public MULTIbalancer() {
     fUpdateThreadLock = new DelayedRequest();
     fLastServerInfoTimestamp = DateTime.Now;
     fStageInProgress = false;
+    fHost = String.Empty;
+    fPort = String.Empty;
     
     /* Settings */
 
@@ -951,6 +958,8 @@ public MULTIbalancer() {
     ShowInLog = String.Empty;
     LogChat = true;
     EnableLoggingOnlyMode = false;
+    EnableExternalLogging = false;
+    ExternalLogSuffix = "_mb.log";
 }
 
 public MULTIbalancer(PresetItems preset) : this() {
@@ -1461,6 +1470,10 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         lstReturn.Add(new CPluginVariable("9 - Debugging|Log Chat", LogChat.GetType(), LogChat));
 
         lstReturn.Add(new CPluginVariable("9 - Debugging|Enable Logging Only Mode", EnableLoggingOnlyMode.GetType(), EnableLoggingOnlyMode));
+
+        lstReturn.Add(new CPluginVariable("9 - Debugging|Enable External Logging", EnableExternalLogging.GetType(), EnableExternalLogging));
+
+        lstReturn.Add(new CPluginVariable("9 - Debugging|External Log Suffix", ExternalLogSuffix.GetType(), ExternalLogSuffix));
 
 
     } catch (Exception e) {
@@ -2115,6 +2128,9 @@ private void CommandToLog(string cmd) {
 
 
 public void OnPluginLoaded(String strHostName, String strPort, String strPRoConVersion) {
+    fHost = strHostName;
+    fPort = strPort;
+
     this.RegisterEvents(this.GetType().Name, 
         "OnVersion",
         "OnServerInfo",
@@ -5529,6 +5545,9 @@ private String FormatMessage(String msg, MessageType type) {
 public void LogWrite(String msg)
 {
     this.ExecuteCommand("procon.protected.pluginconsole.write", msg);
+    if (EnableExternalLogging) {
+        LogExternal(msg);
+    }
 }
 
 public void ConsoleWrite(String msg, MessageType type)
@@ -7274,6 +7293,32 @@ private bool AdjustForMetro(PerModeSettings perMode) {
     if (!perMode.EnableMetroAdjustments) return false;
     if (fServerInfo == null) return false;
     return (fServerInfo.Map == "MP_Subway");
+}
+
+private void LogExternal(String msg) {
+    if (msg == null) return;
+    String entry = "[" + DateTime.Now.ToString("HH:mm:ss") + "] ";
+    entry = entry + msg;
+    entry = Regex.Replace(entry, @"\^[bni\d]", String.Empty);
+    entry = entry.Replace(" [MULTIbalancer]", String.Empty);
+    String date = DateTime.Now.ToString("yyyyMMdd");
+    String suffix = (String.IsNullOrEmpty(ExternalLogSuffix)) ? "_mb.log" : ExternalLogSuffix;
+    String path = Path.Combine(Path.Combine("Logs", fHost + "_" + fPort), date + suffix);
+
+    try {
+        if (!Path.IsPathRooted(path)) path = Path.Combine(Directory.GetParent(Application.ExecutablePath).FullName, path);
+
+        // Add newline
+        entry = entry + "\n";
+
+        using (FileStream fs = File.Open(path, FileMode.Append)) {
+            Byte[] info = new UTF8Encoding(true).GetBytes(entry);
+            fs.Write(info, 0, info.Length);
+        }
+    } catch (Exception ex) {
+        ConsoleError("Unable to append to log file: " + path);
+        ConsoleError(ex.ToString());
+    }
 }
 
 
