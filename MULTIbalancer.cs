@@ -1185,7 +1185,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.2.3";
+    return "1.0.2.4";
 }
 
 public String GetPluginAuthor() {
@@ -2592,7 +2592,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
             }
             String avl = String.Empty;
             if (fStageInProgress) avl = ", avg loss = " + RushAttackerAvgLoss().ToString("F1") + "/" + perMode.SecondsToCheckForNewStage.ToString("F0") + " secs";
-            DebugWrite("^7serverInfo: Rush attacker = " + attacker + ", was = " + fMaxTickets + avl + ", defender = " + defender, 7); 
+            if (TotalPlayerCount > 3) DebugWrite("^7serverInfo: Rush attacker = " + attacker + ", was = " + fMaxTickets + avl + ", defender = " + defender, 7); 
         }
 
         if (fMaxTickets == -1) {
