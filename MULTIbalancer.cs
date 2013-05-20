@@ -3262,7 +3262,7 @@ private void BalanceAndUnstack(String name) {
     /* Unstack */
 
     if (!EnableUnstacking) {
-        DebugBalance("Unstack is disabled, Enable Unstacking is set to False");
+        if (DebugLevel >= 8) DebugBalance("Unstack is disabled, Enable Unstacking is set to False");
         IncrementTotal();
         return;
     }
@@ -7071,10 +7071,10 @@ private int CountMatchingTags(PlayerModel player, Scope scope) {
     String loc = (scope == Scope.SameSquad) ? sname : GetTeamName(team);
 
     if (verified < 2) {
-        if (DebugLevel >= 6) DebugBalance("For ^b" + player.Name + "^n in " + loc + ", not enough verified tags to find matches");
+        if (DebugLevel >= 6) DebugBalance("Count for matching tags for player ^b" + player.Name + "^n in " + loc + ", not enough verified tags to find matches");
         return 0;
     } else {
-        if (DebugLevel >= 6) DebugBalance("For ^b" + player.Name + "^n in " + loc + ", found " + same + " matching tags [" + tag + "]");
+        if (DebugLevel >= 6 && same > 1) DebugBalance("Count for matching tags for player ^b" + player.Name + "^n in " + loc + ", found " + same + " matching tags [" + tag + "]");
     }
     return same;
 }
@@ -7546,9 +7546,10 @@ private void LogStatus(bool isFinal) {
     PerModeSettings perMode = GetPerModeSettings();
 
     String metroAdj = (perMode.EnableMetroAdjustments) ? ", Metro Adjustments Enabled" : String.Empty;
+    String unstackDisabled = (!EnableUnstacking) ? ", Unstacking Disabled" : String.Empty;
     String logOnly = (EnableLoggingOnlyMode) ? ", Logging Only Mode Enabled" : String.Empty;
 
-    DebugWrite("^bStatus^n: Plugin state = " + fPluginState + ", game state = " + fGameState + metroAdj + logOnly, 6);
+    DebugWrite("^bStatus^n: Plugin state = " + fPluginState + ", game state = " + fGameState + metroAdj + unstackDisabled + logOnly, 6);
     int useLevel = (isFinal) ? 2 : 4;
     if (IsRush()) {
         DebugWrite("^bStatus^n: Map = " + FriendlyMap + ", mode = " + FriendlyMode + ", stage = " + fRushStage + ", time in round = " + rt + ", tickets = " + tm, useLevel);
