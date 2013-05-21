@@ -3093,7 +3093,7 @@ private void BalanceAndUnstack(String name) {
     }
 
     // Exclude if in squad with same tags
-    if (SameClanTagsInSquad) {
+    if (!mustMove && SameClanTagsInSquad) {
         int cmt =  CountMatchingTags(player, Scope.SameSquad);
         if (cmt >= 2) {
             String et = ExtractTag(player);
