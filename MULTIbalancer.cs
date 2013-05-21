@@ -1185,7 +1185,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.2.4";
+    return "1.0.2.5";
 }
 
 public String GetPluginAuthor() {
@@ -1473,7 +1473,11 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
         lstReturn.Add(new CPluginVariable("9 - Debugging|Enable External Logging", EnableExternalLogging.GetType(), EnableExternalLogging));
 
-        lstReturn.Add(new CPluginVariable("9 - Debugging|External Log Suffix", ExternalLogSuffix.GetType(), ExternalLogSuffix));
+        if (EnableExternalLogging) {
+
+            lstReturn.Add(new CPluginVariable("9 - Debugging|External Log Suffix", ExternalLogSuffix.GetType(), ExternalLogSuffix));
+
+        }
 
 
     } catch (Exception e) {
