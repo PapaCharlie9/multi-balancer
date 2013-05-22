@@ -2628,12 +2628,15 @@ public override void OnServerInfo(CServerInfo serverInfo) {
                 fRushAttackerStageLoss = 0;
             }
             if (!fStageInProgress) {
-                // hysterhesis, wait for attacker tickets to go below threshold before stage is in progress for sure
-                fStageInProgress = ((attacker + (1.5 * perMode.SecondsToCheckForNewStage / 5)) < fMaxTickets);
+                // hysteresis, wait for attacker tickets to go below threshold before stage is in progress for sure
+                fStageInProgress = ((attacker + (2 * perMode.SecondsToCheckForNewStage / 5)) < fMaxTickets);
                 if (fStageInProgress) {
                     DebugWrite("^7serverInfo: stage " + fRushStage + " in progress!", 7);
                 }
-            } else if (AttackerTicketsWithinRangeOfMax(attacker) && fRushStage < 4) {
+            } else if (attacker > fRushPrevAttackerTickets
+            && (attacker - fRushPrevAttackerTickets) >= Math.Min(12, 2 * perMode.SecondsToCheckForNewStage / 5)
+            && AttackerTicketsWithinRangeOfMax(attacker) 
+            && fRushStage < 4) {
                 fStageInProgress = false;
                 fRushMaxTickets = defender;
                 fMaxTickets = attacker;
@@ -4619,15 +4622,6 @@ private void Scrambler(List<TeamScore> teamScores) {
     // Check all the reasons not to scramble
     if (fServerInfo == null) return;
 
-    try {
-        fDebugScramblerBefore[0].Clear();
-        fDebugScramblerBefore[1].Clear();
-        fDebugScramblerAfter[0].Clear();
-        fDebugScramblerAfter[1].Clear();
-    } catch (Exception e) {
-        ConsoleException(e);
-    }
-
     PerModeSettings perMode = GetPerModeSettings();
 
     if (!perMode.EnableScrambler) return;
@@ -4640,6 +4634,11 @@ private void Scrambler(List<TeamScore> teamScores) {
 
     if (IsSQDM()) {
         DebugScrambler("SQDM can't be scrambled");
+        return;
+    }
+
+    if (TotalPlayerCount < 16) {
+        DebugScrambler("Not enough players to scramble, at least 16 required: " + TotalPlayerCount);
         return;
     }
 
@@ -4697,6 +4696,15 @@ private void Scrambler(List<TeamScore> teamScores) {
     }
 
     DebugScrambler("Scrambling teams by " + ScrambleBy + " in " + DelaySeconds.ToString("F0") + " seconds");
+
+    try {
+        fDebugScramblerBefore[0].Clear();
+        fDebugScramblerBefore[1].Clear();
+        fDebugScramblerAfter[0].Clear();
+        fDebugScramblerAfter[1].Clear();
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
 
     // Activate the scrambler thread
     lock (fScramblerLock) {
@@ -7298,7 +7306,7 @@ private void CheckServerInfoUpdate() {
 private bool AttackerTicketsWithinRangeOfMax(double attacker) {
     if (attacker >= fMaxTickets) return true;
     PerModeSettings perMode = GetPerModeSettings();
-    return (attacker + Math.Min(12, 1.5 * perMode.SecondsToCheckForNewStage / 5) >= fMaxTickets);
+    return (attacker + Math.Min(12, 2 * perMode.SecondsToCheckForNewStage / 5) >= fMaxTickets);
 }
 
 
