@@ -8008,7 +8008,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Bad Because: Rank</b>: Replacement for %reason% if the player has Rank greater than or equal to the per-mode <b>Disperse Evenly By Rank</b> setting.</p>
 
-<p><b>Bad Because: Rank</b>: Replacement for %reason% if the player is a member of the <b>Disperse Evenly List</b>.</p>
+<p><b>Bad Because: Dispersal List</b>: Replacement for %reason% if the player is a member of the <b>Disperse Evenly List</b>.</p>
 
 <p><b>Detected Good Team Switch</b>: Message sent after a player switches from the winning team to the losing team, or from the biggest team to the smallest team. There is no follow-up message, this is the only one sent.</p>
 
