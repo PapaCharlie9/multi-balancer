@@ -7315,7 +7315,7 @@ private bool AdjustForMetro(PerModeSettings perMode) {
 }
 
 private void LogExternal(String msg) {
-    if (msg == null) return;
+    if (msg == null || ExternalLogSuffix == null) return;
     String entry = "[" + DateTime.Now.ToString("HH:mm:ss") + "] ";
     entry = entry + msg;
     entry = Regex.Replace(entry, @"\^[bni\d]", String.Empty);
@@ -7330,9 +7330,11 @@ private void LogExternal(String msg) {
         // Add newline
         entry = entry + "\n";
 
-        using (FileStream fs = File.Open(path, FileMode.Append)) {
-            Byte[] info = new UTF8Encoding(true).GetBytes(entry);
-            fs.Write(info, 0, info.Length);
+        lock (ExternalLogSuffix) { // mutex access to log file
+            using (FileStream fs = File.Open(path, FileMode.Append)) {
+                Byte[] info = new UTF8Encoding(true).GetBytes(entry);
+                fs.Write(info, 0, info.Length);
+            }
         }
     } catch (Exception ex) {
         ConsoleError("Unable to append to log file: " + path);
