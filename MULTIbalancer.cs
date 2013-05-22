@@ -99,6 +99,8 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     public const double MIN_ADAPT_FAST = 120.0;
 
+    public const String INVALID_NAME_TAG_GUID = "////////";
+
     public static String[] TEAM_NAMES = new String[] { "None", "US", "RU" };
 
     public static String[] RUSH_NAMES = new String[] { "None", "Attacking", "Defending" };
@@ -2944,8 +2946,12 @@ private void BalanceAndUnstack(String name) {
     }
     String andSlow = (balanceSpeed == Speed.Slow) ? " and speed is Slow" : String.Empty;
 
-    // Do not disperse mustMove players if speed is Stop
+    // Do not disperse mustMove players if speed is Stop or Phase is Late
     if (mustMove && balanceSpeed == Speed.Stop) {
+        DebugBalance("Removing MUST MOVE status from dispersal player ^b" + player.FullName + "^n T:" + player.Team + ", due to Balance Speed = Stop");
+        mustMove = false;
+    } else if (GetPhase(perMode, false) == Phase.Late) {
+        DebugBalance("Removing MUST MOVE status from dispersal player ^b" + player.FullName + "^n T:" + player.Team + ", due to Phase = Late");
         mustMove = false;
     }
 
@@ -2968,17 +2974,16 @@ private void BalanceAndUnstack(String name) {
         List<String> vip = new List<String>(Whitelist);
         if (EnableWhitelistingOfReservedSlotsList) vip.AddRange(fReservedSlots);
         List <String> tmp = new List<String>();
-        String invalid = "////////";
         // clean up the list
         foreach (String v in vip) {
             if (String.IsNullOrEmpty(v)) continue;
-            if (v == invalid) continue;
+            if (v == INVALID_NAME_TAG_GUID) continue;
             tmp.Add(v);
         }
         vip = tmp;
-        String guid = (String.IsNullOrEmpty(player.EAGUID)) ? invalid : player.EAGUID;
+        String guid = (String.IsNullOrEmpty(player.EAGUID)) ? INVALID_NAME_TAG_GUID : player.EAGUID;
         String xt = extractedTag;
-        if (String.IsNullOrEmpty(xt)) xt = invalid;
+        if (String.IsNullOrEmpty(xt)) xt = INVALID_NAME_TAG_GUID;
         if (vip.Contains(name) || vip.Contains(xt) || vip.Contains(guid)) {
             DebugBalance("Excluding ^b" + player.FullName + "^n: whitelisted" + andSlow);
             fExcludedRound = fExcludedRound + 1;
@@ -3726,17 +3731,16 @@ private bool CheckTeamSwitch(String name, int toTeam) {
         List<String> vip = new List<String>(Whitelist);
         if (EnableWhitelistingOfReservedSlotsList) vip.AddRange(fReservedSlots);
         List <String> tmp = new List<String>();
-        String invalid = "////////";
         // clean up the list
         foreach (String v in vip) {
             if (String.IsNullOrEmpty(v)) continue;
-            if (v == invalid) continue;
+            if (v == INVALID_NAME_TAG_GUID) continue;
             tmp.Add(v);
         }
         vip = tmp;
-        String guid = (String.IsNullOrEmpty(player.EAGUID)) ? invalid : player.EAGUID;
+        String guid = (String.IsNullOrEmpty(player.EAGUID)) ? INVALID_NAME_TAG_GUID : player.EAGUID;
         String xt = ExtractTag(player);
-        if (String.IsNullOrEmpty(xt)) xt = invalid;
+        if (String.IsNullOrEmpty(xt)) xt = INVALID_NAME_TAG_GUID;
         if (vip.Contains(name) || vip.Contains(xt) || vip.Contains(guid)) {
             DebugUnswitch("ALLOWED: On whitelist: ^b" + name);
             SetSpawnMessages(name, String.Empty, String.Empty, false);
@@ -6966,10 +6970,12 @@ private bool IsDispersal(PlayerModel player) {
     bool isDispersalByList = false;
     if (perMode.EnableDisperseEvenlyList && DisperseEvenlyList != null && DisperseEvenlyList.Length > 0) {
         String extractedTag = ExtractTag(player);
+        if (String.IsNullOrEmpty(extractedTag)) extractedTag = INVALID_NAME_TAG_GUID;
+        String guid = (String.IsNullOrEmpty(player.EAGUID)) ? INVALID_NAME_TAG_GUID : player.EAGUID;
         dispersalList = new List<String>(DisperseEvenlyList);
         if (dispersalList.Contains(player.Name) 
-        || dispersalList.Contains(player.EAGUID) 
-        || (!String.IsNullOrEmpty(extractedTag) && dispersalList.Contains(extractedTag))) {
+        || dispersalList.Contains(guid) 
+        || dispersalList.Contains(extractedTag)) {
             isDispersalByList = true;
         }
     }
