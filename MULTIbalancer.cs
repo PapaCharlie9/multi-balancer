@@ -128,7 +128,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             Stage1TicketPercentageToUnstackAdjustment = 0;
             Stage2TicketPercentageToUnstackAdjustment = 0;
             Stage3TicketPercentageToUnstackAdjustment = 0;
-            Stage4TicketPercentageToUnstackAdjustment = 0;
+            Stage4And5TicketPercentageToUnstackAdjustment = 0;
             
             switch (simplifiedModeName) {
                 case "Conq Small, Dom, Scav":
@@ -182,7 +182,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     Stage1TicketPercentageToUnstackAdjustment = 5;
                     Stage2TicketPercentageToUnstackAdjustment = 30;
                     Stage3TicketPercentageToUnstackAdjustment = 80;
-                    Stage4TicketPercentageToUnstackAdjustment = -120;
+                    Stage4And5TicketPercentageToUnstackAdjustment = -120;
                     SecondsToCheckForNewStage = 10;
                     break;
                 case "Squad Deathmatch":
@@ -232,7 +232,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     Stage1TicketPercentageToUnstackAdjustment = 5;
                     Stage2TicketPercentageToUnstackAdjustment = 30;
                     Stage3TicketPercentageToUnstackAdjustment = 80;
-                    Stage4TicketPercentageToUnstackAdjustment = -120;
+                    Stage4And5TicketPercentageToUnstackAdjustment = -120;
                     SecondsToCheckForNewStage = 10;
                     break;
                 case "Gun Master":
@@ -282,7 +282,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         public double Stage1TicketPercentageToUnstackAdjustment = 0;
         public double Stage2TicketPercentageToUnstackAdjustment = 0;
         public double Stage3TicketPercentageToUnstackAdjustment = 0;
-        public double Stage4TicketPercentageToUnstackAdjustment = 0;
+        public double Stage4And5TicketPercentageToUnstackAdjustment = 0;
         public double SecondsToCheckForNewStage = 10;
         
         public bool isDefault = true; // not a setting
@@ -613,6 +613,8 @@ private DelayedRequest fUpdateThreadLock;
 private DateTime fLastServerInfoTimestamp;
 private String fHost;
 private String fPort;
+private List<String> fRushMap3Stages = null;
+private List<String> fRushMap5Stages = null;
 
 // Data model
 private List<String> fAllPlayers = null;
@@ -865,6 +867,8 @@ public MULTIbalancer() {
     fStageInProgress = false;
     fHost = String.Empty;
     fPort = String.Empty;
+    fRushMap3Stages = new List<String>(new String[5]{"MP_007", "XP4_Quake", "XP5_002", "MP_012", "XP4_Rubble"});
+    fRushMap5Stages = new List<String>(new String[4]{"MP_013", "XP3_Valley", "MP_017", "XP5_001"});
     
     /* Settings */
 
@@ -1187,7 +1191,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.2.5";
+    return "1.0.2.6";
 }
 
 public String GetPluginAuthor() {
@@ -1450,7 +1454,7 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Stage 3 Ticket Percentage To Unstack Adjustment", oneSet.Stage3TicketPercentageToUnstackAdjustment.GetType(), oneSet.Stage3TicketPercentageToUnstackAdjustment));
 
-                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Stage 4 Ticket Percentage To Unstack Adjustment", oneSet.Stage4TicketPercentageToUnstackAdjustment.GetType(), oneSet.Stage4TicketPercentageToUnstackAdjustment));
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Stage 4 And 5 Ticket Percentage To Unstack Adjustment", oneSet.Stage4And5TicketPercentageToUnstackAdjustment.GetType(), oneSet.Stage4And5TicketPercentageToUnstackAdjustment));
                 
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Seconds To Check For New Stage", oneSet.SecondsToCheckForNewStage.GetType(), oneSet.SecondsToCheckForNewStage));
             }
@@ -2618,7 +2622,13 @@ public override void OnServerInfo(CServerInfo serverInfo) {
         }
 
         // Rush heuristic: if attacker tickets are higher than last check, new stage started
-        if (isRush) {
+        if (isRush && fServerInfo != null && !String.IsNullOrEmpty(fServerInfo.Map)) {
+            int maxStages = 4;
+            if (fRushMap3Stages.Contains(fServerInfo.Map)) {
+                maxStages = 3;
+            } else if (fRushMap5Stages.Contains(fServerInfo.Map)) {
+                maxStages = 5;
+            }
             if (fRushStage == 0) {
                 fRushMaxTickets = defender;
                 fMaxTickets = attacker;
@@ -2636,7 +2646,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
             } else if (attacker > fRushPrevAttackerTickets
             && (attacker - fRushPrevAttackerTickets) >= Math.Min(12, 2 * perMode.SecondsToCheckForNewStage / 5)
             && AttackerTicketsWithinRangeOfMax(attacker) 
-            && fRushStage < 4) {
+            && fRushStage < 5) {
                 fStageInProgress = false;
                 fRushMaxTickets = defender;
                 fMaxTickets = attacker;
@@ -2645,7 +2655,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
                 fRushAttackerStageSamples = 0;
                 fRushAttackerStageLoss = 0;
                 DebugWrite(".................................... ^b^1New rush stage detected^0^n ....................................", 3);
-                DebugBalance("Rush Stage " + fRushStage + " of 4");
+                DebugBalance("Rush Stage " + fRushStage + " of " + maxStages);
             }
             // update last known attacker ticket value
             fRushPrevAttackerTickets = attacker;
@@ -4531,13 +4541,14 @@ private double GetUnstackTicketRatio(PerModeSettings perMode) {
     }
 
     // apply rush adjustment
-    if (IsRush() && fRushStage > 0 && fRushStage <= 4 && unstackTicketRatio > 100) {
+    if (IsRush() && fRushStage > 0 && fRushStage <= 5 && unstackTicketRatio > 100) {
         double adj = 0;
         switch (fRushStage) {
             case 1: adj = perMode.Stage1TicketPercentageToUnstackAdjustment; break;
             case 2: adj = perMode.Stage2TicketPercentageToUnstackAdjustment; break;
             case 3: adj = perMode.Stage3TicketPercentageToUnstackAdjustment; break;
-            case 4: adj = perMode.Stage4TicketPercentageToUnstackAdjustment; break;
+            case 4: adj = perMode.Stage4And5TicketPercentageToUnstackAdjustment; break;
+            case 5: adj = perMode.Stage4And5TicketPercentageToUnstackAdjustment; break;
             default: break;
         }
         if (adj != 0) unstackTicketRatio = unstackTicketRatio + adj;
@@ -8099,7 +8110,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p>These settings are unique to Rush and Squad Rush.</p>
 
-<p>Rush and Squad Rush require adjustments to the ticket percentage to unstack values specified in section 3 above. For example, if you have a mixed mode server with TDM and Rush, you may set ticket percentage to unstack to 120 for certain combinations of phase and population. This works great for TDM with 200 tickets. It does not work well for Rush with 150 tickets. The ticket ratio may easily exceed 120% without the teams being stacked. It's just the nature of the stages. Rather than have completely different settings for Rush and Squad Rush for section 3, instead, the per-mode settings define adjustments to the section 3 settings. For example, if you specify 30 for <b>Stage 1 Ticket Percentage To Unstack Adjustment</b>, 30 is added to 120 to yield 150% as the ratio for stage 1. You may also use negative numbers to reduce the value, for example, if the normal setting is 120 and you want stage 4 to have no unstacking, you may set the adjustment to -120. If the adjustment results in a value less than or equal to 100, it is set to 0. If you use 0 for the adjustment value, no change is made. <b>If the normal value is 0, no adjustment is applied.</b> Otherwise, the adjustment is applied to all phase and population combinations for that stage.</p>
+<p>Rush and Squad Rush require adjustments to the ticket percentage to unstack values specified in section 3 above. For example, if you have a mixed mode server with TDM and Rush, you may set ticket percentage to unstack to 120 for certain combinations of phase and population. This works great for TDM with 200 tickets. It does not work well for Rush with 150 tickets. The ticket ratio may easily exceed 120% without the teams being stacked. It's just the nature of the stages. Rather than have completely different settings for Rush and Squad Rush for section 3, instead, the per-mode settings define adjustments to the section 3 settings. For example, if you specify 30 for <b>Stage 1 Ticket Percentage To Unstack Adjustment</b>, 30 is added to 120 to yield 150% as the ratio for stage 1. You may also use negative numbers to reduce the value, for example, if the normal setting is 120 and you want stage 4 to have no unstacking, you may set the adjustment to -120. If the adjustment results in a value less than or equal to 100, it is set to 0. If you use 0 for the adjustment value, no change is made. <b>If the normal value is 0, no adjustment is applied.</b> Otherwise, the adjustment is applied to all phase and population combinations for that stage. Rush maps range from 3 to 5 stages. Most are 4. To account for maps with up to 5 stages, there is one setting for stage 4 and stage 5. Treat this setting as the 'last' stage.</p>
 
 <p><b>Stage 1 Ticket Percentage To Unstack Adjustment</b>: Any positive or negative number whose absolute value is 0 or less than or equal to the corresponding <b>Ticket Percentage To Unstack</b> value. If the defending team is stacked, the game will be unlikely to get past stage 1, so ratios in the range 125 to 150 after adjustment are good for stage 1. For example, if your normal ratio is 120, set the adjustment to 5 to get 125 for Rush.</p>
 
@@ -8107,7 +8118,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Stage 3 Ticket Percentage To Unstack Adjustment</b>: Any positive or negative number whose absolute value is 0 or less than or equal to the corresponding <b>Ticket Percentage To Unstack</b> value. Evenly matched teams will often get to stage 3, so set the ratio high to catch unsual situations only, ratios in the range 200 or more are good for stage 3. For example, if your normal ratio is 120, set the adjustment to 80 to get 200 for Rush.</p>
 
-<p><b>Stage 4 Ticket Percentage To Unstack Adjustment</b>: Any positive or negative number whose absolute value is 0 or less than or equal to the corresponding <b>Ticket Percentage To Unstack</b> value. This is tricky, since a team that is stacked for attackers or evenly matched teams will both get to stage 4. To give the benefit of the doubt, aim for a ratio of 0. For example, if your normal ratio is 120, set the adjustment to -120 to get 0 for Rush.</p>
+<p><b>Stage 4 And 5 Ticket Percentage To Unstack Adjustment</b>: Any positive or negative number whose absolute value is 0 or less than or equal to the corresponding <b>Ticket Percentage To Unstack</b> value. This is tricky, since a team that is stacked for attackers or evenly matched teams will both get to the last stage. To give the benefit of the doubt, aim for a ratio of 0. For example, if your normal ratio is 120, set the adjustment to -120 to get 0 for Rush.</p>
 
 <p><b>Seconds To Check For New Stage </b>: Number greater than or equal to 5 and less than or equal to 30, default is 10. Number of seconds between each check to see if a new stage has started. The check is a guess since BF3 does not report stage changes, so it is possible for the plugin to guess incorrectly.</p>
 
