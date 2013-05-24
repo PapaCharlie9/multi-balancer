@@ -2932,15 +2932,7 @@ private void BalanceAndUnstack(String name) {
     /* Check if balancing is needed */
 
     if (diff > MaxDiff()) {
-
-        if (!mustMove && fUnassigned.Count >= (diff - MaxDiff())) {
-            DebugBalance("Wait for " + fUnassigned.Count + " unassigned players to be assigned before activating autobalance");
-            IncrementTotal(); // no matching stat, reflect total deaths handled
-            return;
-        }
-
         needsBalancing = true; // needs balancing set to true, unless speed is Unstack only
-
         if (balanceSpeed == Speed.Unstack) {
             DebugBalance("Needs balancing, but balance speed is set to Unstack, so no balancing will be done");
             needsBalancing = false;
@@ -2966,6 +2958,13 @@ private void BalanceAndUnstack(String name) {
     } else if (GetPhase(perMode, false) == Phase.Late) {
         DebugBalance("Removing MUST MOVE status from dispersal player ^b" + player.FullName + "^n T:" + player.Team + ", due to Phase = Late");
         mustMove = false;
+    }
+
+    // Wait for unassigned
+    if (!mustMove && balanceSpeed != Speed.Fast && (diff > MaxDiff()) && fUnassigned.Count >= (diff - MaxDiff())) {
+        DebugBalance("Wait for " + fUnassigned.Count + " unassigned players to be assigned before activating autobalance");
+        IncrementTotal(); // no matching stat, reflect total deaths handled
+        return;
     }
 
     /* Activation check */
