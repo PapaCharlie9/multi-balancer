@@ -1263,8 +1263,15 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         lstReturn.Add(new CPluginVariable("0 - Presets|Enable Settings Wizard", EnableSettingsWizard.GetType(), EnableSettingsWizard));
 
         if (EnableSettingsWizard) {
+            List<String> enumModes = new List<String>();
+            enumModes.Add("Conq Small or Dom or Scav");
+            foreach (String sm in simpleModes) {
+                if (!sm.Contains("Conq Small")) {
+                    enumModes.Add(sm);
+                }
+            }
             var_name = "0 - Presets|Which Mode";
-            var_type = "enum." + var_name + "(" + String.Join("|", simpleModes.ToArray()) + ")";
+            var_type = "enum." + var_name + "(" + String.Join("|", enumModes.ToArray()) + ")";
 
             lstReturn.Add(new CPluginVariable(var_name, var_type, WhichMode));
 
