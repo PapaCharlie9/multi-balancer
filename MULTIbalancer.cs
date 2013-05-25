@@ -137,7 +137,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxUnstackingSwapsPerRound = 6;
                     NumberOfSwapsPerGroup = 3;
                     DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
-                    DefinitionOfHighPopulationForPlayers = 28;
+                    DefinitionOfHighPopulationForPlayers = 24;
                     DefinitionOfLowPopulationForPlayers = 8;
                     DefinitionOfEarlyPhaseFromStart = 50; // assuming 200 tickets typical
                     DefinitionOfLatePhaseFromEnd = 50; // assuming 200 tickets typical
@@ -202,7 +202,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxUnstackingSwapsPerRound = 6;
                     NumberOfSwapsPerGroup = 3;
                     DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
-                    DefinitionOfHighPopulationForPlayers = 20;
+                    DefinitionOfHighPopulationForPlayers = 16;
                     DefinitionOfLowPopulationForPlayers = 8;
                     DefinitionOfEarlyPhaseFromStart = 50; // assuming 250 tickets typical
                     DefinitionOfLatePhaseFromEnd = 50; // assuming 250 tickets typical
@@ -253,7 +253,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxUnstackingSwapsPerRound = 6;
                     NumberOfSwapsPerGroup = 3;
                     DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
-                    DefinitionOfHighPopulationForPlayers = 28;
+                    DefinitionOfHighPopulationForPlayers = 24;
                     DefinitionOfLowPopulationForPlayers = 8;
                     DefinitionOfEarlyPhaseFromStart = 50;
                     DefinitionOfLatePhaseFromEnd = 50;
@@ -7422,7 +7422,168 @@ private void LogExternal(String msg) {
 }
 
 void ApplyWizardSettings() {
-    ConsoleDebug("ApplyWizardSettings called!");
+    ConsoleWrite("Applying Wizard settings ...");
+
+    // Validate the numbers
+    ValidateIntRange(ref MaximumPlayersForMode, "Maximum Players For Mode", 8, 64, 64, false);
+    ValidateIntRange(ref LowestMaximumTicketsForMode, "Lowest Maximum Tickets For Mode", 20, 10000, 300, false);
+    ValidateIntRange(ref HighestMaximumTicketsForMode, "Highest Maximum Tickets For Mode", 20, 10000, 400, false);
+    if (HighestMaximumTicketsForMode < LowestMaximumTicketsForMode) {
+        ConsoleError("^b" + "Highest Maximum Tickets For Mode" + "^n must be greater than ^b" + "Lowest Maximum Tickets For Mode" + "^n, corrected");
+        int tmp = HighestMaximumTicketsForMode;
+        HighestMaximumTicketsForMode = LowestMaximumTicketsForMode;
+        LowestMaximumTicketsForMode = tmp;
+    }
+
+    try {
+        String modeName = WhichMode;
+        if (modeName == "Conq Small or Dom or Scav") modeName = "Conq Small, Dom, Scav"; // settings don't like commas in enum
+        ConsoleWrite("For mode: ^b" + modeName);
+        PerModeSettings perMode = null;
+        if (fPerMode == null) {
+            ConsoleWarn("Settings Wizard failed due to being disabled, please enable the plugin!");
+            return;
+        }
+        if (fPerMode.TryGetValue(modeName, out perMode) && perMode != null) {
+            bool isCTF = (modeName == "CTF");
+
+            // Set the per mode Max Players
+            perMode.MaxPlayers = MaximumPlayersForMode;
+            ConsoleWrite("Set ^bMax Players^n to " + perMode.MaxPlayers);
+
+            // Set the Population ranges
+            if (MaximumPlayersForMode == 64) {
+                perMode.DefinitionOfHighPopulationForPlayers = 48;
+                perMode.DefinitionOfLowPopulationForPlayers = 16;
+            } else if (MaximumPlayersForMode >= 56) {
+                perMode.DefinitionOfHighPopulationForPlayers = 40;
+                perMode.DefinitionOfLowPopulationForPlayers = 16;
+            } else if (MaximumPlayersForMode >= 48) {
+                perMode.DefinitionOfHighPopulationForPlayers = 32;
+                perMode.DefinitionOfLowPopulationForPlayers = 16;
+            } else if (MaximumPlayersForMode >= 40) {
+                perMode.DefinitionOfHighPopulationForPlayers = 28;
+                perMode.DefinitionOfLowPopulationForPlayers = 12;
+            } else if (MaximumPlayersForMode >= 32) {
+                perMode.DefinitionOfHighPopulationForPlayers = 24;
+                perMode.DefinitionOfLowPopulationForPlayers = 8;
+            } else if (MaximumPlayersForMode >= 24) {
+                perMode.DefinitionOfHighPopulationForPlayers = 16;
+                perMode.DefinitionOfLowPopulationForPlayers = 8;
+            } else if (MaximumPlayersForMode >= 16) {
+                perMode.DefinitionOfHighPopulationForPlayers = 12;
+                perMode.DefinitionOfLowPopulationForPlayers = 4;
+            } else {
+                perMode.DefinitionOfHighPopulationForPlayers = 6;
+                perMode.DefinitionOfLowPopulationForPlayers = 4;
+            }
+            ConsoleWrite("Set ^bDefinition Of High Population For Players^n to " + perMode.DefinitionOfHighPopulationForPlayers);
+            ConsoleWrite("Set ^bDefinition Of Low Population For Players^n to " + perMode.DefinitionOfLowPopulationForPlayers);
+
+            // Set the Phase ranges
+            if (!isCTF) {
+                double high = HighestMaximumTicketsForMode;
+                double low = LowestMaximumTicketsForMode;
+                double late = low/4.0; // late always 25% of low
+                // Try 33% of high first
+                double delta = high / 3.0;
+                if ((low - delta - late) < Math.Min(50.0, low/2)) {
+                    // Try 25% of high
+                    delta = high / 4.0;
+                    if ((low - delta - late) < Math.Min(50.0, low/2)) {
+                        // Use 33% of low
+                        delta = low / 3.0;
+                    }
+                }
+                perMode.DefinitionOfEarlyPhaseFromStart = Math.Min(300, Convert.ToInt32(delta)); // adaptive early
+                perMode.DefinitionOfLatePhaseFromEnd = Math.Min(300, Convert.ToInt32(late));
+                ConsoleWrite("Set ^bDefinition Of Early Phase As Tickets From Start^n to " + perMode.DefinitionOfEarlyPhaseFromStart);
+                ConsoleWrite("Set ^bDefinition Of Late Phase As Tickets From End^n to " + perMode.DefinitionOfLatePhaseFromEnd);
+            } else {
+                ConsoleWrite("CTF Phase definitions cannot be set with the wizard, skipping.");
+            }
+
+            if (MetroIsInMapRotation && modeName.Contains("Conq")) {
+                // Use half of low
+                perMode.MetroAdjustedDefinitionOfLatePhase = LowestMaximumTicketsForMode / 2;
+                ConsoleWrite("Set ^bMetro Adjusted Defintion Of Late Phase^n to " + perMode.MetroAdjustedDefinitionOfLatePhase);
+            }
+
+            switch (PreferredStyleOfBalancing) {
+                case PresetItems.Standard:
+
+                    EarlyPhaseBalanceSpeed = new Speed[3]   {     Speed.Fast, Speed.Adaptive, Speed.Adaptive};
+                    MidPhaseBalanceSpeed = new Speed[3]     {     Speed.Fast, Speed.Adaptive, Speed.Adaptive};
+                    LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Stop,     Speed.Stop,     Speed.Stop};
+                    break;
+
+                case PresetItems.Aggressive:
+
+                    EarlyPhaseBalanceSpeed = new Speed[3]   {     Speed.Fast,     Speed.Fast,     Speed.Fast};
+                    MidPhaseBalanceSpeed = new Speed[3]     {     Speed.Fast,     Speed.Fast,     Speed.Fast};
+                    LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Fast,     Speed.Fast,     Speed.Fast};
+            
+                    break;
+
+                case PresetItems.Passive:
+
+                    EarlyPhaseBalanceSpeed = new Speed[3]   {     Speed.Slow,     Speed.Slow,     Speed.Slow};
+                    MidPhaseBalanceSpeed = new Speed[3]     {     Speed.Slow,     Speed.Slow,     Speed.Slow};
+                    LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Stop,     Speed.Stop,     Speed.Stop};
+            
+                    break;
+
+                case PresetItems.Intensify:
+
+                    // TBD: Needs Speed.OverBalance (similar to Fast, but puts more players on losing team)
+                    EarlyPhaseBalanceSpeed = new Speed[3]   { Speed.Adaptive, Speed.Adaptive, Speed.Adaptive};
+                    MidPhaseBalanceSpeed = new Speed[3]     { Speed.Adaptive, Speed.Adaptive, Speed.Adaptive};
+                    LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Stop,     Speed.Stop,     Speed.Stop};
+            
+                    break;
+
+                case PresetItems.Retain:
+
+                    EarlyPhaseBalanceSpeed = new Speed[3]   {     Speed.Slow, Speed.Adaptive,     Speed.Slow};
+                    MidPhaseBalanceSpeed = new Speed[3]     {     Speed.Slow, Speed.Adaptive,     Speed.Slow};
+                    LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Stop,     Speed.Stop,     Speed.Stop};
+            
+                    break;
+
+                case PresetItems.BalanceOnly:
+
+                    EarlyPhaseBalanceSpeed = new Speed[3]   { Speed.Adaptive, Speed.Adaptive, Speed.Adaptive};
+                    MidPhaseBalanceSpeed = new Speed[3]     { Speed.Adaptive, Speed.Adaptive, Speed.Adaptive};
+                    LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Stop,     Speed.Stop,     Speed.Stop};
+            
+                    break;
+
+                case PresetItems.UnstackOnly:
+
+                    EarlyPhaseBalanceSpeed = new Speed[3]   {     Speed.Unstack,     Speed.Unstack,     Speed.Unstack};
+                    MidPhaseBalanceSpeed = new Speed[3]     {     Speed.Unstack,     Speed.Unstack,     Speed.Unstack};
+                    LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Unstack,     Speed.Unstack,     Speed.Unstack};
+            
+                    break;
+
+                case PresetItems.None:
+                    break;
+                default:
+                    break;
+            }
+
+            if (MetroIsInMapRotation && modeName.Contains("Conq")) {
+                // In sure that Metro adjustment results in a Stop speed
+                LatePhaseBalanceSpeed = new Speed[3] {Speed.Stop,  Speed.Stop, Speed.Stop};
+            }
+
+            ConsoleWrite("Please review your Section 3 Early, Mid and Late Balance Speeds set to style " + PreferredStyleOfBalancing);
+
+            ConsoleWrite("COMPLETED application of Wizard settings! Please review your Section 8 settings for ^b" + modeName);
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
 }
 
 
