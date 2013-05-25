@@ -677,6 +677,17 @@ private Dictionary<int, Type> fListStrDict = null;
 private Dictionary<String,PerModeSettings> fPerMode = null;
 
 // Settings
+public PresetItems Preset;
+public bool EnableUnstacking;
+public bool EnableSettingsWizard;
+public String WhichMode;
+public bool MetroIsInMapRotation;
+public int MaximumPlayersForMode;
+public int LowestMaximumTicketsForMode;
+public int HighestMaximumTicketsForMode;
+public PresetItems PreferredStyleOfBalancing;
+public bool ApplySettingsChanges;
+
 public int DebugLevel;
 public int MaximumServerSize;
 public bool EnableBattlelogRequests;
@@ -690,9 +701,7 @@ public bool EnablerecruitCommand; // disabled
 public bool EnableWhitelistingOfReservedSlotsList;
 public String[] Whitelist;
 public String[] DisperseEvenlyList;
-public PresetItems Preset;
 public double SecondsUntilAdaptiveSpeedBecomesFast;
-public bool EnableUnstacking;
 
 public bool OnWhitelist;
 public bool TopScorers;
@@ -876,6 +885,14 @@ public MULTIbalancer() {
 
     Preset = PresetItems.Standard;
     EnableUnstacking = false;
+    EnableSettingsWizard = false;
+    WhichMode = "Conquest Large";
+    MetroIsInMapRotation = false;
+    MaximumPlayersForMode = 64;
+    LowestMaximumTicketsForMode = 300;
+    HighestMaximumTicketsForMode = 400;
+    PreferredStyleOfBalancing = PresetItems.Standard;
+    ApplySettingsChanges = false;
 
     /* ===== SECTION 1 - Settings ===== */
 
@@ -1191,7 +1208,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.2.6";
+    return "1.0.2.7";
 }
 
 public String GetPluginAuthor() {
@@ -1230,6 +1247,8 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
     List<CPluginVariable> lstReturn = new List<CPluginVariable>();
 
     try {
+        List<String> simpleModes = GetSimplifiedModes();
+
         /* ===== SECTION 0 - Presets ===== */
         
         UpdatePresetValue();
@@ -1240,6 +1259,30 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(PresetItems), Preset)));
 
         lstReturn.Add(new CPluginVariable("0 - Presets|Enable Unstacking", EnableUnstacking.GetType(), EnableUnstacking));
+        
+        lstReturn.Add(new CPluginVariable("0 - Presets|Enable Settings Wizard", EnableSettingsWizard.GetType(), EnableSettingsWizard));
+
+        if (EnableSettingsWizard) {
+            var_name = "0 - Presets|Which Mode";
+            var_type = "enum." + var_name + "(" + String.Join("|", simpleModes.ToArray()) + ")";
+
+            lstReturn.Add(new CPluginVariable(var_name, var_type, WhichMode));
+
+            lstReturn.Add(new CPluginVariable("0 - Presets|Metro Is In Map Rotation", MetroIsInMapRotation.GetType(), MetroIsInMapRotation));
+
+            lstReturn.Add(new CPluginVariable("0 - Presets|Maximum Players For Mode", MaximumPlayersForMode.GetType(), MaximumPlayersForMode));
+
+            lstReturn.Add(new CPluginVariable("0 - Presets|Lowest Maximum Tickets For Mode", LowestMaximumTicketsForMode.GetType(), LowestMaximumTicketsForMode));
+
+            lstReturn.Add(new CPluginVariable("0 - Presets|Highest Maximum Tickets For Mode", HighestMaximumTicketsForMode.GetType(), HighestMaximumTicketsForMode));
+
+            var_name = "0 - Presets|Preferred Style Of Balancing";
+            var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(PresetItems))) + ")";
+        
+            lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(PresetItems), PreferredStyleOfBalancing)));
+
+            lstReturn.Add(new CPluginVariable("0 - Presets|Apply Settings Changes", ApplySettingsChanges.GetType(), ApplySettingsChanges));
+        }
         
         /* ===== SECTION 1 - Settings ===== */
         
@@ -1387,8 +1430,6 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         /* ===== SECTION 7 - TBD ===== */
 
         /* ===== SECTION 8 - Per-Mode Settings ===== */
-
-        List<String> simpleModes = GetSimplifiedModes();
 
         foreach (String sm in simpleModes) {
             PerModeSettings oneSet = null;
@@ -1568,6 +1609,13 @@ public void SetPluginVariable(String strVariable, String strValue) {
                 } catch (Exception e) {
                     ConsoleException(e);
                 }
+            } else if (tmp.Contains("Preferred Style Of Balancing")) {
+                fieldType = typeof(PresetItems);
+                try {
+                    field.SetValue(this, (PresetItems)Enum.Parse(fieldType, strValue));
+                } catch (Exception e) {
+                    ConsoleException(e);
+                }
             } else if (fEasyTypeDict.ContainsValue(fieldType)) {
                 field.SetValue(this, TypeDescriptor.GetConverter(fieldType).ConvertFromString(strValue));
             } else if (fListStrDict.ContainsValue(fieldType)) {
@@ -1650,6 +1698,12 @@ public void SetPluginVariable(String strVariable, String strValue) {
         } else {
             // Update Preset value based on current settings
             UpdatePresetValue();
+        }
+
+        if (strVariable.Contains("Apply Settings Changes") && ApplySettingsChanges) {
+            ApplySettingsChanges = false;
+            EnableSettingsWizard = false;
+            ApplyWizardSettings();
         }
         
         // Validate all values and correct if needed
@@ -7358,6 +7412,10 @@ private void LogExternal(String msg) {
         ConsoleError("Unable to append to log file: " + path);
         ConsoleError(ex.ToString());
     }
+}
+
+void ApplyWizardSettings() {
+    ConsoleDebug("ApplyWizardSettings called!");
 }
 
 
