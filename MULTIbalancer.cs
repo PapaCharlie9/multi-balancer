@@ -87,7 +87,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     /* Constants & Statics */
 
-    public const double SWAP_TIMEOUT = 300; // in seconds
+    public const double SWAP_TIMEOUT = 600; // in seconds
 
     public const double MODEL_TIMEOUT = 24*60; // in minutes
 
@@ -134,8 +134,8 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                 case "Conq Small, Dom, Scav":
                     MaxPlayers = 32;
                     CheckTeamStackingAfterFirstMinutes = 10;
-                    MaxUnstackingSwapsPerRound = 6;
-                    NumberOfSwapsPerGroup = 3;
+                    MaxUnstackingSwapsPerRound = 2;
+                    NumberOfSwapsPerGroup = 2;
                     DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
                     DefinitionOfHighPopulationForPlayers = 24;
                     DefinitionOfLowPopulationForPlayers = 8;
@@ -147,8 +147,8 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                 case "Conquest Large":
                     MaxPlayers = 64;
                     CheckTeamStackingAfterFirstMinutes = 10;
-                    MaxUnstackingSwapsPerRound = 12;
-                    NumberOfSwapsPerGroup = 3;
+                    MaxUnstackingSwapsPerRound = 4;
+                    NumberOfSwapsPerGroup = 2;
                     DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
                     DefinitionOfHighPopulationForPlayers = 48;
                     DefinitionOfLowPopulationForPlayers = 16;
@@ -160,8 +160,8 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                 case "CTF":
                     MaxPlayers = 64;
                     CheckTeamStackingAfterFirstMinutes = 5;
-                    MaxUnstackingSwapsPerRound = 12;
-                    NumberOfSwapsPerGroup = 3;
+                    MaxUnstackingSwapsPerRound = 4;
+                    NumberOfSwapsPerGroup = 2;
                     DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
                     DefinitionOfHighPopulationForPlayers = 48;
                     DefinitionOfLowPopulationForPlayers = 16;
@@ -171,8 +171,8 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                 case "Rush":
                     MaxPlayers = 32;
                     CheckTeamStackingAfterFirstMinutes = 5;
-                    MaxUnstackingSwapsPerRound = 6;
-                    NumberOfSwapsPerGroup = 1;
+                    MaxUnstackingSwapsPerRound = 2;
+                    NumberOfSwapsPerGroup = 2;
                     DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
                     DefinitionOfHighPopulationForPlayers = 24;
                     DefinitionOfLowPopulationForPlayers = 8;
@@ -199,8 +199,8 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                 case "Superiority":
                     MaxPlayers = 24;
                     CheckTeamStackingAfterFirstMinutes = 15;
-                    MaxUnstackingSwapsPerRound = 6;
-                    NumberOfSwapsPerGroup = 3;
+                    MaxUnstackingSwapsPerRound = 2;
+                    NumberOfSwapsPerGroup = 2;
                     DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
                     DefinitionOfHighPopulationForPlayers = 16;
                     DefinitionOfLowPopulationForPlayers = 8;
@@ -210,7 +210,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                 case "Team Deathmatch":
                     MaxPlayers = 64;
                     CheckTeamStackingAfterFirstMinutes = 5;
-                    MaxUnstackingSwapsPerRound = 12;
+                    MaxUnstackingSwapsPerRound = 4;
                     NumberOfSwapsPerGroup = 2;
                     DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
                     DefinitionOfHighPopulationForPlayers = 48;
@@ -238,8 +238,8 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                 case "Gun Master":
                     MaxPlayers = 16;
                     CheckTeamStackingAfterFirstMinutes = 2;
-                    MaxUnstackingSwapsPerRound = 6;
-                    NumberOfSwapsPerGroup = 1;
+                    MaxUnstackingSwapsPerRound = 2;
+                    NumberOfSwapsPerGroup = 2;
                     DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
                     DefinitionOfHighPopulationForPlayers = 12;
                     DefinitionOfLowPopulationForPlayers = 6;
@@ -250,8 +250,8 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                 default:
                     MaxPlayers = 32;
                     CheckTeamStackingAfterFirstMinutes = 10;
-                    MaxUnstackingSwapsPerRound = 6;
-                    NumberOfSwapsPerGroup = 3;
+                    MaxUnstackingSwapsPerRound = 2;
+                    NumberOfSwapsPerGroup = 2;
                     DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
                     DefinitionOfHighPopulationForPlayers = 24;
                     DefinitionOfLowPopulationForPlayers = 8;
@@ -263,7 +263,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         
         public int MaxPlayers = 64; // will be corrected later
         public double CheckTeamStackingAfterFirstMinutes = 10;
-        public int MaxUnstackingSwapsPerRound = 6;
+        public int MaxUnstackingSwapsPerRound = 4;
         public double DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
         public DefineStrong DetermineStrongPlayersBy = DefineStrong.RoundScore;
         public int DefinitionOfHighPopulationForPlayers = 48;
@@ -273,7 +273,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         public int DisperseEvenlyByRank = 145;
         public bool EnableDisperseEvenlyList = false;
         public double PercentOfTopOfTeamIsStrong = 50;
-        public int NumberOfSwapsPerGroup = 3;
+        public int NumberOfSwapsPerGroup = 2;
         public bool EnableScrambler = false;
         public bool EnableMetroAdjustments = false;
         public int MetroAdjustedDefinitionOfLatePhase = 50;
@@ -677,6 +677,7 @@ private Dictionary<int, Type> fListStrDict = null;
 private Dictionary<String,PerModeSettings> fPerMode = null;
 
 // Settings
+public int SettingsVersion;
 public PresetItems Preset;
 public bool EnableUnstacking;
 public bool EnableSettingsWizard;
@@ -744,7 +745,8 @@ public String ChatDetectedGoodTeamSwitch;
 public String YellDetectedGoodTeamSwitch;
 public String ChatAfterUnswitching;
 public String YellAfterUnswitching;
-public String ShowInLog; // command line to show info in plugin.log
+public String ShowInLog; // legacy variable, if defined as String.Empty, settings are pre-v1
+public String ShowCommandInLog; // command line to show info in plugin.log
 public bool LogChat;
 public bool EnableLoggingOnlyMode;
 public bool EnableExternalLogging;
@@ -883,6 +885,7 @@ public MULTIbalancer() {
 
     /* ===== SECTION 0 - Presets ===== */
 
+    SettingsVersion = 1;
     Preset = PresetItems.Standard;
     EnableUnstacking = false;
     EnableSettingsWizard = false;
@@ -978,7 +981,8 @@ public MULTIbalancer() {
 
     /* ===== SECTION 9 - Debug Settings ===== */
 
-    ShowInLog = String.Empty;
+    ShowInLog = INVALID_NAME_TAG_GUID;
+    ShowCommandInLog = String.Empty;
     LogChat = true;
     EnableLoggingOnlyMode = false;
     EnableExternalLogging = false;
@@ -1519,7 +1523,7 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
         /* ===== SECTION 9 - Debug Settings ===== */
 
-        lstReturn.Add(new CPluginVariable("9 - Debugging|Show In Log", ShowInLog.GetType(), ShowInLog));
+        lstReturn.Add(new CPluginVariable("9 - Debugging|Show Command In Log", ShowCommandInLog.GetType(), ShowCommandInLog));
 
         lstReturn.Add(new CPluginVariable("9 - Debugging|Log Chat", LogChat.GetType(), LogChat));
 
@@ -1542,7 +1546,10 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 }
 
 public List<CPluginVariable> GetPluginVariables() {
-    return GetDisplayPluginVariables();
+    List<CPluginVariable> lstReturn = GetDisplayPluginVariables();
+    lstReturn.Add(new CPluginVariable("9 - Debugging|Show In Log", ShowInLog.GetType(), ShowInLog));
+    lstReturn.Add(new CPluginVariable("0 - Presets|Settings Version", SettingsVersion.GetType(), SettingsVersion));
+    return lstReturn;
 }
 
 public void SetPluginVariable(String strVariable, String strValue) {
@@ -1552,6 +1559,13 @@ public void SetPluginVariable(String strVariable, String strValue) {
     if (fIsEnabled) DebugWrite(strVariable + " <- " + strValue, 6);
 
     try {
+        if (strVariable.Contains("Show In Log") && String.IsNullOrEmpty(strValue)) {
+            DebugWrite("^8Detected pre-v1 settings, upgrading ...", 3);
+            UpgradePreV1Settings();
+            strValue = INVALID_NAME_TAG_GUID; // mark as upgraded
+        } else if (strVariable.Contains("Settings Version")) {
+            DebugWrite("^1Settings Version = " + strValue, 3);
+        }
         String tmp = strVariable;
         int pipeIndex = strVariable.IndexOf('|');
         if (pipeIndex >= 0) {
@@ -1717,9 +1731,9 @@ public void SetPluginVariable(String strVariable, String strValue) {
         ValidateSettings(strVariable,  strValue);
 
         // Handle show in log commands
-        if (!String.IsNullOrEmpty(ShowInLog)) {
-            CommandToLog(ShowInLog);
-            ShowInLog = String.Empty;
+        if (!String.IsNullOrEmpty(ShowCommandInLog)) {
+            CommandToLog(ShowCommandInLog);
+            ShowCommandInLog = String.Empty;
         }
     }
 }
@@ -1930,7 +1944,7 @@ private void ResetSettings() {
 
     /* ===== SECTION 9 - Debug Settings ===== */
 
-    ShowInLog = rhs.ShowInLog;
+    ShowCommandInLog = rhs.ShowCommandInLog;
     LogChat = rhs.LogChat;
     EnableLoggingOnlyMode = rhs.EnableLoggingOnlyMode;
 }
@@ -7590,6 +7604,26 @@ void ApplyWizardSettings() {
     }
 }
 
+private void UpgradePreV1Settings() {
+    /*
+    Only do the upgrade if EnableUnstacking is false
+    */
+    if (!EnableUnstacking) {
+        /* ===== SECTION 8 - Per-Mode Settings ===== */
+        List<String> simpleModes = GetSimplifiedModes();
+
+        foreach (String sm in simpleModes) {
+            PerModeSettings oneSet = null;
+            if (fPerMode.TryGetValue(sm, out oneSet) && oneSet != null) {
+                PerModeSettings def = new PerModeSettings(sm);
+                oneSet.DelaySecondsBetweenSwapGroups = def.DelaySecondsBetweenSwapGroups;
+                oneSet.MaxUnstackingSwapsPerRound = def.MaxUnstackingSwapsPerRound;
+                oneSet.NumberOfSwapsPerGroup = def.NumberOfSwapsPerGroup;
+            }
+        }
+    }
+}
+
 
 
 public void LaunchCheckForPluginUpdate() {
@@ -8070,11 +8104,12 @@ static class MULTIbalancerUtils {
 <tr><td><b>BalanceOnly</b></td><td>Disable team unstacking, only move for autobalance</td></tr>
 <tr><td><b>UnstackOnly</b></td><td>Disable autobalancing, only move to unstack teams</td></tr>
 <tr><td><b>None</b></td><td>Custom plugin settings (this is automatically selected if you change settings controlled by <b>Presets</b>)</td></tr>
-</table></p>
+</table>
+<b><font color=#FF0000>Standard, Retain, and BalanceOnly are recommended to admins new to this plugin.</font></b> Aggressive and Intensify are not recommended for admins new to this plugin.</p>
 
 <p>2) Review plugin section <b>5. Messages</b> and change any messages you don't like.</p>
 
-<p>3) Find your game mode in Section 8 and review the settings. Adjust the <b>Max Players</b> and <b>Definition Of ...</b> settings as need.</p>
+<p>3) Find your game mode in Section 8 and review the settings. Adjust the <b>Max Players</b> and <b>Definition Of ...</b> settings as needed. Or, <b>Enable Settings Wizard</b> in Section 0, <i>fill in the form that is displayed</i>, and then change <b>Apply Settings Changes</b> to True, to have the plugin set up your per-mode settings automatically.</p>
 
 <p>4) That's it! You are good to go.</p>
 
@@ -8145,6 +8180,8 @@ static class MULTIbalancerUtils {
 <p>See the <b>Quick Start</b> section above.</p>
 
 <p><b>Enable Unstacking</b>: True or False, default False. Enables the per-mode unstacking features described in sections 3 and 8. Setting to False will not reset individual unstacking settings, it just disables the unstacking-related settings from operating. Setting to True enables all of your untacking-related settings.</p>
+
+<p><b>Enable Settings Wizard</b>: True or False, default False. If set to True, the plugin will automatically change your per-mode settings based on some basic information that you provide. Several additional settings are displayed. The first is <b>Which Mode</b>. Select the mode you want to apply changes to. Fill in the rest of the settings below <b>Which Mode</b>; they are self-explanatory. When you are done, change the <b>Apply Settings Changes</b> from False to True. The changes will be applied, information for review will be displayed in the plugin.log window, and the wizard will set itself to False and hide itself again.</p>
 
 <h3>1 - Settings</h3>
 <p>These are general settings.</p>
@@ -8355,7 +8392,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 <h3>9 - Debugging</h3>
 <p>These settings are used for debugging problems with the plugin.</p>
 
-<p><b>Show In Log</b>: Special commands may be typed in this text area to display information in plugin.log. Type <i>help></i> into the text field and press Enter (type a return). A list of commands will be written to plugin.log.</p>
+<p><b>Show Command In Log</b>: Special commands may be typed in this text area to display information in plugin.log. Type <i>help></i> into the text field and press Enter (type a return). A list of commands will be written to plugin.log.</p>
 
 <p><b>Log Chat</b>: True or False, default True. If set to True, all chat messages sent by the plugin will be logged in chat.log.</p>
 
