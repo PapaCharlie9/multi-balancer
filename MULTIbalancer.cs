@@ -3347,6 +3347,10 @@ private void BalanceAndUnstack(String name) {
         if (DebugLevel >= 8) DebugBalance("Unstack is disabled, Enable Unstacking is set to False");
         IncrementTotal();
         return;
+    } else if (!fIsFullRound) {
+        if (DebugLevel >= 7) DebugBalance("Unstack is disabled, not a full round");
+        IncrementTotal();
+        return;
     }
 
     if (winningTeam <= 0 || winningTeam >= fTickets.Length || losingTeam <= 0 || losingTeam >= fTickets.Length || balanceSpeed == Speed.Stop) {
