@@ -8348,15 +8348,15 @@ For each phase, there are three unstacking settings for server population: Low, 
 <p><b>After Unswitching</b>: Message sent after a player is killed by admin and moved back to the team he was assigned to. This message is sent after the <b>Detected Bad Team Switch</b> message.</p>
 
 <h3>6 - Unswitcher</h3>
-<p>This section controls the unswitcher. Every time a player tries to switch to a different team, the unswitcher checks if the switch is allowed or forbidden. If forbidden, he will be moved back by the plugin (see <b>Enable Immediate Unswitch</b> for details about how). Note that setting any of the <b>Forbid ...</b> settings to False will reduce the effectiveness of the balancer and unstacker.</p>
+<p>This section controls the unswitcher. Every time a player tries to switch to a different team, the unswitcher checks if the switch is allowed or forbidden. If forbidden, he will be moved back by the plugin (see <b>Enable Immediate Unswitch</b> for details about how). The possible values are <i>Always</i>, which means do not allow (always forbid) this type of team switching, <i>Never</i>, which means allow team switching of this type, and <i>LatePhaseOnly</i>, which means allow team switching of this type until Late Phase, then no longer allow it (forbid it). Note that setting any of the <b>Forbid ...</b> settings to <i>Never</i> will reduce the effectiveness of the balancer and unstacker.</p>
 
-<p><b>Forbid Switch After Autobalance</b>: True or False, default True. If True, after a player is moved to a different team for balance or unstacking, this setting forbids them from moving back to their original team. If False, they may move back to their original team.</p>
+<p><b>Forbid Switching After Autobalance</b>: Always, Never, or LatePhaseOnly, default Always. Controls team switching after being moved to a different team for balance or unstacking. This setting forbids moved players from moving back to their original team.</p>
 
-<p><b>Forbid Switch To Winning Team</b>: True or False, default True. If True, a player is not allowed to switch to the winning team. If False, they are allowed.</p>
+<p><b>Forbid Switching To Winning Team</b>: Always, Never, or LatePhaseOnly, default Always. Controls switching to the winning team.</p>
 
-<p><b>Forbid Switch To Biggest Team</b>: True or False, default True. If True, a player is not allowed to switch to the biggest team. If False, they are allowed.</p>
+<p><b>Forbid Switch To Biggest Team</b>: Always, Never, or LatePhaseOnly, default Always. Contorls switching to the biggest team.</p>
 
-<p><b>Forbid Switch After Dispersal</b>: True or False, default True. If True, after a player is moved to a different team due to <b>Disperse Evenly By Rank</b> or the <b>Disperse Evenly List</b>, this setting forbids them from moving back to their original team. If False, they may move back to their original team.</p>
+<p><b>Forbid Switch After Dispersal</b>: Always, Never, or LatePhaseOnly, default Always. Controls team switching after being moved to a different team due to <b>Disperse Evenly By Rank</b> or the <b>Disperse Evenly List</b>. This setting forbids them from moving back to their original team.</p>
 
 <p><b>Enable Immediate Unswitch</b>: True or False, default True. If True, if a player tries to make a forbidden team switch, the plugin will immediately move them back without any warning. They will only see the <b>After Unswitching</b> message(s). If False, the plugin will wait until the player spawns, it will then post the <b>Detected Bad Team Switch</b> message(s), it will wait <b>Yell Duration Seconds</b> seconds, then it will admin kill the player and move him back. <b>NOTE: Does not apply to SQDM. SQDM is always treated as this were set to False.</b></p>
 
