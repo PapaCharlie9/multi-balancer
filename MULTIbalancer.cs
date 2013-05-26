@@ -85,6 +85,8 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     public enum Scope {SameTeam, SameSquad};
 
+    public enum UnswitchChoice {Always, Never, LatePhaseOnly};
+
     /* Constants & Statics */
 
     public const double SWAP_TIMEOUT = 600; // in seconds
@@ -753,10 +755,14 @@ public bool EnableExternalLogging;
 public String ExternalLogSuffix; 
 
 public bool EnableImmediateUnswitch;
-public bool ForbidSwitchAfterAutobalance;
-public bool ForbidSwitchToWinningTeam;
-public bool ForbidSwitchToBiggestTeam;
-public bool ForbidSwitchAfterDispersal;
+public bool ForbidSwitchAfterAutobalance; // legacy pre-v1
+public bool ForbidSwitchToWinningTeam; // legacy pre-v1
+public bool ForbidSwitchToBiggestTeam; // legacy pre-v1
+public bool ForbidSwitchAfterDispersal; // legacy pre-v1
+public UnswitchChoice ForbidSwitchingAfterAutobalance;
+public UnswitchChoice ForbidSwitchingToWinningTeam;
+public UnswitchChoice ForbidSwitchingToBiggestTeam;
+public UnswitchChoice ForbidSwitchingAfterDispersal;
 
 // Properties
 public int TotalPlayerCount {get{lock (fAllPlayers) {return fAllPlayers.Count;}}}
@@ -970,10 +976,10 @@ public MULTIbalancer() {
     /* ===== SECTION 6 - Unswitcher ===== */
 
     EnableImmediateUnswitch = true;
-    ForbidSwitchAfterAutobalance = true;
-    ForbidSwitchToWinningTeam = true;
-    ForbidSwitchToBiggestTeam = true;
-    ForbidSwitchAfterDispersal = true;
+    ForbidSwitchingAfterAutobalance = UnswitchChoice.Always;
+    ForbidSwitchingToWinningTeam = UnswitchChoice.Always;
+    ForbidSwitchingToBiggestTeam = UnswitchChoice.Always;
+    ForbidSwitchingAfterDispersal = UnswitchChoice.Always;
 
     /* ===== SECTION 7 - TBD ===== */
 
@@ -998,10 +1004,10 @@ public MULTIbalancer(PresetItems preset) : this() {
          // EarlyPhaseBalanceSpeed = new Speed[3]   {     Speed.Fast, Speed.Adaptive, Speed.Adaptive};
          // MidPhaseBalanceSpeed = new Speed[3]     {     Speed.Fast, Speed.Adaptive, Speed.Adaptive};
          // LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Stop,     Speed.Stop,     Speed.Stop};
-         // ForbidSwitchAfterAutobalance = true;
-         // ForbidSwitchToWinningTeam = true;
-         // ForbidSwitchToBiggestTeam = true;
-         // ForbidSwitchAfterDispersal = true;
+         // ForbidSwitchingAfterAutobalance = UnswitchChoice.Always;
+         // ForbidSwitchingToWinningTeam = UnswitchChoice.Always;
+         // ForbidSwitchingToBiggestTeam = UnswitchChoice.Always;
+         // ForbidSwitchingAfterDispersal = UnswitchChoice.Always;
          // EnableImmediateUnswitch = true;
          // 
          // foreach (String mode in fPerMode.Keys) {
@@ -1028,10 +1034,10 @@ public MULTIbalancer(PresetItems preset) : this() {
             MidPhaseBalanceSpeed = new Speed[3]     {     Speed.Fast,     Speed.Fast,     Speed.Fast};
             LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Fast,     Speed.Fast,     Speed.Fast};
 
-            ForbidSwitchAfterAutobalance = true;
-            ForbidSwitchToWinningTeam = true;
-            ForbidSwitchToBiggestTeam = true;
-            ForbidSwitchAfterDispersal = true;
+            ForbidSwitchingAfterAutobalance = UnswitchChoice.Always;
+            ForbidSwitchingToWinningTeam = UnswitchChoice.Always;
+            ForbidSwitchingToBiggestTeam = UnswitchChoice.Always;
+            ForbidSwitchingAfterDispersal = UnswitchChoice.Always;
             EnableImmediateUnswitch = true;
 
             // Does not count for automatic detection of preset
@@ -1060,10 +1066,10 @@ public MULTIbalancer(PresetItems preset) : this() {
             MidPhaseBalanceSpeed = new Speed[3]     {     Speed.Slow,     Speed.Slow,     Speed.Slow};
             LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Stop,     Speed.Stop,     Speed.Stop};
 
-            ForbidSwitchAfterAutobalance = true;
-            ForbidSwitchToWinningTeam = true;
-            ForbidSwitchToBiggestTeam = true;
-            ForbidSwitchAfterDispersal = false;
+            ForbidSwitchingAfterAutobalance = UnswitchChoice.Always;
+            ForbidSwitchingToWinningTeam = UnswitchChoice.Always;
+            ForbidSwitchingToBiggestTeam = UnswitchChoice.Always;
+            ForbidSwitchingAfterDispersal = UnswitchChoice.Never;
             EnableImmediateUnswitch = false;
 
             // Does not count for automatic detection of preset
@@ -1093,10 +1099,10 @@ public MULTIbalancer(PresetItems preset) : this() {
             MidPhaseBalanceSpeed = new Speed[3]     { Speed.Adaptive, Speed.Adaptive, Speed.Adaptive};
             LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Stop,     Speed.Stop,     Speed.Stop};
 
-            ForbidSwitchAfterAutobalance = true;
-            ForbidSwitchToWinningTeam = true;
-            ForbidSwitchToBiggestTeam = false;
-            ForbidSwitchAfterDispersal = true;
+            ForbidSwitchingAfterAutobalance = UnswitchChoice.Always;
+            ForbidSwitchingToWinningTeam = UnswitchChoice.Always;
+            ForbidSwitchingToBiggestTeam = UnswitchChoice.Never;
+            ForbidSwitchingAfterDispersal = UnswitchChoice.Always;
             EnableImmediateUnswitch = true;
 
             foreach (String mode in fPerMode.Keys) {
@@ -1124,10 +1130,10 @@ public MULTIbalancer(PresetItems preset) : this() {
             MidPhaseBalanceSpeed = new Speed[3]     {     Speed.Slow, Speed.Adaptive,     Speed.Slow};
             LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Stop,     Speed.Stop,     Speed.Stop};
 
-            ForbidSwitchAfterAutobalance = false;
-            ForbidSwitchToWinningTeam = true;
-            ForbidSwitchToBiggestTeam = false;
-            ForbidSwitchAfterDispersal = false;
+            ForbidSwitchingAfterAutobalance = UnswitchChoice.Never;
+            ForbidSwitchingToWinningTeam = UnswitchChoice.Always;
+            ForbidSwitchingToBiggestTeam = UnswitchChoice.Never;
+            ForbidSwitchingAfterDispersal = UnswitchChoice.Never;
             EnableImmediateUnswitch = true;
 
             foreach (String mode in fPerMode.Keys) {
@@ -1155,10 +1161,10 @@ public MULTIbalancer(PresetItems preset) : this() {
             MidPhaseBalanceSpeed = new Speed[3]     { Speed.Adaptive, Speed.Adaptive, Speed.Adaptive};
             LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Stop,     Speed.Stop,     Speed.Stop};
 
-            ForbidSwitchAfterAutobalance = true;
-            ForbidSwitchToWinningTeam = false;
-            ForbidSwitchToBiggestTeam = false;
-            ForbidSwitchAfterDispersal = false;
+            ForbidSwitchingAfterAutobalance = UnswitchChoice.Always;
+            ForbidSwitchingToWinningTeam = UnswitchChoice.Never;
+            ForbidSwitchingToBiggestTeam = UnswitchChoice.Never;
+            ForbidSwitchingAfterDispersal = UnswitchChoice.Never;
             EnableImmediateUnswitch = true;
 
             foreach (String mode in fPerMode.Keys) {
@@ -1186,10 +1192,11 @@ public MULTIbalancer(PresetItems preset) : this() {
             MidPhaseBalanceSpeed = new Speed[3]     {     Speed.Unstack,     Speed.Unstack,     Speed.Unstack};
             LatePhaseBalanceSpeed = new Speed[3]    {     Speed.Unstack,     Speed.Unstack,     Speed.Unstack};
 
-            ForbidSwitchAfterAutobalance = false;
-            ForbidSwitchToWinningTeam = true;
-            ForbidSwitchToBiggestTeam = false;
-            ForbidSwitchAfterDispersal = true;
+
+            ForbidSwitchingAfterAutobalance = UnswitchChoice.Never;
+            ForbidSwitchingToWinningTeam = UnswitchChoice.Always;
+            ForbidSwitchingToBiggestTeam = UnswitchChoice.Never;
+            ForbidSwitchingAfterDispersal = UnswitchChoice.Always;
             EnableImmediateUnswitch = true;
 
             // Does not count for automatic detection of preset
@@ -1428,13 +1435,22 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
         /* ===== SECTION 6 - Unswitcher ===== */
 
-        lstReturn.Add(new CPluginVariable("6 - Unswitcher|Forbid Switch After Autobalance", ForbidSwitchAfterAutobalance.GetType(), ForbidSwitchAfterAutobalance));
+        var_name = "6 - Unswitcher|Forbid Switching After Autobalance";
+        var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(UnswitchChoice))) + ")";
 
-        lstReturn.Add(new CPluginVariable("6 - Unswitcher|Forbid Switch To Winning Team", ForbidSwitchToWinningTeam.GetType(), ForbidSwitchToWinningTeam)); 
+        lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(UnswitchChoice), ForbidSwitchingAfterAutobalance)));
 
-        lstReturn.Add(new CPluginVariable("6 - Unswitcher|Forbid Switch To Biggest Team", ForbidSwitchToBiggestTeam.GetType(), ForbidSwitchToBiggestTeam)); 
+        var_name = "6 - Unswitcher|Forbid Switching To Winning Team";
 
-        lstReturn.Add(new CPluginVariable("6 - Unswitcher|Forbid Switch After Dispersal", ForbidSwitchAfterDispersal.GetType(), ForbidSwitchAfterDispersal)); 
+        lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(UnswitchChoice), ForbidSwitchingToWinningTeam))); 
+
+        var_name = "6 - Unswitcher|Forbid Switching To Biggest Team";
+
+        lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(UnswitchChoice), ForbidSwitchingToBiggestTeam))); 
+
+        var_name = "6 - Unswitcher|Forbid Switching After Dispersal";
+
+        lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(UnswitchChoice), ForbidSwitchingAfterDispersal))); 
 
         lstReturn.Add(new CPluginVariable("6 - Unswitcher|Enable Immediate Unswitch", EnableImmediateUnswitch.GetType(), EnableImmediateUnswitch)); 
 
@@ -1547,7 +1563,13 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
 public List<CPluginVariable> GetPluginVariables() {
     List<CPluginVariable> lstReturn = GetDisplayPluginVariables();
+    // pre-v1 legacy settings
+    lstReturn.Add(new CPluginVariable("6 - Unswitcher|Forbid Switch After Autobalance", ForbidSwitchAfterAutobalance.GetType(), ForbidSwitchAfterAutobalance));
+    lstReturn.Add(new CPluginVariable("6 - Unswitcher|Forbid Switch To Winning Team", ForbidSwitchToWinningTeam.GetType(), ForbidSwitchToWinningTeam));
+    lstReturn.Add(new CPluginVariable("6 - Unswitcher|Forbid Switch To Biggest Team", ForbidSwitchToBiggestTeam.GetType(), ForbidSwitchToBiggestTeam));
+    lstReturn.Add(new CPluginVariable("6 - Unswitcher|Forbid Switch After Dispersal", ForbidSwitchAfterDispersal.GetType(), ForbidSwitchAfterDispersal)); 
     lstReturn.Add(new CPluginVariable("9 - Debugging|Show In Log", ShowInLog.GetType(), ShowInLog));
+    // hidden setting
     lstReturn.Add(new CPluginVariable("0 - Presets|Settings Version", SettingsVersion.GetType(), SettingsVersion));
     return lstReturn;
 }
@@ -1634,6 +1656,13 @@ public void SetPluginVariable(String strVariable, String strValue) {
                 fieldType = typeof(PresetItems);
                 try {
                     field.SetValue(this, (PresetItems)Enum.Parse(fieldType, strValue));
+                } catch (Exception e) {
+                    ConsoleException(e);
+                }
+            } else if (tmp.Contains("Forbid Switching")) {
+                fieldType = typeof(UnswitchChoice);
+                try {
+                    field.SetValue(this, (UnswitchChoice)Enum.Parse(fieldType, strValue));
                 } catch (Exception e) {
                     ConsoleException(e);
                 }
@@ -1920,10 +1949,10 @@ private void ResetSettings() {
     
     /* ===== SECTION 6 - Unswitcher ===== */
 
-    ForbidSwitchAfterAutobalance = rhs.ForbidSwitchAfterAutobalance;
-    ForbidSwitchToWinningTeam = rhs.ForbidSwitchToWinningTeam;
-    ForbidSwitchToBiggestTeam = rhs.ForbidSwitchToBiggestTeam;
-    ForbidSwitchAfterDispersal = rhs.ForbidSwitchAfterDispersal;
+    ForbidSwitchingAfterAutobalance = rhs.ForbidSwitchingAfterAutobalance;
+    ForbidSwitchingToWinningTeam = rhs.ForbidSwitchingToWinningTeam;
+    ForbidSwitchingToBiggestTeam = rhs.ForbidSwitchingToBiggestTeam;
+    ForbidSwitchingAfterDispersal = rhs.ForbidSwitchingAfterDispersal;
     EnableImmediateUnswitch = rhs.EnableImmediateUnswitch;
 
     /* ===== SECTION 7 - TBD ===== */
@@ -3845,7 +3874,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     bool isSQDM = IsSQDM();
     bool isDispersal = IsDispersal(player);
     bool isRank = IsRankDispersal(player);
-    bool forbidden = (((isDispersal || isRank) && ForbidSwitchAfterDispersal) || (player.MovedByMB && !isSQDM && ForbidSwitchAfterAutobalance));
+    bool forbidden = (((isDispersal || isRank) && Forbid(perMode, ForbidSwitchingAfterDispersal)) || (player.MovedByMB && !isSQDM && Forbid(perMode, ForbidSwitchingAfterAutobalance)));
 
     // Unlimited time?
     if (!forbidden && UnlimitedTeamSwitchingDuringFirstMinutesOfRound > 0 && GetTimeInRoundMinutes() < UnlimitedTeamSwitchingDuringFirstMinutesOfRound) {
@@ -3995,7 +4024,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
 
     if (player.MovedByMB && !isSQDM) {
         why = ForbidBecause.MovedByBalancer;
-        if (!ForbidSwitchAfterAutobalance) {
+        if (!Forbid(perMode, ForbidSwitchingAfterAutobalance)) {
             DebugUnswitch("ALLOWED: move by ^b" + name + "^n because ^bForbid Switch After Autobalance^n is False");
             SetSpawnMessages(name, String.Empty, String.Empty, false);
             CheckAbortMove(name);
@@ -4003,7 +4032,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
         }
     } else if (toTeam == winningTeam) {
         why = ForbidBecause.ToWinning;
-        if (!ForbidSwitchToWinningTeam) {
+        if (!Forbid(perMode, ForbidSwitchingToWinningTeam)) {
             DebugUnswitch("ALLOWED: move by ^b" + name + "^n because ^bForbid Switch To Winning Team^n is False");
             SetSpawnMessages(name, String.Empty, String.Empty, false);
             CheckAbortMove(name);
@@ -4011,7 +4040,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
         }
     } else if (toTeam == biggestTeam) {
         why = ForbidBecause.ToBiggest;
-        if (!ForbidSwitchToBiggestTeam) {
+        if (!Forbid(perMode, ForbidSwitchingToBiggestTeam)) {
             DebugUnswitch("ALLOWED: move by ^b" + name + "^n because ^bForbid Switch To Biggest Team^n is False");
             SetSpawnMessages(name, String.Empty, String.Empty, false);
             CheckAbortMove(name);
@@ -4019,7 +4048,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
         }
     } else if (isDispersal) {
         why = ForbidBecause.DisperseByList;
-        if (!ForbidSwitchAfterDispersal) {
+        if (!Forbid(perMode, ForbidSwitchingAfterDispersal)) {
             DebugUnswitch("ALLOWED: move by ^b" + name + "^n because ^bForbid Switch After Dispersal^n is False");
             SetSpawnMessages(name, String.Empty, String.Empty, false);
             CheckAbortMove(name);
@@ -4027,7 +4056,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
         }
     } else if (isRank) {
         why = ForbidBecause.DisperseByRank;
-        if (!ForbidSwitchAfterDispersal) {
+        if (!Forbid(perMode, ForbidSwitchingAfterDispersal)) {
             DebugUnswitch("ALLOWED: move by ^b" + name + "^n because ^bForbid Switch After Dispersal^n is False");
             SetSpawnMessages(name, String.Empty, String.Empty, false);
             CheckAbortMove(name);
@@ -5794,10 +5823,10 @@ public bool CheckForEquality(MULTIbalancer rhs) {
      && MULTIbalancerUtils.EqualArrays(this.EarlyPhaseBalanceSpeed, rhs.EarlyPhaseBalanceSpeed)
      && MULTIbalancerUtils.EqualArrays(this.MidPhaseBalanceSpeed, rhs.MidPhaseBalanceSpeed)
      && MULTIbalancerUtils.EqualArrays(this.LatePhaseBalanceSpeed, rhs.LatePhaseBalanceSpeed)
-     && this.ForbidSwitchAfterAutobalance == rhs.ForbidSwitchAfterAutobalance 
-     && this.ForbidSwitchToWinningTeam == rhs.ForbidSwitchToWinningTeam 
-     && this.ForbidSwitchToBiggestTeam == rhs.ForbidSwitchToBiggestTeam
-     && this.ForbidSwitchAfterDispersal == rhs.ForbidSwitchAfterDispersal
+     && this.ForbidSwitchingAfterAutobalance == rhs.ForbidSwitchingAfterAutobalance 
+     && this.ForbidSwitchingToWinningTeam == rhs.ForbidSwitchingToWinningTeam 
+     && this.ForbidSwitchingToBiggestTeam == rhs.ForbidSwitchingToBiggestTeam
+     && this.ForbidSwitchingAfterDispersal == rhs.ForbidSwitchingAfterDispersal
      && this.EnableImmediateUnswitch == rhs.EnableImmediateUnswitch
     );
 }
@@ -7605,10 +7634,13 @@ void ApplyWizardSettings() {
 }
 
 private void UpgradePreV1Settings() {
-    /*
-    Only do the upgrade if EnableUnstacking is false
-    */
-    if (!EnableUnstacking) {
+     /* ===== SECTION 6 - Unswitcher ===== */
+     ForbidSwitchingAfterAutobalance = (ForbidSwitchAfterAutobalance) ? UnswitchChoice.Always : UnswitchChoice.Never;
+     ForbidSwitchingAfterDispersal = (ForbidSwitchAfterDispersal) ? UnswitchChoice.Always : UnswitchChoice.Never;
+     ForbidSwitchingToBiggestTeam = (ForbidSwitchToBiggestTeam) ? UnswitchChoice.Always : UnswitchChoice.Never;
+     ForbidSwitchingToWinningTeam = (ForbidSwitchToWinningTeam) ? UnswitchChoice.Always : UnswitchChoice.Never;
+
+    if (!EnableUnstacking) { // Assume settings were customized and should be left unchanged if True
         /* ===== SECTION 8 - Per-Mode Settings ===== */
         List<String> simpleModes = GetSimplifiedModes();
 
@@ -7623,6 +7655,20 @@ private void UpgradePreV1Settings() {
         }
     }
 }
+
+private bool Forbid(PerModeSettings perMode, UnswitchChoice choice) {
+    if (choice == UnswitchChoice.Always) return true;
+    if (choice == UnswitchChoice.Never) return false;
+    
+    bool ret = false;
+    if (choice == UnswitchChoice.LatePhaseOnly) {
+        if (perMode == null) return false;
+        ret = (GetPhase(perMode, false) == Phase.Late);
+    }
+    return ret;
+}
+
+/* === NEW_NEW_NEW === */
 
 
 
@@ -7963,10 +8009,10 @@ static class MULTIbalancerUtils {
             lhs.MidPhaseBalanceSpeed = rhs.MidPhaseBalanceSpeed;
             lhs.LatePhaseBalanceSpeed = rhs.LatePhaseBalanceSpeed;
 
-            lhs.ForbidSwitchAfterAutobalance = rhs.ForbidSwitchAfterAutobalance;
-            lhs.ForbidSwitchToWinningTeam = rhs.ForbidSwitchToWinningTeam;
-            lhs.ForbidSwitchToBiggestTeam = rhs.ForbidSwitchToBiggestTeam;
-            lhs.ForbidSwitchAfterDispersal = rhs.ForbidSwitchAfterDispersal;
+            lhs.ForbidSwitchingAfterAutobalance = rhs.ForbidSwitchingAfterAutobalance;
+            lhs.ForbidSwitchingToWinningTeam = rhs.ForbidSwitchingToWinningTeam;
+            lhs.ForbidSwitchingToBiggestTeam = rhs.ForbidSwitchingToBiggestTeam;
+            lhs.ForbidSwitchingAfterDispersal = rhs.ForbidSwitchingAfterDispersal;
             lhs.EnableImmediateUnswitch = rhs.EnableImmediateUnswitch;
 
         } catch (Exception) { }
