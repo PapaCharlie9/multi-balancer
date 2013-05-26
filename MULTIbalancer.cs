@@ -348,6 +348,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         public int MovesRound;
         public bool MovedByMB;
         public DateTime MovedTimestamp;
+        public DateTime MovedByMBTimestamp;
 
         // Based on settings
         public int DispersalGroup;
@@ -378,6 +379,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             MovesRound = 0;
             MovedByMB = false;
             MovedTimestamp = DateTime.MinValue;
+            MovedByMBTimestamp = DateTime.MinValue;
             SpawnChatMessage = String.Empty;
             SpawnYellMessage = String.Empty;
             QuietMessage = false;
@@ -418,8 +420,8 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             MovesRound = 0;
             MovedByMB = false;
             DispersalGroup = 0;
-
-            // MovedTimestamp reset when minutes exceeds MinutesAfterBeingMoved
+            MovedTimestamp = DateTime.MinValue;
+            // MovedByMBTimestamp reset when minutes exceeds MinutesAfterBeingMoved
         }
 
         public PlayerModel ClonePlayer() {
@@ -444,10 +446,12 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             lhs.ScoreTotal = this.ScoreTotal;
             lhs.KillsTotal = this.KillsTotal;
             lhs.DeathsTotal = this.DeathsTotal;
+            lhs.MovesTotal = this.MovesTotal;
             lhs.IsDeployed = this.IsDeployed;
             lhs.MovesRound = this.MovesRound;
             lhs.MovedByMB = this.MovedByMB;
             lhs.MovedTimestamp = this.MovedTimestamp;
+            lhs.MovedByMBTimestamp = this.MovedByMBTimestamp;
             lhs.SpawnChatMessage = this.SpawnChatMessage;
             lhs.SpawnYellMessage = this.SpawnYellMessage;
             lhs.QuietMessage = this.QuietMessage;
@@ -2098,8 +2102,8 @@ private void CommandToLog(string cmd) {
             lock (fKnownPlayers) {
                 foreach (String name in fKnownPlayers.Keys) {
                     PlayerModel p = fKnownPlayers[name];
-                    if (p.MovedTimestamp != DateTime.MinValue) {
-                        ConsoleDump("^b" + p.FullName + "^n was moved " + p.MovesTotal + " times, the last was " + DateTime.Now.Subtract(p.MovedTimestamp).TotalMinutes.ToString("F0") + " minutes ago");
+                    if (p.MovedByMBTimestamp != DateTime.MinValue) {
+                        ConsoleDump("^b" + p.FullName + "^n was moved " + (p.MovesTotal + p.MovesRound) + " times, the last was " + DateTime.Now.Subtract(p.MovedByMBTimestamp).TotalMinutes.ToString("F0") + " minutes ago");
                     }
                 }
             }
@@ -3286,8 +3290,8 @@ private void BalanceAndUnstack(String name) {
     isStrong = (playerIndex < strongest);
 
     // Exclude if too soon since last move
-    if (!mustMove && player.MovedTimestamp != DateTime.MinValue) {
-        double mins = DateTime.Now.Subtract(player.MovedTimestamp).TotalMinutes;
+    if (!mustMove && player.MovedByMBTimestamp != DateTime.MinValue) {
+        double mins = DateTime.Now.Subtract(player.MovedByMBTimestamp).TotalMinutes;
         if (mins < MinutesAfterBeingMoved) {
             DebugBalance("Excluding ^b" + player.Name + "^n: last move was " + mins.ToString("F0") + " minutes ago, less than required " + MinutesAfterBeingMoved.ToString("F0") + " minutes");
             fExcludedRound = fExcludedRound + 1;
@@ -3295,7 +3299,7 @@ private void BalanceAndUnstack(String name) {
             return;
         } else {
             // reset
-            player.MovedTimestamp = DateTime.MinValue;
+            player.MovedByMBTimestamp = DateTime.MinValue;
         }
     }
 
@@ -6142,8 +6146,8 @@ private void UpdateTeams() {
                 List<PlayerModel> t = GetTeam(player.Team);
                 if (t != null) t.Add(player);
                 // Also update move timer
-                if (player.MovedTimestamp != DateTime.MinValue && DateTime.Now.Subtract(player.MovedTimestamp).TotalMinutes >= MinutesAfterBeingMoved) {
-                    player.MovedTimestamp = DateTime.MinValue;
+                if (player.MovedByMBTimestamp != DateTime.MinValue && DateTime.Now.Subtract(player.MovedByMBTimestamp).TotalMinutes >= MinutesAfterBeingMoved) {
+                    player.MovedByMBTimestamp = DateTime.MinValue;
                 }
             }
         }
@@ -6756,6 +6760,7 @@ private void IncrementMoves(String name) {
         PlayerModel m = fKnownPlayers[name];
         m.MovesRound = m.MovesRound + 1;
         m.MovedByMB = true;
+        m.MovedByMBTimestamp = DateTime.Now;
     }
     UpdateMoveTime(name);
 }
@@ -6764,7 +6769,7 @@ private void ConditionalIncrementMoves(String name) {
     /*
     If some other plugin did an admin move on this player, increment
     the move counter so that this player will be exempted from balancing and unstacking
-    for the rest of this round, but don't set the flag, since MB didn't move this player.
+    for the rest of this round, but don't set the flag or the timer, since MB didn't move this player.
     */
     if (!IsKnownPlayer(name)) return;
     lock (fKnownPlayers) {
