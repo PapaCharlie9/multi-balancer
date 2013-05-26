@@ -95,7 +95,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     public const int CRASH_COUNT_HEURISTIC = 24; // player count difference signifies a crash
 
-    public const int MIN_UPDATE_USAGE_COUNT = 10; // minimum number of plugin updates in use
+    public const int MIN_UPDATE_USAGE_COUNT = 20; // minimum number of plugin updates in use
 
     public const double CHECK_FOR_UPDATES_MINS = 12*60; // 12 hours
 
@@ -7905,8 +7905,6 @@ private void SetDispersalListGroups() {
 
 private void AssignGroups() {
     int grandTotal = 0;
-    List<PlayerModel>[] teamListsById = new List<PlayerModel>[5]{null, fTeam1, fTeam2, fTeam3, fTeam4};
-    List<PlayerModel>[] distribution = new List<PlayerModel>[5]{null, new List<PlayerModel>(), new List<PlayerModel>(), new List<PlayerModel>(), new List<PlayerModel>()};
     List<int> availableTeamIds = new List<int>(new int[4]{1, 2, 3, 4});
 
     try {
@@ -7921,18 +7919,10 @@ private void AssignGroups() {
                 if (DebugLevel >= 7) ConsoleDebug("AssignGroups assigned ^b" + p.FullName + "^n to Group " + p.DispersalGroup);
             }
         }
+
         // Clear
         for (int groupId = 1; groupId <= 4; ++groupId) {
             fGroupAssignments[groupId] = 0;
-        }
-        // Compute distribution of players
-        for (int teamId = 1; teamId < teamListsById.Length; ++teamId) {
-            foreach (PlayerModel p in teamListsById[teamId]) {
-                if (p.DispersalGroup >= 1 && p.DispersalGroup <= 4) {
-                    distribution[teamId].Add(p);
-                    grandTotal = grandTotal + 1;
-                }
-            }
         }
 
         // Compute distribution of groups
@@ -7944,16 +7934,15 @@ private void AssignGroups() {
             {0,0,0,0,0}
         };
 
-        for (int teamId = 1; teamId <= 4; ++teamId) {
-            foreach(PlayerModel p in distribution[teamId]) {
-                if (p.DispersalGroup == 0) {
-                    throw new Exception("unexpected group 0 for ^b" + p.FullName);
-                }
-                ++count[p.DispersalGroup,teamId];
-            }
+        foreach (PlayerModel p in all) {
+            if (p.DispersalGroup == 0) continue;
+            ++count[p.DispersalGroup,p.Team];
+            ++grandTotal;
         }
 
-        // Assign team to group that has the most in that team
+        if (grandTotal == 0) throw new Exception("No players or no groups");
+
+        // Assign team to group that has the most players in that team
         for (int groupId = 1; groupId <= 4; ++groupId) {
             // Find the max team count for this group
             int most = 0;
@@ -7972,6 +7961,7 @@ private void AssignGroups() {
                 availableTeamIds.Remove(most);
             }
         }
+
         // Assign unallocated teams
         for (int groupId = 1; groupId <= 4; ++groupId) {
             if (fGroupAssignments[groupId] == 0) {
@@ -7983,6 +7973,7 @@ private void AssignGroups() {
                 availableTeamIds.Remove(ti);
             }
         }
+
         // Sanity check
         availableTeamIds.Clear();
         for (int groupId = 1; groupId <= 4; ++groupId) {
