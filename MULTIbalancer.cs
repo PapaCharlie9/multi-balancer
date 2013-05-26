@@ -347,6 +347,9 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         public int MovesRound;
         public bool MovedByMB;
         public DateTime MovedTimestamp;
+
+        // Based on settings
+        public int DispersalGroup;
         
         public PlayerModel() {
             Name = null;
@@ -381,6 +384,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             LastMoveFrom = 0;
             FetchStatus = new FetchInfo();
             ScrambledSquad = -1;
+            DispersalGroup = 0;
         }
         
         public PlayerModel(String name, int team) : this() {
@@ -411,6 +415,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             MovesRound = 0;
             MovedByMB = false;
             MovedTimestamp = DateTime.MinValue;
+            DispersalGroup = 0;
         }
 
         public PlayerModel ClonePlayer() {
@@ -619,6 +624,7 @@ private List<String> fRushMap3Stages = null;
 private List<String> fRushMap5Stages = null;
 private int[] fGroupAssignments = null; // index is group number, value is team id
 private List<String>[] fDispersalGroups;
+private bool fNeedGroupAssignment = false;
 
 // Data model
 private List<String> fAllPlayers = null;
@@ -892,6 +898,7 @@ public MULTIbalancer() {
     fRushMap5Stages = new List<String>(new String[4]{"MP_013", "XP3_Valley", "MP_017", "XP5_001"});
     fGroupAssignments = new int[5]{0,0,0,0,0};
     fDispersalGroups = new List<String>[5]{null, new List<String>(), new List<String>(), new List<String>(), new List<String>()};
+    fNeedGroupAssignment = false;
     
     /* Settings */
 
@@ -1227,7 +1234,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.2.7";
+    return "1.0.2.8";
 }
 
 public String GetPluginAuthor() {
@@ -1689,6 +1696,7 @@ public void SetPluginVariable(String strVariable, String strValue) {
                 } else if (propertyName == "DisperseEvenlyList") {
                     MergeWithFile(DisperseEvenlyList, fSettingDisperseEvenlyList);
                     SetDispersalListGroups();
+                    AssignGroups();
                 }
             } else if (fBoolDict.ContainsValue(fieldType)) {
                 if (fIsEnabled) DebugWrite(propertyName + " strValue = " + strValue, 6);
@@ -1993,6 +2001,7 @@ private void ResetSettings() {
 private void CommandToLog(string cmd) {
     try {
         Match m = null;
+        String msg = String.Empty;
         ConsoleDump("Command: " + cmd);
 
         m = Regex.Match(cmd, @"^gen\s+((?:cs|cl|ctf|gm|r|sqdm|sr|s|tdm|u)|[1234569])", RegexOptions.IgnoreCase);
@@ -2047,10 +2056,17 @@ private void CommandToLog(string cmd) {
             ConsoleDump(" ");
             for (int i = 1; i <= 4; ++i) {
                 if (fDispersalGroups[i].Count > 0) {
-                    String msg = "Dispersal Group " + i + " (" + fDispersalGroups[i].Count + "): " + String.Join(", ", fDispersalGroups[i].ToArray());
+                    msg = "Dispersal Group " + i + " (" + fDispersalGroups[i].Count + "): " + String.Join(", ", fDispersalGroups[i].ToArray());
                     ConsoleDump(msg);
                 }
             }
+            ConsoleDump(" ");
+            msg = "Group assignments: ";
+            for (int i = 1; i <= 4; ++i) {
+                msg = msg + fGroupAssignments[i];
+                if (i < 4) msg = msg + "/";
+            }
+            ConsoleDump(msg);
             return;
         }
 
@@ -2419,7 +2435,7 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
             DebugWrite("^4New player^0: ^b" + soldierName + "^n, reassigned to " + GetTeamName(teamId) + " team by " + GetPluginName(), 4);
        } else if (!IsKnownPlayer(soldierName)) {
             int diff = 0;
-            bool mustMove = false;
+            bool mustMove = false; // don't have a player model yet, can't determine if must move
             int reassignTo = ToTeam(soldierName, teamId, true, out diff, ref mustMove);
             if (reassignTo == 0 || reassignTo == teamId) {
                 // New player was going to the right team anyway
@@ -2584,6 +2600,7 @@ public override void OnPlayerKilled(Kill kKillerVictimDetails) {
             bool wasUnknown = (fGameState == GameState.Unknown);
             fGameState = (TotalPlayerCount < 4) ? GameState.Warmup : GameState.Playing;
             if (wasUnknown || fGameState == GameState.Playing) DebugWrite("OnPlayerKilled: ^b^3Game state = " + fGameState, 6);  
+            fNeedGroupAssignment = (fGameState == GameState.Playing);
         }
     
         if (!isAdminKill) {
@@ -2665,6 +2682,12 @@ public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subs
             fPluginState = PluginState.Active;
             fRoundStartTimestamp = DateTime.Now;
             DebugWrite("^b^3State = " + fPluginState, 6);  
+        }
+
+        // Use updated player list
+        if (fNeedGroupAssignment) {
+            AssignGroups();
+            fNeedGroupAssignment = false;
         }
     } catch (Exception e) {
         ConsoleException(e);
@@ -2891,6 +2914,7 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
             bool wasUnknown = (fGameState == GameState.Unknown);
             fGameState = (TotalPlayerCount < 4) ? GameState.Warmup : GameState.Playing;
             if (wasUnknown || fGameState == GameState.Playing) DebugWrite("OnPlayerSpawned: ^b^3Game state = " + fGameState, 6);  
+            fNeedGroupAssignment = (fGameState == GameState.Playing);
         } else if (fGameState == GameState.RoundStarting) {
             // First spawn after Level Loaded is the official start of a round
             DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1First spawn detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
@@ -2902,6 +2926,7 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
             fIsFullRound = true;
             ServerCommand("serverInfo");
             ScheduleListPlayers(2);
+            fNeedGroupAssignment = (fGameState == GameState.Playing);
         }
     
         if (fPluginState == PluginState.Active) {
@@ -3394,7 +3419,7 @@ private void BalanceAndUnstack(String name) {
         move.Format(this, ChatMovedForBalance, false, false);
         move.Format(this, YellMovedForBalance, true, false);
         String why = (mustMove) ? "to disperse evenly" : ("because difference is " + diff);
-        log = "^4^bBALANCE^n^0 moving ^b" + name + "^n from " + move.SourceName + " team to " + move.DestinationName + " team " + why;
+        log = "^4^bBALANCE^n^0 moving ^b" + player.FullName + "^n from " + move.SourceName + " team to " + move.DestinationName + " team " + why;
         log = (EnableLoggingOnlyMode) ? "^9(SIMULATING)^0 " + log : log;
         DebugWrite(log, 3);
 
@@ -3608,7 +3633,7 @@ private void BalanceAndUnstack(String name) {
 
     /* Move for unstacking */
     
-    log = "^4^bUNSTACK^n^0 moving " + strength + " ^b" + name + "^n from " + moveUnstack.SourceName + " to " + moveUnstack.DestinationName + " because: " + um;
+    log = "^4^bUNSTACK^n^0 moving " + strength + " ^b" + player.FullName + "^n from " + moveUnstack.SourceName + " to " + moveUnstack.DestinationName + " because: " + um;
     log = (EnableLoggingOnlyMode) ? "^9(SIMULATING)^0 " + log : log;
     DebugWrite(log, 3);
     moveUnstack.For = MoveType.Unstack;
@@ -4130,7 +4155,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     } else {
         // Do the move immediately
         DebugUnswitch("FORBIDDEN: immediately unswitch ^b" + name + "^n from " + move.SourceName + " back to " + move.DestinationName);
-        String log = "^4^bUNSWITCHING^n^0 ^b" + name + "^n from " + move.SourceName + " back to " + move.DestinationName;
+        String log = "^4^bUNSWITCHING^n^0 ^b" + player.FullName + "^n from " + move.SourceName + " back to " + move.DestinationName;
         log = (EnableLoggingOnlyMode) ? "^9(SIMULATING)^0 " + log : log;
         DebugWrite(log, 3);
         StartMoveImmediate(move, true);
@@ -6381,12 +6406,12 @@ private int ToTeam(String name, int fromTeam, bool isReassign, out int diff, ref
     return targetTeam;
 }
 
-private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] byId) {
+private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] teamListsById) {
     int targetTeam = 0;
     bool allEqual = false;
     int grandTotal = 0;
 
-    if (byId == null) return 0;
+    if (teamListsById == null) return 0;
 
     /*
     Select a team that would disperse this player evenly with similar players,
@@ -6404,33 +6429,32 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] byI
     bool mostMoves = true;
 
     bool isDispersalByRank = IsRankDispersal(player);
-    List<String> dispersalList = null;
-    bool isDispersalByList = false;
-    if (perMode.EnableDisperseEvenlyList && fSettingDisperseEvenlyList != null && fSettingDisperseEvenlyList.Count > 0) {
-        String extractedTag = ExtractTag(player);
-        dispersalList = new List<String>(fSettingDisperseEvenlyList);
-        if (dispersalList.Contains(name) 
-        || dispersalList.Contains(player.EAGUID) 
-        && (!String.IsNullOrEmpty(extractedTag) && dispersalList.Contains(extractedTag))) {
-            isDispersalByList = true;
-        }
-    }
+    bool isDispersalByList = IsDispersal(player);
 
     /* By Dispersal List */
 
     if (isDispersalByList) {
         int[] usualSuspects = new int[5]{0,0,0,0,0};
+
+        if (player.DispersalGroup >= 1 && player.DispersalGroup <= 4) {
+            // Disperse by group
+            if (!isSQDM && player.DispersalGroup > 2) {
+                if (DebugLevel >= 7) ConsoleDebug("ToTeamByDispersal ignoring Group " + player.DispersalGroup + " for ^b" + player.FullName + "^n, not SQDM");
+                // fall thru
+            } else {
+                return fGroupAssignments[player.DispersalGroup];
+            }
+        }
+
+        // Otherwise normal list dispersal
         mostMoves = true;
 
-        for (int i = 1; i < byId.Length; ++i) {
-            foreach (PlayerModel p in byId[i]) {
+        for (int teamId = 1; teamId < teamListsById.Length; ++teamId) {
+            foreach (PlayerModel p in teamListsById[teamId]) {
                 if (p.Name == player.Name) continue; // don't count this player
                 
-                String et = ExtractTag(p);
-                if (dispersalList.Contains(p.Name) 
-                || dispersalList.Contains(p.EAGUID)
-                || (!String.IsNullOrEmpty(et) && dispersalList.Contains(et))) {
-                    usualSuspects[i] = usualSuspects[i] + 1;
+                if (IsDispersal(p)) {
+                    usualSuspects[teamId] = usualSuspects[teamId] + 1;
                     grandTotal = grandTotal + 1;
 
                     // Make sure this player hasn't been moved more than any other dispersal player
@@ -6480,8 +6504,8 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] byI
         grandTotal = 0;
         mostMoves = true;
 
-        for (int i = 1; i < byId.Length; ++i) {
-            foreach (PlayerModel p in byId[i]) {
+        for (int i = 1; i < teamListsById.Length; ++i) {
+            foreach (PlayerModel p in teamListsById[i]) {
                 if (p.Name == player.Name) continue; // don't count this player
                 if (p.Rank >= perMode.DisperseEvenlyByRank) {
                     rankers[i] = rankers[i] + 1;
@@ -7075,7 +7099,7 @@ private void CheckDelayedMove(String name) {
 
         DebugWrite("^5(SPAWN)^9 executing delayed move of ^b" + name, 5);
         DebugUnswitch("FORBIDDEN: Detected bad team switch, scheduling admin kill and move for ^b: " + name);
-        String log = "^4^bUNSWITCHING^n^0 ^b" + name + "^n from " + dm.SourceName + " back to " + dm.DestinationName;
+        String log = "^4^bUNSWITCHING^n^0 ^b" + player.FullName + "^n from " + dm.SourceName + " back to " + dm.DestinationName;
         log = (EnableLoggingOnlyMode) ? "^9(SIMULATING)^0 " + log : log;
         DebugWrite(log, 3);
         KillAndMoveAsync(dm);
@@ -7124,18 +7148,30 @@ private void CheckDeativateBalancer(String reason) {
 }
 
 private bool IsDispersal(PlayerModel player) {
+    player.DispersalGroup = 0;
     PerModeSettings perMode = GetPerModeSettings();
-    List<String> dispersalList = null;
     bool isDispersalByList = false;
-    if (perMode.EnableDisperseEvenlyList && fSettingDisperseEvenlyList != null && fSettingDisperseEvenlyList.Count > 0) {
-        String extractedTag = ExtractTag(player);
-        if (String.IsNullOrEmpty(extractedTag)) extractedTag = INVALID_NAME_TAG_GUID;
-        String guid = (String.IsNullOrEmpty(player.EAGUID)) ? INVALID_NAME_TAG_GUID : player.EAGUID;
-        dispersalList = new List<String>(fSettingDisperseEvenlyList);
-        if (dispersalList.Contains(player.Name) 
-        || dispersalList.Contains(guid) 
-        || dispersalList.Contains(extractedTag)) {
+    if (!perMode.EnableDisperseEvenlyList) return false;
+    String extractedTag = ExtractTag(player);
+    if (String.IsNullOrEmpty(extractedTag)) extractedTag = INVALID_NAME_TAG_GUID;
+    String guid = (String.IsNullOrEmpty(player.EAGUID)) ? INVALID_NAME_TAG_GUID : player.EAGUID;
+    if (fSettingDisperseEvenlyList.Count > 0) {
+        if (fSettingDisperseEvenlyList.Contains(player.Name) 
+        || fSettingDisperseEvenlyList.Contains(guid) 
+        || fSettingDisperseEvenlyList.Contains(extractedTag)) {
             isDispersalByList = true;
+        }
+    }
+    for (int i = 1; i <= 4; ++i) {
+        if (!isDispersalByList && fDispersalGroups[i].Count > 0) {
+            fDispersalGroups[i] = new List<String>(fDispersalGroups[i]);
+            if (fDispersalGroups[i].Contains(player.Name) 
+            || fDispersalGroups[i].Contains(guid) 
+            || fDispersalGroups[i].Contains(extractedTag)) {
+                isDispersalByList = true;
+                player.DispersalGroup = i;
+                break;
+            }
         }
     }
     return (isDispersalByList);
@@ -7864,6 +7900,135 @@ private void SetDispersalListGroups() {
             ConsoleDebug("SetDispersalListGroups " + g4);
         }
         ConsoleDebug("SetDispersalListGroups remaining list: " + String.Join(", ", fSettingDisperseEvenlyList.ToArray()));
+    }
+}
+
+private void AssignGroups() {
+    int grandTotal = 0;
+    List<PlayerModel>[] teamListsById = new List<PlayerModel>[5]{null, fTeam1, fTeam2, fTeam3, fTeam4};
+    List<PlayerModel>[] distribution = new List<PlayerModel>[5]{null, new List<PlayerModel>(), new List<PlayerModel>(), new List<PlayerModel>(), new List<PlayerModel>()};
+    List<int> availableTeamIds = new List<int>(new int[4]{1, 2, 3, 4});
+
+    try {
+        // Insure that dispersal groups have been assigned
+        List<PlayerModel> all = new List<PlayerModel>();
+        all.AddRange(fTeam1);
+        all.AddRange(fTeam2);
+        all.AddRange(fTeam3);
+        all.AddRange(fTeam4);
+        foreach (PlayerModel p in all) {
+            if (IsDispersal(p)) {
+                if (DebugLevel >= 7) ConsoleDebug("AssignGroups assigned ^b" + p.FullName + "^n to Group " + p.DispersalGroup);
+            }
+        }
+        // Clear
+        for (int groupId = 1; groupId <= 4; ++groupId) {
+            fGroupAssignments[groupId] = 0;
+        }
+        // Compute distribution of players
+        for (int teamId = 1; teamId < teamListsById.Length; ++teamId) {
+            foreach (PlayerModel p in teamListsById[teamId]) {
+                if (p.DispersalGroup >= 1 && p.DispersalGroup <= 4) {
+                    distribution[teamId].Add(p);
+                    grandTotal = grandTotal + 1;
+                }
+            }
+        }
+
+        // Short-cut
+        if (grandTotal < 4) {
+            ConsoleDebug("AssignGroups: taking a short-cut, grandTotal = " + grandTotal);
+            for (int groupId = 1; groupId <= 4; ++groupId) {
+                bool breakOut = false;
+                for (int teamId = 1; teamId <= 4; ++teamId) {
+                    foreach (PlayerModel mate in distribution[teamId]) {
+                        if (mate.DispersalGroup == groupId) {
+                            fGroupAssignments[groupId] = teamId;
+                            availableTeamIds.Remove(teamId);
+                            breakOut = true;
+                            break;
+                        }
+                    }
+                    if (breakOut) break;
+                }
+            }
+            // Assign unallocated teams
+            for (int groupId = 1; groupId <= 4; ++groupId) {
+                if (fGroupAssignments[groupId] == 0) {
+                    if (availableTeamIds.Count == 0) {
+                        throw new Exception("Ran out of team IDs!");
+                    }
+                    int ti = availableTeamIds[0];
+                    fGroupAssignments[groupId] = ti;
+                    availableTeamIds.Remove(ti);
+                }
+            }
+            return;
+        }
+
+        // Compute distribution of groups
+        int[,] count = new int[5,5]{ // group,team
+            {0,0,0,0,0},
+            {0,0,0,0,0},
+            {0,0,0,0,0},
+            {0,0,0,0,0},
+            {0,0,0,0,0}
+        };
+
+        for (int teamId = 1; teamId <= 4; ++teamId) {
+            foreach(PlayerModel p in distribution[teamId]) {
+                if (p.DispersalGroup == 0) {
+                    throw new Exception("unexpected group 0 for ^b" + p.FullName);
+                }
+                ++count[p.DispersalGroup,teamId];
+            }
+        }
+
+        // Assign team to group that has the most in that team
+        for (int groupId = 1; groupId <= 4; ++groupId) {
+            // Find the max team count for this group
+            int most = 0;
+            int num = 0;
+            for (int teamId = 1; teamId <= 4; ++teamId) {
+                if (count[groupId,teamId] > num) {
+                    most = teamId;
+                    num = count[groupId,teamId];
+                }
+            }
+            if (most != 0) {
+                if (!availableTeamIds.Contains(most)) {
+                    throw new Exception("team " + most + " already allocated!");
+                }
+                fGroupAssignments[groupId] = most;
+                availableTeamIds.Remove(most);
+            }
+        }
+        // Assign unallocated teams
+        for (int groupId = 1; groupId <= 4; ++groupId) {
+            if (fGroupAssignments[groupId] == 0) {
+                if (availableTeamIds.Count == 0) {
+                    throw new Exception("Ran out of team IDs!");
+                }
+                int ti = availableTeamIds[0];
+                fGroupAssignments[groupId] = ti;
+                availableTeamIds.Remove(ti);
+            }
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
+        ConsoleDebug("Defaulting to 1,2,3,4");
+        for (int i = 1; i <= 4; ++i) {
+            fGroupAssignments[i] = i;
+        }
+    } finally {
+        if (DebugLevel >= 7) {
+            String msg = "Group assignments: ";
+            for (int i = 1; i <= 4; ++i) {
+                msg = msg + fGroupAssignments[i];
+                if (i < 4) msg = msg + "/";
+            }
+            ConsoleWrite(msg);
+        }
     }
 }
 
