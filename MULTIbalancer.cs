@@ -1,7 +1,7 @@
 ﻿/* MULTIbalancer.cs
 
 Copyright 2013, by PapaCharlie9
-
+`   
 Permission is hereby granted, free of charge, to any person or organization
 obtaining a copy of the software and accompanying documentation covered by
 this license (the "Software") to use, reproduce, display, distribute,
@@ -617,6 +617,8 @@ private String fHost;
 private String fPort;
 private List<String> fRushMap3Stages = null;
 private List<String> fRushMap5Stages = null;
+private int[] fGroupAssignments = null; // index is group number, value is team id
+private List<String>[] fDispersalGroups;
 
 // Data model
 private List<String> fAllPlayers = null;
@@ -888,6 +890,8 @@ public MULTIbalancer() {
     fPort = String.Empty;
     fRushMap3Stages = new List<String>(new String[5]{"MP_007", "XP4_Quake", "XP5_002", "MP_012", "XP4_Rubble"});
     fRushMap5Stages = new List<String>(new String[4]{"MP_013", "XP3_Valley", "MP_017", "XP5_001"});
+    fGroupAssignments = new int[5]{0,0,0,0,0};
+    fDispersalGroups = new List<String>[5]{null, new List<String>(), new List<String>(), new List<String>(), new List<String>()};
     
     /* Settings */
 
@@ -1677,16 +1681,14 @@ public void SetPluginVariable(String strVariable, String strValue) {
                 field.SetValue(this, CPluginVariable.DecodeStringArray(strValue));
                 if (propertyName == "Whitelist") {
                     MergeWithFile(Whitelist, fSettingWhitelist);
+                    if (DebugLevel >= 8) {
+                        String l = "Whitelist: ";
+                        l = l + String.Join(", ", fSettingWhitelist.ToArray());
+                        ConsoleDebug(l);
+                    }
                 } else if (propertyName == "DisperseEvenlyList") {
                     MergeWithFile(DisperseEvenlyList, fSettingDisperseEvenlyList);
-                }
-                if (DebugLevel >= 8 && propertyName == "Whitelist") {
-                    String l = "Whitelist: ";
-                    for (int i = 0; i < fSettingWhitelist.Count; ++i) {
-                        l = l + fSettingWhitelist[i] + ", ";
-                    }
-                    l = l + "end";
-                    ConsoleDebug(l);
+                    SetDispersalListGroups();
                 }
             } else if (fBoolDict.ContainsValue(fieldType)) {
                 if (fIsEnabled) DebugWrite(propertyName + " strValue = " + strValue, 6);
@@ -1775,6 +1777,7 @@ public void SetPluginVariable(String strVariable, String strValue) {
         }
     }
 }
+
 
 private bool ValidateSettings(String strVariable, String strValue) {
     try {
@@ -2036,9 +2039,17 @@ private void CommandToLog(string cmd) {
             foreach (String item in fSettingWhitelist) {
                 ConsoleDump(item);
             }
+            ConsoleDump(" ");
             ConsoleDump("Disperse Evenly List(" + fSettingDisperseEvenlyList.Count + "):");
             foreach (String item in fSettingDisperseEvenlyList) {
                 ConsoleDump(item);
+            }
+            ConsoleDump(" ");
+            for (int i = 1; i <= 4; ++i) {
+                if (fDispersalGroups[i].Count > 0) {
+                    String msg = "Dispersal Group " + i + " (" + fDispersalGroups[i].Count + "): " + String.Join(", ", fDispersalGroups[i].ToArray());
+                    ConsoleDump(msg);
+                }
             }
             return;
         }
@@ -2226,7 +2237,7 @@ private void CommandToLog(string cmd) {
         if (Regex.Match(cmd, @"help", RegexOptions.IgnoreCase).Success || !String.IsNullOrEmpty(cmd)) {
             ConsoleDump("^1^bgen^n ^imode^n^0: Generate settings listing for ^imode^n (one of: cs, cl, ctf, gm, r, sqdm, sr, s, tdm, u)");
             ConsoleDump("^1^bgen^n ^isection^n^0: Generate settings listing for ^isection^n (1-6,9)");
-            ConsoleDump("^1^blists^n: Examine all settings that are lists");
+            ConsoleDump("^1^blists^n^0: Examine all settings that are lists");
             ConsoleDump("^1^bmodes^n^0: Examine the known game modes");
             ConsoleDump("^1^brage^n^0: Examine rage quit statistics");
             ConsoleDump("^1^breset settings^n^0: Reset all plugin settings to default, except for ^bWhitelist^n and ^bDisperse Evenly List^n");
@@ -7742,6 +7753,120 @@ private void MergeWithFile(String[] var, List<String> list) {
     }
 }
 
+
+private void SetDispersalListGroups() {
+    /*
+    This function scans the Disperse Evenly List for lines that specify
+    a group. A group starts with a single digit, 1 thru 4, followed by
+    whitespace, followed by a whitespace separated list of name/tag/guid items
+    that should be assigned to the specified group list.
+    */
+    if (fSettingDisperseEvenlyList.Count == 0) return;
+    foreach (List<String> gl in fDispersalGroups) {
+        if (gl == null) continue;
+        gl.Clear();
+    }
+    List<String> copy = new List<String>(fSettingDisperseEvenlyList);
+    foreach (String line in copy) {
+        try {
+            if (line == null) continue;
+            String[] tokens = Regex.Split(line, @"\s+");
+            if (tokens != null && tokens.Length == 1 && !String.IsNullOrEmpty(tokens[0])) {
+                // Not a group, so retain
+                continue;
+            }
+            // Otherwise, check for a group specifier
+            bool first = true;
+            bool remove = false;
+            List<String> group = null;
+            bool bad = false;
+            int groupId = 0;
+            // Scan one line
+            foreach (String token in tokens) {
+                if (String.IsNullOrEmpty(token)) continue;
+                // First token might be group specifier, if so move remaining tokens to group list
+                if (first) {
+                    if (Regex.Match(token, @"^[1234]").Success) {
+                        // It's a group
+                        if (Int32.TryParse(token, out groupId)) {
+                            if (groupId >= 1 && groupId <= 4) {
+                                group = fDispersalGroups[groupId];
+                                remove = true;
+                            } else bad = true;
+                        }
+                    }
+                    first = false;
+                    if (group != null) continue; // skip group id
+                }
+                if (group == null) {
+                    break; // not a group specification, get out of this token parsing loop
+                } else if (group.Contains(token)) {
+                    ConsoleWarn("In Disperse Evenly List in Group " + groupId + ", ^b" + token + "^n is duplicated, please remove all duplicates");
+                } else {
+                    // Add the rest of the tokens to the group
+                    group.Add(token);
+                }
+            }
+            if (bad) {
+                // Warn, leave line in original as is
+                ConsoleWarn("In Disperse Evenly List, unrecognized grouping, possible typo? " + line);
+            } else if (remove) {
+                // Remove lines that define groups from the normal list
+                fSettingDisperseEvenlyList.Remove(line);
+            }
+        } catch (Exception e) {
+            ConsoleWarn("In Disperse Evenly List, bad line: " + line);
+            ConsoleException(e);
+        }
+    }
+    // Check for uniqueness
+    List<String> uniq = new List<String>();
+    for (int i = 1; i <= 4; ++i) {
+        copy = new List<String>(fDispersalGroups[i]);
+        foreach (String s in copy) {
+            if (uniq.Contains(s)) {
+                ConsoleWarn("In Disperse Evenly List in Group " + i + ", ^b" + s + "^n is duplicated, please remove all duplicates");
+                fDispersalGroups[i].Remove(s);
+            } else {
+                uniq.Add(s);
+            }
+        }
+    }
+    copy = new List<String>(fSettingDisperseEvenlyList);
+    foreach (String s in copy) {
+        if (uniq.Contains(s)) {
+            ConsoleWarn("In Disperse Evenly List, ^b" + s + "^n is duplicated, please remove all duplicates");
+            fSettingDisperseEvenlyList.Remove(s);
+        } else {
+            uniq.Add(s);
+        }
+    }
+    // debugging
+    if (DebugLevel >= 8) {
+        String g1 = "Group 1: ";
+        String g2 = "Group 2: ";
+        String g3 = "Group 3: ";
+        String g4 = "Group 4: ";
+        if (fDispersalGroups[1].Count > 0) {
+            g1 = g1 + String.Join(", ", fDispersalGroups[1].ToArray());
+            ConsoleDebug("SetDispersalListGroups " + g1);
+        }
+        if (fDispersalGroups[2].Count > 0) {
+            g2 = g2 + String.Join(", ", fDispersalGroups[2].ToArray());
+            ConsoleDebug("SetDispersalListGroups " + g2);
+        }
+        if (fDispersalGroups[3].Count > 0) {
+            g3 = g3 + String.Join(", ", fDispersalGroups[3].ToArray());
+            ConsoleDebug("SetDispersalListGroups " + g3);
+        }
+        if (fDispersalGroups[4].Count > 0) {
+            g4 = g4 + String.Join(", ", fDispersalGroups[4].ToArray());
+            ConsoleDebug("SetDispersalListGroups " + g4);
+        }
+        ConsoleDebug("SetDispersalListGroups remaining list: " + String.Join(", ", fSettingDisperseEvenlyList.ToArray()));
+    }
+}
+
 /* === NEW_NEW_NEW === */
 
 
@@ -8332,7 +8457,13 @@ static class MULTIbalancerUtils {
   EA_20D5B089E734F589B1517C8069A37E28
 </pre></p>
 
-<p><b>Disperse Evenly List</b>: List of player names (without clan tags), clan tags (by themselves), or EA GUIDs, one per line, in any combination. The first item may also specify a file to merge into the list, e.g., <i>&lt;disperse.txt</i>. See <b>Merge Files</b> above. Groups of players found on this list will be split up and moved so that they are evenly dispersed across teams.</p>
+<p><b>Disperse Evenly List</b>: List of player names (without clan tags), clan tags (by themselves), or EA GUIDs, one per line (except for groups, see below), in any combination. Players found on this list will be split up and moved so that they are evenly dispersed across teams. The first item may also specify a file to merge into the list, e.g., <i>&lt;disperse.txt</i>. See <b>Merge Files</b> above. Groups of players, tags and guids may be specified to insure that they are always balanced to the opposite team from other specified groups. For example, if clan tag ABC is in group 1 and clan tag XYZ in is group 2, all players with clan tag ABC will eventually be balanced to one team and all players with clan tag XYZ will eventually be balanced to the other team. Groups 3 and 4 are used only for SQDM mode. A group is specified by starting an item in the list with a single digit, from 1 to 4, followed by a space, followed by a space separated list of names, tags or guids. Individual items and groups may be specified in any combination and any order in the list, though duplicating any item is an error. Here is an example list with individual players 'Joe' and 'Mary' and groups 1 and 2:
+<pre>
+  1 ABC LGN PapaCharlie9
+  Joe
+  2 XYZ EA_20D5B089E734F589B1517C8069A37E28
+  Mary
+</pre></p>
 
 <h3>2 - Exclusions</h3>
 <p>These settings define which players should be excluded from being moved for balance or unstacking. Changing a preset may overwrite the value of one or more of these settings. Changing one of these settings may change the value of the Preset, usually to None, to indicate a custom setting.</p>
