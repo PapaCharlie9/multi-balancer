@@ -7935,37 +7935,6 @@ private void AssignGroups() {
             }
         }
 
-        // Short-cut
-        if (grandTotal < 4) {
-            ConsoleDebug("AssignGroups: taking a short-cut, grandTotal = " + grandTotal);
-            for (int groupId = 1; groupId <= 4; ++groupId) {
-                bool breakOut = false;
-                for (int teamId = 1; teamId <= 4; ++teamId) {
-                    foreach (PlayerModel mate in distribution[teamId]) {
-                        if (mate.DispersalGroup == groupId) {
-                            fGroupAssignments[groupId] = teamId;
-                            availableTeamIds.Remove(teamId);
-                            breakOut = true;
-                            break;
-                        }
-                    }
-                    if (breakOut) break;
-                }
-            }
-            // Assign unallocated teams
-            for (int groupId = 1; groupId <= 4; ++groupId) {
-                if (fGroupAssignments[groupId] == 0) {
-                    if (availableTeamIds.Count == 0) {
-                        throw new Exception("Ran out of team IDs!");
-                    }
-                    int ti = availableTeamIds[0];
-                    fGroupAssignments[groupId] = ti;
-                    availableTeamIds.Remove(ti);
-                }
-            }
-            return;
-        }
-
         // Compute distribution of groups
         int[,] count = new int[5,5]{ // group,team
             {0,0,0,0,0},
@@ -7989,7 +7958,7 @@ private void AssignGroups() {
             // Find the max team count for this group
             int most = 0;
             int num = 0;
-            for (int teamId = 1; teamId <= 4; ++teamId) {
+            foreach (int teamId in availableTeamIds) {
                 if (count[groupId,teamId] > num) {
                     most = teamId;
                     num = count[groupId,teamId];
@@ -8012,6 +7981,15 @@ private void AssignGroups() {
                 int ti = availableTeamIds[0];
                 fGroupAssignments[groupId] = ti;
                 availableTeamIds.Remove(ti);
+            }
+        }
+        // Sanity check
+        availableTeamIds.Clear();
+        for (int groupId = 1; groupId <= 4; ++groupId) {
+            if (availableTeamIds.Contains(fGroupAssignments[groupId])) {
+                throw new Exception("Duplicate assignment!");
+            } else {
+                availableTeamIds.Add(fGroupAssignments[groupId]);
             }
         }
     } catch (Exception e) {
