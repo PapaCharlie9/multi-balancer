@@ -342,6 +342,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         public double ScoreTotal; // not including current round
         public double KillsTotal; // not including current round
         public double DeathsTotal; // not including current round
+        public int MovesTotal; // not including current round
 
         //  Per-round state
         public int MovesRound;
@@ -372,6 +373,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             ScoreTotal = 0;
             KillsTotal = 0;
             DeathsTotal = 0;
+            MovesTotal = 0;
             IsDeployed = false;
             MovesRound = 0;
             MovedByMB = false;
@@ -396,6 +398,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             ScoreTotal = ScoreTotal + ScoreRound;
             KillsTotal = KillsTotal + KillsRound;
             DeathsTotal = DeathsTotal + DeathsRound;
+            MovesTotal = MovesTotal + MovesRound;
             Rounds = (Rounds > 0) ? Rounds + 1 : 1;
 
             ScoreRound = -1;
@@ -414,8 +417,9 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
 
             MovesRound = 0;
             MovedByMB = false;
-            MovedTimestamp = DateTime.MinValue;
             DispersalGroup = 0;
+
+            // MovedTimestamp reset when minutes exceeds MinutesAfterBeingMoved
         }
 
         public PlayerModel ClonePlayer() {
@@ -721,6 +725,7 @@ public bool TopScorers;
 public bool SameClanTagsInSquad;
 public bool SameClanTagsForRankDispersal;
 public double MinutesAfterJoining;
+public double MinutesAfterBeingMoved;
 public bool JoinedEarlyPhase; // disabled
 public bool JoinedMidPhase; // disabled
 public bool JoinedLatePhase; // disabled
@@ -942,6 +947,7 @@ public MULTIbalancer() {
     SameClanTagsInSquad = true;
     SameClanTagsForRankDispersal = false;
     MinutesAfterJoining = 5;
+    MinutesAfterBeingMoved = 90; // 1.5 hours
     JoinedEarlyPhase = true;
     JoinedMidPhase = true;
     JoinedLatePhase = false;
@@ -1037,6 +1043,7 @@ public MULTIbalancer(PresetItems preset) : this() {
             SameClanTagsInSquad = false;
             SameClanTagsForRankDispersal = false;
             MinutesAfterJoining = 0;
+            MinutesAfterBeingMoved = 0;
             JoinedEarlyPhase = false;
             JoinedMidPhase = false;
             JoinedLatePhase = false;
@@ -1069,6 +1076,7 @@ public MULTIbalancer(PresetItems preset) : this() {
             SameClanTagsInSquad = true;
             SameClanTagsForRankDispersal = true;
             MinutesAfterJoining = 15;
+            MinutesAfterBeingMoved = 12*60; // 12 hours
             JoinedEarlyPhase = true;
             JoinedMidPhase = true;
             JoinedLatePhase = true;
@@ -1101,6 +1109,7 @@ public MULTIbalancer(PresetItems preset) : this() {
             SameClanTagsInSquad = false;
             SameClanTagsForRankDispersal = false;
             MinutesAfterJoining = 0;
+            MinutesAfterBeingMoved = 0;
             JoinedEarlyPhase = false;
             JoinedMidPhase = false;
             JoinedLatePhase = true;
@@ -1133,6 +1142,7 @@ public MULTIbalancer(PresetItems preset) : this() {
             SameClanTagsInSquad = true;
             SameClanTagsForRankDispersal = true;
             MinutesAfterJoining = 15;
+            MinutesAfterBeingMoved = 2*60; // 2 hours
             JoinedEarlyPhase = true;
             JoinedMidPhase = true;
             JoinedLatePhase = true;
@@ -1164,6 +1174,7 @@ public MULTIbalancer(PresetItems preset) : this() {
             SameClanTagsInSquad = true;
             SameClanTagsForRankDispersal = true;
             MinutesAfterJoining = 5;
+            MinutesAfterBeingMoved = 90;
             JoinedEarlyPhase = true;
             JoinedMidPhase = true;
             JoinedLatePhase = false;
@@ -1195,6 +1206,7 @@ public MULTIbalancer(PresetItems preset) : this() {
             SameClanTagsInSquad = true;
             SameClanTagsForRankDispersal = true;
             MinutesAfterJoining = 5;
+            MinutesAfterBeingMoved = 90;
             JoinedEarlyPhase = true;
             JoinedMidPhase = true;
             JoinedLatePhase = false;
@@ -1364,6 +1376,8 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         lstReturn.Add(new CPluginVariable("2 - Exclusions|Same Clan Tags For Rank Dispersal", SameClanTagsForRankDispersal.GetType(), SameClanTagsForRankDispersal)); 
 
         lstReturn.Add(new CPluginVariable("2 - Exclusions|Minutes After Joining", MinutesAfterJoining.GetType(), MinutesAfterJoining));
+
+        lstReturn.Add(new CPluginVariable("2 - Exclusions|Minutes After Being Moved", MinutesAfterBeingMoved.GetType(), MinutesAfterBeingMoved));
 
         /*
         lstReturn.Add(new CPluginVariable("2 - Exclusions|Joined Early Phase", JoinedEarlyPhase.GetType(), JoinedEarlyPhase));
@@ -1792,16 +1806,17 @@ private bool ValidateSettings(String strVariable, String strValue) {
                 
         /* ===== SECTION 1 - Settings ===== */
 
-        if (strVariable.Contains("Debug Level")) ValidateIntRange(ref DebugLevel, "Debug Level", 0, 9, 2, false);
-        if (strVariable.Contains("Maximum Server Size")) ValidateIntRange(ref MaximumServerSize, "Maximum Server Size", 8, 64, 64, false);
-        if (strVariable.Contains("Maximum Request Rate")) ValidateIntRange(ref MaximumRequestRate, "Maximum Request Rate", 1, 15, 10, true); // in 20 seconds
-        if (strVariable.Contains("Wait Timeout")) ValidateDoubleRange(ref WaitTimeout, "Wait Timeout", 15, 90, 30, false);
-        if (strVariable.Contains("Unlimited Team Switching During First Minutes Of Round")) ValidateDouble(ref UnlimitedTeamSwitchingDuringFirstMinutesOfRound, "Unlimited Team Switching During First Minutes Of Round", 5.0);
-        if (strVariable.Contains("Seconds Until Adaptive Speed Becomes Fast")) ValidateDoubleRange(ref SecondsUntilAdaptiveSpeedBecomesFast, "Seconds Until Adaptive Speed Becomes Fast", MIN_ADAPT_FAST, 999999, 3*60, true); // 3 minutes default
+        if (strVariable.Contains("Debug Level")) {ValidateIntRange(ref DebugLevel, "Debug Level", 0, 9, 2, false);}
+        else if (strVariable.Contains("Maximum Server Size")) {ValidateIntRange(ref MaximumServerSize, "Maximum Server Size", 8, 64, 64, false);}
+        else if (strVariable.Contains("Maximum Request Rate")) {ValidateIntRange(ref MaximumRequestRate, "Maximum Request Rate", 1, 15, 10, true);} // in 20 seconds
+        else if (strVariable.Contains("Wait Timeout")) {ValidateDoubleRange(ref WaitTimeout, "Wait Timeout", 15, 90, 30, false);}
+        else if (strVariable.Contains("Unlimited Team Switching During First Minutes Of Round")) {ValidateDouble(ref UnlimitedTeamSwitchingDuringFirstMinutesOfRound, "Unlimited Team Switching During First Minutes Of Round", 5.0);}
+        else if (strVariable.Contains("Seconds Until Adaptive Speed Becomes Fast")) {ValidateDoubleRange(ref SecondsUntilAdaptiveSpeedBecomesFast, "Seconds Until Adaptive Speed Becomes Fast", MIN_ADAPT_FAST, 999999, 3*60, true);} // 3 minutes default
     
         /* ===== SECTION 2 - Exclusions ===== */
     
-        if (strVariable.Contains("Minutes After Joining")) ValidateDouble(ref MinutesAfterJoining, "Minutes After Joining", 5);
+        else if (strVariable.Contains("Minutes After Joining")) {ValidateDouble(ref MinutesAfterJoining, "Minutes After Joining", 5);}
+        else if (strVariable.Contains("Minutes After Being Moved")) {ValidateDouble(ref MinutesAfterBeingMoved, "Minutes After Being Moved", 5);}
 
         /* ===== SECTION 3 - Round Phase & Population Settings ===== */
     
@@ -1817,30 +1832,30 @@ private bool ValidateSettings(String strVariable, String strValue) {
 
         /* ===== SECTION 4 - Scrambler ===== */
 
-        if (strVariable.Contains("Only On Final Ticket Percentage")) ValidateDoubleRange(ref OnlyOnFinalTicketPercentage, "Only On Final Ticket Percentage", 100.0, 1000.0, 120.0, true);
+        if (strVariable.Contains("Only On Final Ticket Percentage")) {ValidateDoubleRange(ref OnlyOnFinalTicketPercentage, "Only On Final Ticket Percentage", 100.0, 1000.0, 120.0, true);}
 
-        if (strVariable.Contains("Delay Seconds")) ValidateDoubleRange(ref DelaySeconds, "Delay Seconds", 0, 50, 30, false);
+        else if (strVariable.Contains("Delay Seconds")) {ValidateDoubleRange(ref DelaySeconds, "Delay Seconds", 0, 50, 30, false);}
 
         /* ===== SECTION 5 - Messages ===== */
     
-        if (strVariable.Contains("Yell Duration Seconds")) ValidateDoubleRange(ref YellDurationSeconds, "Yell Duration Seconds", 1, 20, 10, true);
+        else if (strVariable.Contains("Yell Duration Seconds")) {ValidateDoubleRange(ref YellDurationSeconds, "Yell Duration Seconds", 1, 20, 10, true);}
 
-        if (strVariable.Contains("Chat: Moved For Balance") && ChatMovedForBalance.Contains("%reason%")) {
+        else if (strVariable.Contains("Chat: Moved For Balance") && ChatMovedForBalance.Contains("%reason%")) {
             ConsoleWarn(strVariable + ": contains %reason%, which is only recognized in ^bDetected Bad Team Switch^n");
         }
-        if (strVariable.Contains("Yell: Moved For Balance") && YellMovedForBalance.Contains("%reason%")) {
+        else if (strVariable.Contains("Yell: Moved For Balance") && YellMovedForBalance.Contains("%reason%")) {
             ConsoleWarn(strVariable + ": contains %reason%, which is only recognized in ^bDetected Bad Team Switch^n");
         }
-        if (strVariable.Contains("Chat: Moved To Unstack") && ChatMovedToUnstack.Contains("%reason%")) {
+        else if (strVariable.Contains("Chat: Moved To Unstack") && ChatMovedToUnstack.Contains("%reason%")) {
             ConsoleWarn(strVariable + ": contains %reason%, which is only recognized in ^bDetected Bad Team Switch^n");
         }
-        if (strVariable.Contains("Yell: Moved To Unstack") && YellMovedToUnstack.Contains("%reason%")) {
+        else if (strVariable.Contains("Yell: Moved To Unstack") && YellMovedToUnstack.Contains("%reason%")) {
             ConsoleWarn(strVariable + ": contains %reason%, which is only recognized in ^bDetected Bad Team Switch^n");
         }
-        if (strVariable.Contains("Chat: Detected Good Team Switch") && ChatDetectedGoodTeamSwitch.Contains("%reason%")) {
+        else if (strVariable.Contains("Chat: Detected Good Team Switch") && ChatDetectedGoodTeamSwitch.Contains("%reason%")) {
             ConsoleWarn(strVariable + ": contains %reason%, which is only recognized in ^bDetected Bad Team Switch^n");
         }
-        if (strVariable.Contains("Yell: Detected Good Team Switch") && YellDetectedGoodTeamSwitch.Contains("%reason%")) {
+        else if (strVariable.Contains("Yell: Detected Good Team Switch") && YellDetectedGoodTeamSwitch.Contains("%reason%")) {
             ConsoleWarn(strVariable + ": contains %reason%, which is only recognized in ^bDetected Bad Team Switch^n");
         }
     
@@ -2079,6 +2094,18 @@ private void CommandToLog(string cmd) {
             return;
         }
 
+        if (Regex.Match(cmd, @"moved", RegexOptions.IgnoreCase).Success) {
+            lock (fKnownPlayers) {
+                foreach (String name in fKnownPlayers.Keys) {
+                    PlayerModel p = fKnownPlayers[name];
+                    if (p.MovedTimestamp != DateTime.MinValue) {
+                        ConsoleDump("^b" + p.FullName + "^n was moved " + p.MovesTotal + " times, the last was " + DateTime.Now.Subtract(p.MovedTimestamp).TotalMinutes.ToString("F0") + " minutes ago");
+                    }
+                }
+            }
+            return;
+        }
+
         if (Regex.Match(cmd, @"rage", RegexOptions.IgnoreCase).Success) {
             ConsoleDump("Rage stats: " + fGrandRageQuits + " rage of " + fGrandTotalQuits + " total, this round " + fRageQuits + " rage of " + fTotalQuits + " total"); 
             return;
@@ -2255,6 +2282,7 @@ private void CommandToLog(string cmd) {
             ConsoleDump("^1^bgen^n ^isection^n^0: Generate settings listing for ^isection^n (1-6,9)");
             ConsoleDump("^1^blists^n^0: Examine all settings that are lists");
             ConsoleDump("^1^bmodes^n^0: Examine the known game modes");
+            ConsoleDump("^1^bmoved^n^0: Examine which players were moved and how long ago");
             ConsoleDump("^1^brage^n^0: Examine rage quit statistics");
             ConsoleDump("^1^breset settings^n^0: Reset all plugin settings to default, except for ^bWhitelist^n and ^bDisperse Evenly List^n");
             ConsoleDump("^1^bscrambled^n^0: Examine list of players before and after last successful scramble");
@@ -3256,6 +3284,20 @@ private void BalanceAndUnstack(String name) {
         }
     }
     isStrong = (playerIndex < strongest);
+
+    // Exclude if too soon since last move
+    if (!mustMove && player.MovedTimestamp != DateTime.MinValue) {
+        double mins = DateTime.Now.Subtract(player.MovedTimestamp).TotalMinutes;
+        if (mins < MinutesAfterBeingMoved) {
+            DebugBalance("Excluding ^b" + player.Name + "^n: last move was " + mins.ToString("F0") + " minutes ago, less than required " + MinutesAfterBeingMoved.ToString("F0") + " minutes");
+            fExcludedRound = fExcludedRound + 1;
+            IncrementTotal();
+            return;
+        } else {
+            // reset
+            player.MovedTimestamp = DateTime.MinValue;
+        }
+    }
 
     // Exclude if player joined less than MinutesAfterJoining
     double joinedMinutesAgo = GetPlayerJoinedTimeSpan(player).TotalMinutes;
@@ -6095,9 +6137,15 @@ private void UpdateTeams() {
     }
     lock (fKnownPlayers) {
         foreach (String dude in names) {
-            PlayerModel player = fKnownPlayers[dude];
-            List<PlayerModel> t = GetTeam(player.Team);
-            if (t != null) t.Add(player);
+            PlayerModel player = null;
+            if (fKnownPlayers.TryGetValue(dude, out player) && player != null) {
+                List<PlayerModel> t = GetTeam(player.Team);
+                if (t != null) t.Add(player);
+                // Also update move timer
+                if (player.MovedTimestamp != DateTime.MinValue && DateTime.Now.Subtract(player.MovedTimestamp).TotalMinutes >= MinutesAfterBeingMoved) {
+                    player.MovedTimestamp = DateTime.MinValue;
+                }
+            }
         }
     }
 }
@@ -7940,7 +7988,13 @@ private void AssignGroups() {
             ++grandTotal;
         }
 
-        if (grandTotal == 0) throw new Exception("No players or no groups");
+        if (grandTotal == 0) {
+            ConsoleDebug("AssignGroups: No players or no groups, defaulting to 1,2,3,4");
+            for (int i = 1; i <= 4; ++i) {
+                fGroupAssignments[i] = i;
+            }
+            return;
+        }
 
         // Assign team to group that has the most players in that team
         for (int groupId = 1; groupId <= 4; ++groupId) {
@@ -7985,7 +8039,7 @@ private void AssignGroups() {
         }
     } catch (Exception e) {
         ConsoleException(e);
-        ConsoleDebug("Defaulting to 1,2,3,4");
+        ConsoleDebug("AssignGroups: Defaulting to 1,2,3,4");
         for (int i = 1; i <= 4; ++i) {
             fGroupAssignments[i] = i;
         }
@@ -8611,6 +8665,8 @@ static class MULTIbalancerUtils {
 <p><b>Same Clan Tags For Rank Dispersal</b>: True or False, default False. If True, dispersal by per-mode <b>Disperse Evenly By Rank &gt;=</b> will not be applied if the player has a clan tag that at least one other player on the same team has.</p>
 
 <p><b>Minutes After Joining</b>: Number greater than or equal to 0, default 5. After joining the server, a player is excluded from being moved for balance or unstacking for this number of minutes. Set to 0 to disable. Keep in mind that most joining players were already assigned to the team with the least players. They have already 'paid their dues'.</p>
+
+<p><b>Minutes After Being Moved</b>: Number greater than or equal to 0, default 90. After being moved for balance or unstacking, a player is excluded from being moved again for the specified number of minutes. Set to 0 to disable.</p>
 
 <h3>3 - Round Phase and Population Settings</h3>
 <p>These settings control balancing and unstacking, depending on the round phase and server population.
