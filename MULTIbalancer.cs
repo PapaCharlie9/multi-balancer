@@ -703,7 +703,9 @@ public bool Enable2SlotReserve; // disabled
 public bool EnablerecruitCommand; // disabled
 public bool EnableWhitelistingOfReservedSlotsList;
 public String[] Whitelist;
+public List<String> fSettingWhitelist;
 public String[] DisperseEvenlyList;
+public List<String> fSettingDisperseEvenlyList;
 public double SecondsUntilAdaptiveSpeedBecomesFast;
 
 public bool OnWhitelist;
@@ -917,7 +919,9 @@ public MULTIbalancer() {
     EnablerecruitCommand = false;
     EnableWhitelistingOfReservedSlotsList = true;
     Whitelist = new String[] {"[-- name, tag, or EA_GUID --]"};
+    fSettingWhitelist = new List<String>(Whitelist);
     DisperseEvenlyList = new String[] {"[-- name, tag, or EA_GUID --]"};
+    fSettingDisperseEvenlyList = new List<String>(DisperseEvenlyList);
     SecondsUntilAdaptiveSpeedBecomesFast = 3*60; // 3 minutes default
     
     /* ===== SECTION 2 - Exclusions ===== */
@@ -1671,10 +1675,15 @@ public void SetPluginVariable(String strVariable, String strValue) {
             } else if (fListStrDict.ContainsValue(fieldType)) {
                 if (DebugLevel >= 8) ConsoleDebug("String array " + propertyName + " <- " + strValue);
                 field.SetValue(this, CPluginVariable.DecodeStringArray(strValue));
+                if (propertyName == "Whitelist") {
+                    MergeWithFile(Whitelist, fSettingWhitelist);
+                } else if (propertyName == "DisperseEvenlyList") {
+                    MergeWithFile(DisperseEvenlyList, fSettingDisperseEvenlyList);
+                }
                 if (DebugLevel >= 8 && propertyName == "Whitelist") {
                     String l = "Whitelist: ";
-                    for (int i = 0; i < Whitelist.Length; ++i) {
-                        l = l + Whitelist[i] + ", ";
+                    for (int i = 0; i < fSettingWhitelist.Count; ++i) {
+                        l = l + fSettingWhitelist[i] + ", ";
                     }
                     l = l + "end";
                     ConsoleDebug(l);
@@ -2022,6 +2031,18 @@ private void CommandToLog(string cmd) {
             return;
         }
 
+        if (Regex.Match(cmd, @"lists", RegexOptions.IgnoreCase).Success) {
+            ConsoleDump("Whitelist(" + fSettingWhitelist.Count + "):");
+            foreach (String item in fSettingWhitelist) {
+                ConsoleDump(item);
+            }
+            ConsoleDump("Disperse Evenly List(" + fSettingDisperseEvenlyList.Count + "):");
+            foreach (String item in fSettingDisperseEvenlyList) {
+                ConsoleDump(item);
+            }
+            return;
+        }
+
         if (Regex.Match(cmd, @"modes", RegexOptions.IgnoreCase).Success) {
             List<String> modeList = GetSimplifiedModes();
             ConsoleDump("modes(" + modeList.Count + "):");
@@ -2205,6 +2226,7 @@ private void CommandToLog(string cmd) {
         if (Regex.Match(cmd, @"help", RegexOptions.IgnoreCase).Success || !String.IsNullOrEmpty(cmd)) {
             ConsoleDump("^1^bgen^n ^imode^n^0: Generate settings listing for ^imode^n (one of: cs, cl, ctf, gm, r, sqdm, sr, s, tdm, u)");
             ConsoleDump("^1^bgen^n ^isection^n^0: Generate settings listing for ^isection^n (1-6,9)");
+            ConsoleDump("^1^blists^n: Examine all settings that are lists");
             ConsoleDump("^1^bmodes^n^0: Examine the known game modes");
             ConsoleDump("^1^brage^n^0: Examine rage quit statistics");
             ConsoleDump("^1^breset settings^n^0: Reset all plugin settings to default, except for ^bWhitelist^n and ^bDisperse Evenly List^n");
@@ -3087,7 +3109,7 @@ private void BalanceAndUnstack(String name) {
 
     // Exclude if on Whitelist or Reserved Slots if enabled
     if (OnWhitelist || (needsBalancing && balanceSpeed == Speed.Slow)) {
-        List<String> vip = new List<String>(Whitelist);
+        List<String> vip = new List<String>(fSettingWhitelist);
         if (EnableWhitelistingOfReservedSlotsList) vip.AddRange(fReservedSlots);
         List <String> tmp = new List<String>();
         // clean up the list
@@ -3848,7 +3870,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     
     // Whitelisted?
     if (OnWhitelist) {
-        List<String> vip = new List<String>(Whitelist);
+        List<String> vip = new List<String>(fSettingWhitelist);
         if (EnableWhitelistingOfReservedSlotsList) vip.AddRange(fReservedSlots);
         List <String> tmp = new List<String>();
         // clean up the list
@@ -6373,9 +6395,9 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] byI
     bool isDispersalByRank = IsRankDispersal(player);
     List<String> dispersalList = null;
     bool isDispersalByList = false;
-    if (perMode.EnableDisperseEvenlyList && DisperseEvenlyList != null && DisperseEvenlyList.Length > 0) {
+    if (perMode.EnableDisperseEvenlyList && fSettingDisperseEvenlyList != null && fSettingDisperseEvenlyList.Count > 0) {
         String extractedTag = ExtractTag(player);
-        dispersalList = new List<String>(DisperseEvenlyList);
+        dispersalList = new List<String>(fSettingDisperseEvenlyList);
         if (dispersalList.Contains(name) 
         || dispersalList.Contains(player.EAGUID) 
         && (!String.IsNullOrEmpty(extractedTag) && dispersalList.Contains(extractedTag))) {
@@ -7094,11 +7116,11 @@ private bool IsDispersal(PlayerModel player) {
     PerModeSettings perMode = GetPerModeSettings();
     List<String> dispersalList = null;
     bool isDispersalByList = false;
-    if (perMode.EnableDisperseEvenlyList && DisperseEvenlyList != null && DisperseEvenlyList.Length > 0) {
+    if (perMode.EnableDisperseEvenlyList && fSettingDisperseEvenlyList != null && fSettingDisperseEvenlyList.Count > 0) {
         String extractedTag = ExtractTag(player);
         if (String.IsNullOrEmpty(extractedTag)) extractedTag = INVALID_NAME_TAG_GUID;
         String guid = (String.IsNullOrEmpty(player.EAGUID)) ? INVALID_NAME_TAG_GUID : player.EAGUID;
-        dispersalList = new List<String>(DisperseEvenlyList);
+        dispersalList = new List<String>(fSettingDisperseEvenlyList);
         if (dispersalList.Contains(player.Name) 
         || dispersalList.Contains(guid) 
         || dispersalList.Contains(extractedTag)) {
@@ -7668,6 +7690,58 @@ private bool Forbid(PerModeSettings perMode, UnswitchChoice choice) {
     return ret;
 }
 
+private void MergeWithFile(String[] var, List<String> list) {
+    if (var == null || list == null) return;
+    list.Clear();
+    int n = 0;
+    foreach (String s in var) {
+        if (n == 0 && Regex.Match(s, @"^\s*<").Success) {
+            String fileName = s.Replace("<", String.Empty);
+            String path = Path.Combine("Configs", fileName);
+
+            try {
+                if (!Path.IsPathRooted(path)) path = Path.Combine(Directory.GetParent(Application.ExecutablePath).FullName, path);
+                Byte[] buffer = new Byte[128]; // 64k buffer
+                int got = 0;
+                UTF8Encoding utf = new UTF8Encoding(false, true);
+                StringBuilder sb = new StringBuilder();
+
+                using (FileStream fs = File.Open(path, FileMode.Open)) {
+                    while ((got = fs.Read(buffer, 0, buffer.Length-1)) > 0) {
+                        String tmp = utf.GetString(buffer, 0, got);
+                        foreach (Char c in tmp) {
+                            if (c == '\n') {
+                                list.Add(sb.ToString());
+                                sb = new StringBuilder();
+                            } else if (c == '\r') {
+                                continue;
+                            } else {
+                                sb.Append(c);
+                            }
+                        }
+                    }
+                    if (sb.Length > 0) {
+                        list.Add(sb.ToString());
+                    }
+                }
+            } catch (Exception ex) {
+                ConsoleError("Unable to merge file: " + fileName);
+                ConsoleError(ex.GetType().ToString() + ": " + ex.Message);
+            }
+            if (list.Count > 0) {
+                ConsoleDebug("MergeWithFile ^b" + fileName + "^n contained:");
+                foreach (String mf in list) {
+                    ConsoleDebug(mf);
+                }
+                ConsoleDebug("MergeWithFile, end of ^b" + fileName + "^n");
+            }
+        } else {
+            list.Add(s);
+        }
+        n = n + 1;
+    }
+}
+
 /* === NEW_NEW_NEW === */
 
 
@@ -8219,6 +8293,9 @@ static class MULTIbalancerUtils {
 <h3>Unstacking</h3>
 <p>Stacking refers to one team having more strong players than the other team. The result of stacked teams is lopsided wins and usually rage quitting from the losing team or attempts to switch to the winning team. If unstacking is enabled and the <b>Ticket Percentage (Ratio)</b> is exceeded, the plugin will attempt to unstack teams. To unstack teams, a strong player is selected from the winning team and is moved to the losing team. Then, a weak player is selected from the losing team and moved to the winning team. This is repeated until the round ends, or teams become unbalanced, or <b>Max&nbsp;Unstacking&nbsp;Swaps&nbsp;Per&nbsp;Round</b> is reached, whichever comes first.</p>
 
+<h3>Merge Files</h3>
+<p>A merge file is an external file that you can use to specify a list setting, such as <b>Whitelist</b>. An external file is convenient if you have long lists or if you share the same list across multiple game servers. The file is specified as <b>&lt;</b><i>filename.ext</i>. The contents of the file should be UTF-8 text, one item per line, using the same contents and syntax as the list it will be merged with. The file should be stored in the procon/Configs folder. You may have more than one file, using a different file name for each list or for different game servers.</p>
+
 <h2>Settings</h2>
 <p>Each setting is defined below. Settings are grouped into sections.</p>
 
@@ -8248,14 +8325,14 @@ static class MULTIbalancerUtils {
 
 <p><b>Enable Whitelisting Of Reserved Slots List</b>: True or False, default True. Treats the reserved slots list as if it were added to the specified <b>Whitelist</b>.</p>
 
-<p><b>Whitelist</b>: List of player names (without clan tags), clan tags (by themselves), or EA GUIDs, one per line, in any combination. If <b>On&nbsp;Whitelist</b> is enabled or the balance speed is <i>Slow</i>, any players on the whitelist are completely excluded from being moved by the plugin (except for between-round scrambling). Example list with the name of one player, tag of a clan, and GUID of another player:
+<p><b>Whitelist</b>: List of player names (without clan tags), clan tags (by themselves), or EA GUIDs, one per line, in any combination. The first item may also specify a file to merge into the list, e.g., <i>&lt;whitelist.txt</i>. See <b>Merge Files</b> above. If <b>On&nbsp;Whitelist</b> is enabled or the balance speed is <i>Slow</i>, any players on the whitelist are completely excluded from being moved by the plugin (except for between-round scrambling). Example list with the name of one player, tag of a clan, and GUID of another player:
 <pre>
   PapaCharlie9
   LGN
   EA_20D5B089E734F589B1517C8069A37E28
 </pre></p>
 
-<p><b>Disperse Evenly List</b>: List of player names (without clan tags), clan tags (by themselves), or EA GUIDs, one per line, in any combination. Groups of players found on this list will be split up and moved so that they are evenly dispersed across teams.</p>
+<p><b>Disperse Evenly List</b>: List of player names (without clan tags), clan tags (by themselves), or EA GUIDs, one per line, in any combination. The first item may also specify a file to merge into the list, e.g., <i>&lt;disperse.txt</i>. See <b>Merge Files</b> above. Groups of players found on this list will be split up and moved so that they are evenly dispersed across teams.</p>
 
 <h3>2 - Exclusions</h3>
 <p>These settings define which players should be excluded from being moved for balance or unstacking. Changing a preset may overwrite the value of one or more of these settings. Changing one of these settings may change the value of the Preset, usually to None, to indicate a custom setting.</p>
