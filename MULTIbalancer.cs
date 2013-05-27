@@ -343,10 +343,11 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         public double KillsTotal; // not including current round
         public double DeathsTotal; // not including current round
         public int MovesTotal; // not including current round
+        public int MovesByMBTotal; // not include current round
 
         //  Per-round state
-        public int MovesRound;
-        public bool MovedByMB;
+        public int MovesRound; // moves NOT made by this plugin
+        public int MovesByMBRound; // moves made by this plugin
         public DateTime MovedTimestamp;
         public DateTime MovedByMBTimestamp;
 
@@ -375,9 +376,10 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             KillsTotal = 0;
             DeathsTotal = 0;
             MovesTotal = 0;
+            MovesByMBTotal = 0;
             IsDeployed = false;
             MovesRound = 0;
-            MovedByMB = false;
+            MovesByMBRound = 0;
             MovedTimestamp = DateTime.MinValue;
             MovedByMBTimestamp = DateTime.MinValue;
             SpawnChatMessage = String.Empty;
@@ -401,6 +403,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             KillsTotal = KillsTotal + KillsRound;
             DeathsTotal = DeathsTotal + DeathsRound;
             MovesTotal = MovesTotal + MovesRound;
+            MovesByMBTotal = MovesByMBTotal + MovesByMBRound;
             Rounds = (Rounds > 0) ? Rounds + 1 : 1;
 
             ScoreRound = -1;
@@ -418,7 +421,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             LastMoveFrom = 0;
 
             MovesRound = 0;
-            MovedByMB = false;
+            MovesByMBRound = 0;
             DispersalGroup = 0;
             MovedTimestamp = DateTime.MinValue;
             // MovedByMBTimestamp reset when minutes exceeds MinutesAfterBeingMoved
@@ -447,9 +450,10 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             lhs.KillsTotal = this.KillsTotal;
             lhs.DeathsTotal = this.DeathsTotal;
             lhs.MovesTotal = this.MovesTotal;
+            lhs.MovesByMBTotal = this.MovesByMBTotal;
             lhs.IsDeployed = this.IsDeployed;
             lhs.MovesRound = this.MovesRound;
-            lhs.MovedByMB = this.MovedByMB;
+            lhs.MovesByMBRound = this.MovesByMBRound;
             lhs.MovedTimestamp = this.MovedTimestamp;
             lhs.MovedByMBTimestamp = this.MovedByMBTimestamp;
             lhs.SpawnChatMessage = this.SpawnChatMessage;
@@ -2103,7 +2107,7 @@ private void CommandToLog(string cmd) {
                 foreach (String name in fKnownPlayers.Keys) {
                     PlayerModel p = fKnownPlayers[name];
                     if (p.MovedByMBTimestamp != DateTime.MinValue) {
-                        ConsoleDump("^b" + p.FullName + "^n was moved " + (p.MovesTotal + p.MovesRound) + " times, the last was " + DateTime.Now.Subtract(p.MovedByMBTimestamp).TotalMinutes.ToString("F0") + " minutes ago");
+                        ConsoleDump("^b" + p.FullName + "^n was moved " + p.MovesByMBRound + " times this round, " + (p.MovesByMBTotal + p.MovesByMBRound) + " total, the last was " + DateTime.Now.Subtract(p.MovedByMBTimestamp).TotalMinutes.ToString("F0") + " minutes ago");
                     }
                 }
             }
@@ -2286,7 +2290,7 @@ private void CommandToLog(string cmd) {
             ConsoleDump("^1^bgen^n ^isection^n^0: Generate settings listing for ^isection^n (1-6,9)");
             ConsoleDump("^1^blists^n^0: Examine all settings that are lists");
             ConsoleDump("^1^bmodes^n^0: Examine the known game modes");
-            ConsoleDump("^1^bmoved^n^0: Examine which players were moved and how long ago");
+            ConsoleDump("^1^bmoved^n^0: Examine which players were moved, how many times total and how long ago");
             ConsoleDump("^1^brage^n^0: Examine rage quit statistics");
             ConsoleDump("^1^breset settings^n^0: Reset all plugin settings to default, except for ^bWhitelist^n and ^bDisperse Evenly List^n");
             ConsoleDump("^1^bscrambled^n^0: Examine list of players before and after last successful scramble");
@@ -2494,12 +2498,12 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
                 // This is an admin move in correct order, do not treat it as a team switch
                 fPendingTeamChange.Remove(soldierName);
                 DebugWrite("Moved by admin: ^b" + soldierName + "^n to team " + teamId, 6);
-                ConditionalIncrementMoves(soldierName);
                 if (!wasPluginMove) {
                     // Some other admin.movePlayer, so update to account for it
+                    ConditionalIncrementMoves(soldierName);
                     UpdatePlayerTeam(soldierName, teamId);
                     UpdateTeams();
-                }
+                } // MB moves incremented by FinishMove, so nothing to do here
                 return;
             }
 
@@ -3334,7 +3338,7 @@ private void BalanceAndUnstack(String name) {
     }
 
     // Exempt if this player already been moved for balance or unstacking
-    if ((!mustMove && player.MovesRound >= 1) || (mustMove && player.MovesRound >= 2)) {
+    if ((!mustMove && GetMoves(player) >= 1) || (mustMove && GetMoves(player) >= 2)) {
         DebugBalance("Exempting ^b" + name + "^n, already moved this round");
         fExemptRound = fExemptRound + 1;
         IncrementTotal();
@@ -3978,7 +3982,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     bool isSQDM = IsSQDM();
     bool isDispersal = IsDispersal(player);
     bool isRank = IsRankDispersal(player);
-    bool forbidden = (((isDispersal || isRank) && Forbid(perMode, ForbidSwitchingAfterDispersal)) || (player.MovedByMB && !isSQDM && Forbid(perMode, ForbidSwitchingAfterAutobalance)));
+    bool forbidden = (((isDispersal || isRank) && Forbid(perMode, ForbidSwitchingAfterDispersal)) || (player.MovesByMBRound > 0 && !isSQDM && Forbid(perMode, ForbidSwitchingAfterAutobalance)));
 
     // Unlimited time?
     if (!forbidden && UnlimitedTeamSwitchingDuringFirstMinutesOfRound > 0 && GetTimeInRoundMinutes() < UnlimitedTeamSwitchingDuringFirstMinutesOfRound) {
@@ -4126,7 +4130,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
 
     ForbidBecause why = ForbidBecause.None;
 
-    if (player.MovedByMB && !isSQDM) {
+    if (player.MovesByMBRound > 0 && !isSQDM) {
         why = ForbidBecause.MovedByBalancer;
         if (!Forbid(perMode, ForbidSwitchingAfterAutobalance)) {
             DebugUnswitch("ALLOWED: move by ^b" + name + "^n because ^bForbid Switch After Autobalance^n is False");
@@ -6510,15 +6514,15 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] tea
                     grandTotal = grandTotal + 1;
 
                     // Make sure this player hasn't been moved more than any other dispersal player
-                    if (p.MovesRound > player.MovesRound) {
+                    if (GetMoves(p) > GetMoves(player)) {
                         mostMoves = false;
                     }
                 }
             }
         }
 
-        if (mostMoves && player.MovesRound > 0) {
-            DebugWrite("ToTeamByDispersal List: ^b" + player.Name + "^n moved more than other dispersals (" + player.MovesRound + " times), skipping!", 5);
+        if (mostMoves && GetMoves(player) > 0) {
+            DebugWrite("ToTeamByDispersal List: ^b" + player.Name + "^n moved more than other dispersals (" + GetMoves(player) + " times), skipping!", 5);
             return -1;
         }
 
@@ -6564,15 +6568,15 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] tea
                     grandTotal = grandTotal + 1;
 
                     // Make sure this player hasn't been moved more than any other dispersal player
-                    if (p.MovesRound > player.MovesRound) {
+                    if (GetMoves(p) > GetMoves(player)) {
                         mostMoves = false;
                     }
                 }
             }
         }
 
-        if (mostMoves && player.MovesRound > 0) {
-            DebugWrite("ToTeamByDispersal Rank: ^b" + player.Name + "^n moved more than other dispersals (" + player.MovesRound + " times), skipping!", 5);
+        if (mostMoves && GetMoves(player) > 0) {
+            DebugWrite("ToTeamByDispersal Rank: ^b" + player.Name + "^n moved more than other dispersals (" + GetMoves(player) + " times), skipping!", 5);
             return -1;
         }
 
@@ -6758,8 +6762,7 @@ private void IncrementMoves(String name) {
     if (!IsKnownPlayer(name)) return;
     lock (fKnownPlayers) {
         PlayerModel m = fKnownPlayers[name];
-        m.MovesRound = m.MovesRound + 1;
-        m.MovedByMB = true;
+        m.MovesByMBRound = m.MovesByMBRound + 1;
         m.MovedByMBTimestamp = DateTime.Now;
     }
     UpdateMoveTime(name);
@@ -6768,27 +6771,23 @@ private void IncrementMoves(String name) {
 private void ConditionalIncrementMoves(String name) {
     /*
     If some other plugin did an admin move on this player, increment
-    the move counter so that this player will be exempted from balancing and unstacking
+    the non-MB move counter so that this player will be exempted from balancing and unstacking
     for the rest of this round, but don't set the flag or the timer, since MB didn't move this player.
     */
     if (!IsKnownPlayer(name)) return;
     lock (fKnownPlayers) {
         PlayerModel m = fKnownPlayers[name];
-        if (!m.MovedByMB) {
-            m.MovesRound = m.MovesRound + 1;
-        }
+        m.MovesRound = m.MovesRound + 1;
     }
     IncrementTotal(); // no matching stat, reflects handling of non-MB admin move
 }
 
-/*
-private int GetMoves(String name) {
-    if (!IsKnownPlayer(name)) return 99;
-    lock (fKnownPlayers) {
-        return fKnownPlayers[name].MovesRound;
-    }
+
+private int GetMoves(PlayerModel player) {
+    if (player == null) return 0;
+    return (player.MovesRound + player.MovesByMBRound);
 }
-*/
+
 
 private void IncrementTotal()
 {
