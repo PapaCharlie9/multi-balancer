@@ -8787,7 +8787,7 @@ static class MULTIbalancerUtils {
 <p>Stacking refers to one team having more strong players than the other team. The result of stacked teams is lopsided wins and usually rage quitting from the losing team or attempts to switch to the winning team. If unstacking is enabled and the <b>Ticket Percentage (Ratio)</b> is exceeded, the plugin will attempt to unstack teams. To unstack teams, a strong player is selected from the winning team and is moved to the losing team. Then, a weak player is selected from the losing team and moved to the winning team. This is repeated until the round ends, or teams become unbalanced, or <b>Max&nbsp;Unstacking&nbsp;Swaps&nbsp;Per&nbsp;Round</b> is reached, whichever comes first.</p>
 
 <h3>Merge Files</h3>
-<p>A merge file is an external file that you can use to specify a list setting, such as <b>Whitelist</b>. An external file is convenient if you have long lists or if you share the same list across multiple game servers. The file is specified as <b>&lt;</b><i>filename.ext</i>. The contents of the file should be UTF-8 text, one item per line, using the same contents and syntax as the list it will be merged with. The file should be stored in the procon/Configs folder. You may have more than one file, using a different file name for each list or for different game servers.</p>
+<p>A merge file is an external file that you can use to specify a list setting, such as <b>Whitelist</b>. An external file is convenient if you have long lists or if you share the same list across multiple game servers. The file is specified as <b>&lt;</b><i>filename.ext</i> on the first line of the list, with no whitespace. The contents of the file should be UTF-8 text, using the same contents and syntax as the list it will be merged with. The file should be stored in the procon/Configs folder. You can store as many differently named files there as you want, but each list can only use one merge file at a time.</p>
 
 <h2>Settings</h2>
 <p>Each setting is defined below. Settings are grouped into sections.</p>
@@ -8825,7 +8825,7 @@ static class MULTIbalancerUtils {
   EA_20D5B089E734F589B1517C8069A37E28
 </pre></p>
 
-<p><b>Friends List</b>: List of player names (without clan tags), clan tags (by themselves), or EA GUIDs, [b]two or more per line[/b] separated by spaces, in any combination. The first item may also specify a file to merge into the list, e.g., <i>&lt;friends.txt</i>. See <b>Merge Files</b> above. If <b>On&nbsp;Friends&nbsp;List</b> is enabled, a player is excluded if at least one other player in his squad is also on the same friends sub-list. A sub-list is a single line of the Friends List with two or more names, tags or guids. No literal item may be duplicated anywhere in the list, but a player's clan tag may be on one sub-list and his name on another and his guid on a third. Example of two separate friends sub-lists:
+<p><b>Friends List</b>: List of player names (without clan tags), clan tags (by themselves), or EA GUIDs, <b>two or more per line</b> separated by spaces, in any combination. The first item may also specify a file to merge into the list, e.g., <i>&lt;friends.txt</i>. See <b>Merge Files</b> above. If <b>On&nbsp;Friends&nbsp;List</b> is enabled, a player is excluded if at least one other player in his squad is also on the same friends sub-list. A sub-list is a single line of the Friends List with two or more names, tags or guids. No literal item may be duplicated anywhere in the list, but a player's clan tag may be on one sub-list and his name on another and his guid on a third. Example of two separate friends sub-lists:
 <pre>
   PapaCharlie9 FTB C2C
   Tom Dick Harry EA_20D5B089E734F589B1517C8069A37E28 
@@ -8842,9 +8842,9 @@ static class MULTIbalancerUtils {
 <h3>2 - Exclusions</h3>
 <p>These settings define which players should be excluded from being moved for balance or unstacking. Changing a preset may overwrite the value of one or more of these settings. Changing one of these settings may change the value of the Preset, usually to None, to indicate a custom setting.</p>
 
-<p><b>On Whitelist</b>: True or False, default True. If True, the Whitelist is used to exclude players. If False, the Whitelist is ignored.</p>
+<p><b>On Whitelist</b>: True or False, default True. If True, the <b>Whitelist</b> is used to exclude players. If False, the Whitelist is ignored.</p>
 
-<p><b>On Friends List</b>: True or False, default False. If True, the Friend List is used to exclude players. If False, the Friend List is ignored.</p>
+<p><b>On Friends List</b>: True or False, default False. If True, the Friend List is used to exclude players. If False, the <b>Friends List</b> is ignored.</p>
 
 <p><b>Top Scorers</b>: True or False, default True. If True, the top 1, 2, or 3 players (depending on server population and mode) on each team are excluded from moves for balancing or unstacking. This is to reduce the whining and QQing when a team loses their top players to autobalancing.</p>
 
