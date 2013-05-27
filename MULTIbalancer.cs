@@ -114,8 +114,10 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
       "Yankee", "Zulu", "Haggard", "Sweetwater", "Preston", "Redford", "Faith", "Celeste"
     };
 
-    /* Classes */
+    public const String DEFAULT_LIST_ITEM = "[-- name, tag, or EA_GUID --]";
 
+    /* Classes */
+#region Classes
     public class PerModeSettings {
         public PerModeSettings() {}
         
@@ -353,6 +355,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
 
         // Based on settings
         public int DispersalGroup;
+        public int Friendex; // index (key) to friend list
         
         public PlayerModel() {
             Name = null;
@@ -391,6 +394,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             FetchStatus = new FetchInfo();
             ScrambledSquad = -1;
             DispersalGroup = 0;
+            Friendex = -1;
         }
         
         public PlayerModel(String name, int team) : this() {
@@ -464,6 +468,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             lhs.LastMoveFrom = this.LastMoveFrom;
             lhs.FetchStatus = this.FetchStatus;
             lhs.ScrambledSquad = this.ScrambledSquad;
+            lhs.Friendex = this.Friendex;
             return lhs;
         }
     } // end PlayerModel
@@ -603,6 +608,8 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         }
     } // end ListPlayersRequest
 
+#endregion
+
 /* Inherited:
     this.PunkbusterPlayerInfoList = new Dictionary<String, CPunkbusterInfo>();
     this.FrostbitePlayerInfoList = new Dictionary<String, CPlayerInfo>();
@@ -675,6 +682,8 @@ private bool fIsCacheEnabled = false;
 private DelayedRequest fScramblerLock = null;
 private int fWinner = 0;
 private bool fStageInProgress = false;
+private Dictionary<int,List<String>> fFriends;
+private List<String> fAllFriends;
 
 // Operational statistics
 private int fReassignedRound = 0;
@@ -726,9 +735,12 @@ public String[] Whitelist;
 public List<String> fSettingWhitelist;
 public String[] DisperseEvenlyList;
 public List<String> fSettingDisperseEvenlyList;
+public String[] FriendsList;
+public List<String> fSettingFriendsList;
 public double SecondsUntilAdaptiveSpeedBecomesFast;
 
 public bool OnWhitelist;
+public bool OnFriendsList;
 public bool TopScorers;
 public bool SameClanTagsInSquad;
 public bool SameClanTagsForRankDispersal;
@@ -912,6 +924,8 @@ public MULTIbalancer() {
     fGroupAssignments = new int[5]{0,0,0,0,0};
     fDispersalGroups = new List<String>[5]{null, new List<String>(), new List<String>(), new List<String>(), new List<String>()};
     fNeedGroupAssignment = false;
+    fFriends = new Dictionary<int, List<String>>();
+    fAllFriends = new List<String>();
     
     /* Settings */
 
@@ -942,15 +956,18 @@ public MULTIbalancer() {
     Enable2SlotReserve = false;
     EnablerecruitCommand = false;
     EnableWhitelistingOfReservedSlotsList = true;
-    Whitelist = new String[] {"[-- name, tag, or EA_GUID --]"};
+    Whitelist = new String[] {DEFAULT_LIST_ITEM};
     fSettingWhitelist = new List<String>(Whitelist);
-    DisperseEvenlyList = new String[] {"[-- name, tag, or EA_GUID --]"};
+    DisperseEvenlyList = new String[] {DEFAULT_LIST_ITEM};
     fSettingDisperseEvenlyList = new List<String>(DisperseEvenlyList);
+    FriendsList = new String[] {DEFAULT_LIST_ITEM};
+    fSettingFriendsList = new List<String>();
     SecondsUntilAdaptiveSpeedBecomesFast = 3*60; // 3 minutes default
     
     /* ===== SECTION 2 - Exclusions ===== */
     
     OnWhitelist = true;
+    OnFriendsList = false;
     TopScorers = true;
     SameClanTagsInSquad = true;
     SameClanTagsForRankDispersal = false;
@@ -1047,6 +1064,7 @@ public MULTIbalancer(PresetItems preset) : this() {
         case PresetItems.Aggressive:
 
             OnWhitelist = true;
+            OnFriendsList = false;
             TopScorers = false;
             SameClanTagsInSquad = false;
             SameClanTagsForRankDispersal = false;
@@ -1080,6 +1098,7 @@ public MULTIbalancer(PresetItems preset) : this() {
         case PresetItems.Passive:
 
             OnWhitelist = true;
+            OnFriendsList = true;
             TopScorers = true;
             SameClanTagsInSquad = true;
             SameClanTagsForRankDispersal = true;
@@ -1113,6 +1132,7 @@ public MULTIbalancer(PresetItems preset) : this() {
         case PresetItems.Intensify:
 
             OnWhitelist = true;
+            OnFriendsList = false;
             TopScorers = true;
             SameClanTagsInSquad = false;
             SameClanTagsForRankDispersal = false;
@@ -1146,6 +1166,7 @@ public MULTIbalancer(PresetItems preset) : this() {
         case PresetItems.Retain:
 
             OnWhitelist = true;
+            OnFriendsList = true;
             TopScorers = true;
             SameClanTagsInSquad = true;
             SameClanTagsForRankDispersal = true;
@@ -1178,6 +1199,7 @@ public MULTIbalancer(PresetItems preset) : this() {
         case PresetItems.BalanceOnly:
 
             OnWhitelist = true;
+            OnFriendsList = false;
             TopScorers = true;
             SameClanTagsInSquad = true;
             SameClanTagsForRankDispersal = true;
@@ -1210,6 +1232,7 @@ public MULTIbalancer(PresetItems preset) : this() {
         case PresetItems.UnstackOnly:
 
             OnWhitelist = true;
+            OnFriendsList = false;
             TopScorers = true;
             SameClanTagsInSquad = true;
             SameClanTagsForRankDispersal = true;
@@ -1371,11 +1394,15 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
         lstReturn.Add(new CPluginVariable("1 - Settings|Whitelist", Whitelist.GetType(), Whitelist));
 
+        lstReturn.Add(new CPluginVariable("1 - Settings|Friends List", FriendsList.GetType(), FriendsList));
+
         lstReturn.Add(new CPluginVariable("1 - Settings|Disperse Evenly List", DisperseEvenlyList.GetType(), DisperseEvenlyList));
         
         /* ===== SECTION 2 - Exclusions ===== */
 
         lstReturn.Add(new CPluginVariable("2 - Exclusions|On Whitelist", OnWhitelist.GetType(), OnWhitelist));
+
+        lstReturn.Add(new CPluginVariable("2 - Exclusions|On Friends List", OnFriendsList.GetType(), OnFriendsList));
 
         lstReturn.Add(new CPluginVariable("2 - Exclusions|Top Scorers", TopScorers.GetType(), TopScorers));
 
@@ -1719,6 +1746,9 @@ public void SetPluginVariable(String strVariable, String strValue) {
                     MergeWithFile(DisperseEvenlyList, fSettingDisperseEvenlyList);
                     SetDispersalListGroups();
                     AssignGroups();
+                } else if (propertyName == "FriendsList") {
+                    MergeWithFile(FriendsList, fSettingFriendsList);
+                    SetFriends();
                 }
             } else if (fBoolDict.ContainsValue(fieldType)) {
                 if (fIsEnabled) DebugWrite(propertyName + " strValue = " + strValue, 6);
@@ -1807,6 +1837,7 @@ public void SetPluginVariable(String strVariable, String strValue) {
         }
     }
 }
+
 
 
 private bool ValidateSettings(String strVariable, String strValue) {
@@ -1942,6 +1973,7 @@ private void ResetSettings() {
     /* ===== SECTION 2 - Exclusions ===== */
     
     OnWhitelist = rhs.OnWhitelist;
+    OnFriendsList = rhs.OnFriendsList;
     TopScorers = rhs.TopScorers;
     SameClanTagsInSquad = rhs.SameClanTagsInSquad;
     SameClanTagsForRankDispersal = rhs.SameClanTagsForRankDispersal;
@@ -2070,6 +2102,11 @@ private void CommandToLog(string cmd) {
             ConsoleDump("Whitelist(" + fSettingWhitelist.Count + "):");
             foreach (String item in fSettingWhitelist) {
                 ConsoleDump(item);
+            }
+            ConsoleDump(" ");
+            ConsoleDump("Friends List(" + fFriends.Keys.Count +"):");
+            foreach (int k in fFriends.Keys) {
+                ConsoleDump(k.ToString() + ": " + String.Join(", ", fFriends[k].ToArray()));
             }
             ConsoleDump(" ");
             ConsoleDump("Disperse Evenly List(" + fSettingDisperseEvenlyList.Count + "):");
@@ -3337,6 +3374,17 @@ private void BalanceAndUnstack(String name) {
         }
     }
 
+    // Exclude if on friends list
+    if (OnFriendsList) {
+        int cmf = CountMatchingFriends(player);
+        if (cmf >= 2) {
+            DebugBalance("Excluding ^b" + player.FullName + "^n, " + cmf + " players in squad are friends (friendex = " + player.Friendex + ")");
+            fExcludedRound = fExcludedRound + 1;
+            IncrementTotal();
+            return;
+        }
+    }
+
     // Exempt if this player already been moved for balance or unstacking
     if ((!mustMove && GetMoves(player) >= 1) || (mustMove && GetMoves(player) >= 2)) {
         DebugBalance("Exempting ^b" + name + "^n, already moved this round");
@@ -3703,6 +3751,7 @@ private void BalanceAndUnstack(String name) {
     // no increment total, handled by unstacking move
 }
 
+
 private bool IsKnownPlayer(String name) {
     bool check = false;
     lock (fAllPlayers) {
@@ -3795,40 +3844,42 @@ private void UpdatePlayerModel(String name, int team, int squad, String eaGUID, 
                 return;
         }          
     }
-    
-    if (!fKnownPlayers.ContainsKey(name)) {
-        ConsoleDebug("UpdatePlayerModel: player ^b" + name + "^n not in master table!");
-        return;
-    }
-    
+   
     int unTeam = -2;
-    
+    PlayerModel m = null;
+
     lock (fKnownPlayers) {
-    
-        PlayerModel m = fKnownPlayers[name];
-    
-        if (m.Team != team) {
-            unTeam = m.Team;
-            m.Team = team;
+        if (!fKnownPlayers.ContainsKey(name)) {
+            ConsoleDebug("UpdatePlayerModel: player ^b" + name + "^n not in master table!");
+            return;
         }
-        m.Squad = squad;
-        m.EAGUID = eaGUID;
-        m.ScoreRound = score;
-        m.KillsRound = kills;
-        m.DeathsRound = deaths;
-        m.Rank = rank;
-
-        m.LastSeenTimestamp = DateTime.Now;
-
-        // Computed
-        m.KDRRound = m.KillsRound / Math.Max(1, m.DeathsRound);
-        double mins = (m.FirstSpawnTimestamp == DateTime.MinValue) ? 1 : Math.Max(1, DateTime.Now.Subtract(m.FirstSpawnTimestamp).TotalMinutes);
-        m.SPMRound = m.ScoreRound / mins;
-        m.KPMRound = m.KillsRound / mins;
-
-        // Accumulated
-        // TBD
+        m = fKnownPlayers[name];
     }
+
+    if (m.Team != team) {
+        unTeam = m.Team;
+        m.Team = team;
+    }
+    m.Squad = squad;
+    m.EAGUID = eaGUID;
+    m.ScoreRound = score;
+    m.KillsRound = kills;
+    m.DeathsRound = deaths;
+    m.Rank = rank;
+
+    m.LastSeenTimestamp = DateTime.Now;
+
+    // Computed
+    m.KDRRound = m.KillsRound / Math.Max(1, m.DeathsRound);
+    double mins = (m.FirstSpawnTimestamp == DateTime.MinValue) ? 1 : Math.Max(1, DateTime.Now.Subtract(m.FirstSpawnTimestamp).TotalMinutes);
+    m.SPMRound = m.ScoreRound / mins;
+    m.KPMRound = m.KillsRound / mins;
+
+    // Accumulated
+    // TBD
+
+    // Friends
+    UpdatePlayerFriends(m);
 
     if (!EnableLoggingOnlyMode && unTeam != -2 && !fPendingTeamChange.ContainsKey(name)) {
         ConsoleDebug("UpdatePlayerModel:^b" + name + "^n has team " + unTeam + " but update says " + team + "!");
@@ -5918,6 +5969,7 @@ private List<String> GetSimplifiedModes() {
 
 public bool CheckForEquality(MULTIbalancer rhs) {
     return (this.OnWhitelist == rhs.OnWhitelist
+     && this.OnFriendsList == rhs.OnFriendsList
      && this.TopScorers == rhs.TopScorers
      && this.SameClanTagsInSquad == rhs.SameClanTagsInSquad
      && this.SameClanTagsForRankDispersal == rhs.SameClanTagsForRankDispersal
@@ -7850,6 +7902,7 @@ private void SetDispersalListGroups() {
     that should be assigned to the specified group list.
     */
     if (fSettingDisperseEvenlyList.Count == 0) return;
+    if (fSettingDisperseEvenlyList.Count == 1 && fSettingDisperseEvenlyList[0] == DEFAULT_LIST_ITEM) return;
     foreach (List<String> gl in fDispersalGroups) {
         if (gl == null) continue;
         gl.Clear();
@@ -7857,7 +7910,7 @@ private void SetDispersalListGroups() {
     List<String> copy = new List<String>(fSettingDisperseEvenlyList);
     foreach (String line in copy) {
         try {
-            if (line == null) continue;
+            if (String.IsNullOrEmpty(line)) continue;
             String[] tokens = Regex.Split(line, @"\s+");
             if (tokens != null && tokens.Length == 1 && !String.IsNullOrEmpty(tokens[0])) {
                 // Not a group, so retain
@@ -7903,8 +7956,8 @@ private void SetDispersalListGroups() {
                 fSettingDisperseEvenlyList.Remove(line);
             }
         } catch (Exception e) {
-            ConsoleWarn("In Disperse Evenly List, bad line: " + line);
-            ConsoleException(e);
+            ConsoleWarn("In Disperse Evenly List, skipping bad line: " + line);
+            ConsoleWarn(e.Message);
         }
     }
     // Check for uniqueness
@@ -7930,7 +7983,7 @@ private void SetDispersalListGroups() {
         }
     }
     // debugging
-    if (DebugLevel >= 8) {
+    if (DebugLevel >= 7) {
         String g1 = "Group 1: ";
         String g2 = "Group 2: ";
         String g3 = "Group 3: ";
@@ -8057,6 +8110,128 @@ private void AssignGroups() {
             ConsoleWrite(msg);
         }
     }
+}
+
+
+private void SetFriends() {
+
+    if (fSettingFriendsList.Count == 0) return;
+    if (fSettingFriendsList.Count == 1 && fSettingFriendsList[0] == DEFAULT_LIST_ITEM) return;
+    
+    fFriends.Clear();
+    int key = 1;
+
+    foreach (String line in fSettingFriendsList) {
+        try {
+            if (String.IsNullOrEmpty(line)) continue;
+            if (line == DEFAULT_LIST_ITEM) continue;
+            String[] tokens = Regex.Split(line, @"\s+");
+            if (tokens != null && tokens.Length == 1 && !String.IsNullOrEmpty(tokens[0])) {
+                throw new Exception("Line contains only one name");
+            }
+            // Otherwise, store the sub-list of friends
+            List<String> subList = new List<String>();
+            foreach (String token in tokens) {
+                if (String.IsNullOrEmpty(token)) continue;
+                subList.Add(token);
+            }
+            fFriends[key] = subList;
+            ++key;
+        } catch (Exception e) {
+            ConsoleWarn("In Friends List, skipping bad line: " + line);
+            ConsoleWarn(e.Message);
+        }
+    }
+    // Check uniqueness
+    fAllFriends.Clear();
+    foreach (int k in fFriends.Keys) {
+        List<String> copy = new List<String>(fFriends[k]);
+        foreach (String name in copy) {
+            if (fAllFriends.Contains(name)) {
+                ConsoleWarn("In Friends List, ^b" + name + "^n is duplicated, please remove all duplicates");
+                fFriends[k].Remove(name);
+            } else {
+                fAllFriends.Add(name);
+            }
+        }
+    }
+    // Update player model
+    UpdateFriends();
+    // debugging
+    if (DebugLevel >= 7) {
+        ConsoleDebug("SetFriends list of friends: ");
+        foreach (int k in fFriends.Keys) {
+            ConsoleDebug(k.ToString() + ": " + String.Join(", ", fFriends[k].ToArray()));
+        }
+    }
+}
+
+private void UpdateFriends() {
+    // short-circuit
+    if (fSettingFriendsList.Count == 0) return;
+    if (fSettingFriendsList.Count == 1 && fSettingFriendsList[0] == DEFAULT_LIST_ITEM) return;
+
+    lock (fAllPlayers) {
+        foreach (String name in fAllPlayers) {
+            PlayerModel friend = null;
+            lock (fKnownPlayers) {
+                if (!fKnownPlayers.TryGetValue(name, out friend) || friend == null) continue;
+            }
+            UpdatePlayerFriends(friend);
+        }
+    }
+}
+
+private void UpdatePlayerFriends(PlayerModel friend) {
+    if (friend == null) return;
+    friend.Friendex = -1; 
+    if (!fAllFriends.Contains(friend.Name)) return; // optmization, avoid search if not a friend
+
+    String guid = (String.IsNullOrEmpty(friend.EAGUID)) ? INVALID_NAME_TAG_GUID : friend.EAGUID;
+    String tag = ExtractTag(friend);
+    if (String.IsNullOrEmpty(tag)) tag = INVALID_NAME_TAG_GUID;
+
+    foreach (int key in fFriends.Keys) {
+        try {
+            List<String> subList = fFriends[key];   
+            if (subList.Contains(friend.Name)
+            || subList.Contains(tag)
+            || subList.Contains(guid)) {
+                friend.Friendex = key;
+                break;
+            }
+        } catch (Exception e) {
+            if (DebugLevel >= 7) ConsoleException(e);
+        }
+    }
+}
+
+
+private int CountMatchingFriends(PlayerModel player) {
+    if (player == null) return 0;
+    if (player.Friendex == -1) return 0;
+    if (player.Team == 0 || player.Squad == 0) return 0;
+    int team = player.Team;
+    int squad = player.Squad;
+
+    List<PlayerModel> teamList = GetTeam(team);
+    if (teamList == null) return 0;
+
+    int same = 0;
+
+    foreach (PlayerModel mate in teamList) {
+        if (mate.Squad != squad) continue;
+        if (mate.Friendex == player.Friendex) ++same;
+    }
+
+    String sname = squad.ToString();
+    if (squad > 0 && squad <= SQUAD_NAMES.Length) {
+        sname = SQUAD_NAMES[squad];
+    }
+    
+    if (DebugLevel >= 6 && same > 1) DebugBalance("Count of matching friends for player ^b" + player.Name + "^n in " + sname + ", found " + same + " matching friends (friendex = " + player.Friendex + ")");
+
+    return same;
 }
 
 /* === NEW_NEW_NEW === */
@@ -8384,6 +8559,7 @@ static class MULTIbalancerUtils {
             lhs.DebugWrite("UpdateSettingsForPreset to " + preset, 6);
 
             lhs.OnWhitelist = rhs.OnWhitelist;
+            lhs.OnFriendsList = rhs.OnFriendsList;
             lhs.TopScorers = rhs.TopScorers;
             lhs.SameClanTagsInSquad = rhs.SameClanTagsInSquad;
             lhs.SameClanTagsForRankDispersal = rhs.SameClanTagsForRankDispersal;
@@ -8649,6 +8825,12 @@ static class MULTIbalancerUtils {
   EA_20D5B089E734F589B1517C8069A37E28
 </pre></p>
 
+<p><b>Friends List</b>: List of player names (without clan tags), clan tags (by themselves), or EA GUIDs, [b]two or more per line[/b] separated by spaces, in any combination. The first item may also specify a file to merge into the list, e.g., <i>&lt;friends.txt</i>. See <b>Merge Files</b> above. If <b>On&nbsp;Friends&nbsp;List</b> is enabled, a player is excluded if at least one other player in his squad is also on the same friends sub-list. A sub-list is a single line of the Friends List with two or more names, tags or guids. No literal item may be duplicated anywhere in the list, but a player's clan tag may be on one sub-list and his name on another and his guid on a third. Example of two separate friends sub-lists:
+<pre>
+  PapaCharlie9 FTB C2C
+  Tom Dick Harry EA_20D5B089E734F589B1517C8069A37E28 
+</pre></p>
+
 <p><b>Disperse Evenly List</b>: List of player names (without clan tags), clan tags (by themselves), or EA GUIDs, one per line (except for groups, see below), in any combination. Players found on this list will be split up and moved so that they are evenly dispersed across teams. The first item may also specify a file to merge into the list, e.g., <i>&lt;disperse.txt</i>. See <b>Merge Files</b> above. Groups of players, tags and guids may be specified to insure that they are always balanced to the opposite team from other specified groups. For example, if clan tag ABC is in group 1 and clan tag XYZ in is group 2, all players with clan tag ABC will eventually be balanced to one team and all players with clan tag XYZ will eventually be balanced to the other team. Groups 3 and 4 are used only for SQDM mode. A group is specified by starting an item in the list with a single digit, from 1 to 4, followed by a space, followed by a space separated list of names, tags or guids. Individual items and groups may be specified in any combination and any order in the list, though duplicating any item is an error. Here is an example list with individual players 'Joe' and 'Mary' and groups 1 and 2:
 <pre>
   1 ABC LGN PapaCharlie9
@@ -8661,6 +8843,8 @@ static class MULTIbalancerUtils {
 <p>These settings define which players should be excluded from being moved for balance or unstacking. Changing a preset may overwrite the value of one or more of these settings. Changing one of these settings may change the value of the Preset, usually to None, to indicate a custom setting.</p>
 
 <p><b>On Whitelist</b>: True or False, default True. If True, the Whitelist is used to exclude players. If False, the Whitelist is ignored.</p>
+
+<p><b>On Friends List</b>: True or False, default False. If True, the Friend List is used to exclude players. If False, the Friend List is ignored.</p>
 
 <p><b>Top Scorers</b>: True or False, default True. If True, the top 1, 2, or 3 players (depending on server population and mode) on each team are excluded from moves for balancing or unstacking. This is to reduce the whining and QQing when a team loses their top players to autobalancing.</p>
 
