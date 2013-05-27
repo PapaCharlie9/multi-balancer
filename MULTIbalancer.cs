@@ -65,7 +65,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     public enum Speed { Click_Here_For_Speed_Names, Stop, Slow, Adaptive, Fast, Unstack };
 
-    public enum DefineStrong { RoundScore, RoundSPM, RoundKills, RoundKDR, PlayerRank, RoundKPM };
+    public enum DefineStrong { RoundScore, RoundSPM, RoundKills, RoundKDR, PlayerRank, RoundKPM, BattlelogSPM, BattlelogKDR, BattlelogKPM };
     
     public enum PluginState { Disabled, JustEnabled, Active, Error, Reconnected };
     
@@ -86,6 +86,8 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
     public enum Scope {SameTeam, SameSquad};
 
     public enum UnswitchChoice {Always, Never, LatePhaseOnly};
+
+    public enum BattlelogStats {None, AllTime, Reset};
 
     /* Constants & Statics */
 
@@ -330,10 +332,15 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         public int ScrambledSquad;
         
         // Battlelog
+        public String PersonaId;
         public String Tag;
         public bool TagVerified;
         public String FullName { get {return (String.IsNullOrEmpty(Tag) ? Name : "[" + Tag + "]" + Name);}}
         public FetchInfo FetchStatus;
+        public double KDR;
+        public double SPM;
+        public double KPM;
+        public bool StatsVerified;
         
         // Computed
         public double KDRRound;
@@ -395,6 +402,11 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             ScrambledSquad = -1;
             DispersalGroup = 0;
             Friendex = -1;
+            KDR = -1;
+            SPM = -1;
+            KPM = -1;
+            StatsVerified = false;
+            PersonaId = String.Empty;
         }
         
         public PlayerModel(String name, int team) : this() {
@@ -469,6 +481,11 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             lhs.FetchStatus = this.FetchStatus;
             lhs.ScrambledSquad = this.ScrambledSquad;
             lhs.Friendex = this.Friendex;
+            lhs.KDR = this.KDR;
+            lhs.SPM = this.SPM;
+            lhs.KPM = this.KPM;
+            lhs.StatsVerified = this.StatsVerified;
+            lhs.PersonaId = this.PersonaId;
             return lhs;
         }
     } // end PlayerModel
@@ -608,6 +625,49 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         }
     } // end ListPlayersRequest
 
+    public class PriorityQueue {
+        /*
+        This class models a prioritized single queue.
+        Tag requests are given priority over stats requests.
+        When the type of request doesn't matter, such as for Count, the unified value is used.
+        When it does matter, such as distinguishing one request from another for Dequeue,
+        direct access to the member variable is used.
+        */
+        public Queue<String> TagQueue; // of player names
+        public Queue<String> StatsQueue; // of player names
+        private MULTIbalancer fPlugin;
+
+        public PriorityQueue() {
+            TagQueue = new Queue<String>();
+            StatsQueue = new Queue<String>();
+            fPlugin = null;
+        }
+
+        public PriorityQueue(MULTIbalancer plugin) : this() {
+            fPlugin = plugin;
+        }
+
+        public int Count {
+            get {return (TagQueue.Count + StatsQueue.Count);}
+        }
+
+        public bool Contains(String name) {
+            return (TagQueue.Contains(name) || StatsQueue.Contains(name));
+        }
+
+        public void Enqueue(String name) {
+            TagQueue.Enqueue(name);
+            if (fPlugin.WhichBattlelogStats != BattlelogStats.None) {
+                StatsQueue.Enqueue(name);
+            }
+        }
+
+        public void Clear() {
+            TagQueue.Clear();
+            StatsQueue.Clear();
+        }
+    }
+
 #endregion
 
 /* Inherited:
@@ -677,7 +737,7 @@ private double fRushAttackerStageLoss = 0;
 private double fRushAttackerStageSamples = 0;
 private List<MoveInfo> fMoveStash = null;
 private int fUnstackGroupCount = 0;
-private Queue<String> fFetchQ = null; // of player names waiting for stats fetching
+private PriorityQueue fPriorityFetchQ = null;
 private bool fIsCacheEnabled = false;
 private DelayedRequest fScramblerLock = null;
 private int fWinner = 0;
@@ -725,6 +785,7 @@ public int MaximumServerSize;
 public bool EnableBattlelogRequests;
 public int MaximumRequestRate;
 public double WaitTimeout;
+public BattlelogStats WhichBattlelogStats;
 public int MaxTeamSwitchesByStrongPlayers; // disabled
 public int MaxTeamSwitchesByWeakPlayers; // disabled
 public double UnlimitedTeamSwitchingDuringFirstMinutesOfRound;
@@ -910,7 +971,7 @@ public MULTIbalancer() {
     fLastVersionCheckTimestamp = DateTime.MinValue;
     fTimeOutOfJoint = 0;
     fUnstackGroupCount = 0;
-    fFetchQ = new Queue<String>();
+    fPriorityFetchQ = new PriorityQueue(this);
     fIsCacheEnabled = false;
     fScramblerLock = new DelayedRequest();
     fWinner = 0;
@@ -950,6 +1011,7 @@ public MULTIbalancer() {
     EnableBattlelogRequests = true;
     MaximumRequestRate = 10; // in 20 seconds
     WaitTimeout = 30; // seconds
+    WhichBattlelogStats = BattlelogStats.None;
     MaxTeamSwitchesByStrongPlayers = 1;
     MaxTeamSwitchesByWeakPlayers = 2;
     UnlimitedTeamSwitchingDuringFirstMinutesOfRound = 5.0;
@@ -1369,6 +1431,11 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         lstReturn.Add(new CPluginVariable("1 - Settings|Enable Battlelog Requests", EnableBattlelogRequests.GetType(), EnableBattlelogRequests));
 
         if (EnableBattlelogRequests) {
+            var_name = "1 - Settings|Which Battlelog Stats";
+            var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(BattlelogStats))) + ")";
+        
+            lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(BattlelogStats), WhichBattlelogStats)));
+
             lstReturn.Add(new CPluginVariable("1 - Settings|Maximum Request Rate", MaximumRequestRate.GetType(), MaximumRequestRate));
 
             lstReturn.Add(new CPluginVariable("1 - Settings|Wait Timeout", WaitTimeout.GetType(), WaitTimeout));
@@ -1727,6 +1794,13 @@ public void SetPluginVariable(String strVariable, String strValue) {
                 fieldType = typeof(UnswitchChoice);
                 try {
                     field.SetValue(this, (UnswitchChoice)Enum.Parse(fieldType, strValue));
+                } catch (Exception e) {
+                    ConsoleException(e);
+                }
+            } else if (tmp.Contains("Which Battlelog Stats")) {
+                fieldType = typeof(BattlelogStats);
+                try {
+                    field.SetValue(this, (BattlelogStats)Enum.Parse(fieldType, strValue));
                 } catch (Exception e) {
                     ConsoleException(e);
                 }
@@ -2197,12 +2271,12 @@ private void CommandToLog(string cmd) {
             }
             ConsoleDump("Plugin has been enabled for " + fRoundsEnabled + " rounds");
             ConsoleDump("fKnownPlayers.Count = " + kp + ", not playing = " + (kp-ap) + ", more than 12 hours old = " + old);
-            ConsoleDump("fFetchQ.Count = " + fFetchQ.Count + ", verified tags = " + validTags);
+            ConsoleDump("fPriorityFetchQ.Count = " + fPriorityFetchQ.Count + ", verified tags = " + validTags);
             ConsoleDump("MULTIbalancerUtils.HTML_DOC.Length = " + MULTIbalancerUtils.HTML_DOC.Length);
             return;
         }
 
-        m = Regex.Match(cmd, @"^sort\s+([1-4])\s+(score|spm|kills|kdr|rank|kpm)", RegexOptions.IgnoreCase);
+        m = Regex.Match(cmd, @"^sort\s+([1-4])\s+(score|spm|kills|kdr|rank|kpm|bspm|bkdr|bkpm)", RegexOptions.IgnoreCase);
         if (m.Success) {
             String teamID = m.Groups[1].Value;
             String propID = m.Groups[2].Value;
@@ -2236,6 +2310,15 @@ private void CommandToLog(string cmd) {
                 case "kpm":
                     fromList.Sort(DescendingRoundKPM);
                     break;
+                case "bspm":
+                    fromList.Sort(DescendingSPM);
+                    break;
+                case "bkdr":
+                    fromList.Sort(DescendingKDR);
+                    break;
+                case "bkpm":
+                    fromList.Sort(DescendingKPM);
+                    break;
                 default:
                     fromList.Sort(DescendingRoundScore);
                     break;
@@ -2244,25 +2327,34 @@ private void CommandToLog(string cmd) {
             foreach (PlayerModel p in fromList) {
                 switch (propID.ToLower()) {
                     case "score":
-                        ConsoleDump("#" + String.Format("{0,2}", n) + ") Score: " + String.Format("{0:F0,6}", p.ScoreRound) + ", ^b" + p.FullName);
+                        ConsoleDump("#" + String.Format("{0,2}", n) + ") Score: " + String.Format("{0,6:F0}", p.ScoreRound) + ", ^b" + p.FullName);
                         break;
                     case "spm":
-                        ConsoleDump("#" + String.Format("{0,2}", n) + ") SPM: " + String.Format("{0:F0,6}", p.SPMRound) + ", ^b" + p.FullName);
+                        ConsoleDump("#" + String.Format("{0,2}", n) + ") SPM: " + String.Format("{0,6:F0}", p.SPMRound) + ", ^b" + p.FullName);
                         break;
                     case "kills":
-                        ConsoleDump("#" + String.Format("{0,2}", n) + ") Kills: " + String.Format("{0:F0,6}", p.KillsRound) + ", ^b" + p.FullName);
+                        ConsoleDump("#" + String.Format("{0,2}", n) + ") Kills: " + String.Format("{0,6:F0}", p.KillsRound) + ", ^b" + p.FullName);
                        break;
                     case "kdr":
-                        ConsoleDump("#" + String.Format("{0,2}", n) + ") KDR: " + String.Format("{0:F1,6}", p.KDRRound) + ", ^b" + p.FullName);
+                        ConsoleDump("#" + String.Format("{0,2}", n) + ") KDR: " + String.Format("{0,6:F1}", p.KDRRound) + ", ^b" + p.FullName);
                         break;
                     case "rank":
-                        ConsoleDump("#" + String.Format("{0,2}", n) + ") Rank: " + String.Format("{0:F0,6}", p.Rank) + ", ^b" + p.FullName);
+                        ConsoleDump("#" + String.Format("{0,2}", n) + ") Rank: " + String.Format("{0,6:F0}", p.Rank) + ", ^b" + p.FullName);
                         break;
                     case "kpm":
-                        ConsoleDump("#" + String.Format("{0,2}", n) + ") KPM: " + String.Format("{0:F0,6}", p.KPMRound) + ", ^b" + p.FullName);
+                        ConsoleDump("#" + String.Format("{0,2}", n) + ") KPM: " + String.Format("{0,6:F1}", p.KPMRound) + ", ^b" + p.FullName);
+                        break;
+                    case "bspm":
+                        ConsoleDump("#" + String.Format("{0,2}", n) + ") bSPM: " + String.Format("{0,6:F0}", ((p.StatsVerified) ? p.SPM : p.SPMRound)) + ", ^b" + p.FullName);
+                        break;
+                    case "bkdr":
+                        ConsoleDump("#" + String.Format("{0,2}", n) + ") bKDR: " + String.Format("{0,6:F1}", ((p.StatsVerified) ? p.KDR : p.KDRRound)) + ", ^b" + p.FullName);
+                        break;
+                    case "bkpm":
+                        ConsoleDump("#" + String.Format("{0,2}", n) + ") bKPM: " + String.Format("{0,6:F0}", ((p.StatsVerified) ? p.KPM : p.KPMRound)) + ", ^b" + p.FullName);
                         break;
                     default:
-                        ConsoleDump("#" + String.Format("{0,2}", n) + ") Score: " + String.Format("{0:F0,6}", p.ScoreRound) + ", ^b" + p.FullName);
+                        ConsoleDump("#" + String.Format("{0,2}", n) + ") Score: " + String.Format("{0,6:F0}", p.ScoreRound) + ", ^b" + p.FullName);
                         break;
                 }
                 n = n + 1;
@@ -3090,7 +3182,7 @@ private void BalanceAndUnstack(String name) {
     int totalPlayerCount = TotalPlayerCount;
 
     if (totalPlayerCount >= (MaximumServerSize-1)) {
-        if (DebugLevel >= 7) DebugBalance("Server is full, no balancing or unstacking will be attempted!");
+        if (DebugLevel >= 6) DebugBalance("Server is full, no balancing or unstacking will be attempted!");
         IncrementTotal(); // no matching stat, reflect total deaths handled
         CheckDeativateBalancer("Full");
         return;
@@ -3098,7 +3190,7 @@ private void BalanceAndUnstack(String name) {
 
     int floorPlayers = 6;
     if (totalPlayerCount < floorPlayers) {
-        if (DebugLevel >= 7) DebugBalance("Not enough players in server, minimum is " + floorPlayers);
+        if (DebugLevel >= 6) DebugBalance("Not enough players in server, minimum is " + floorPlayers);
         CheckDeativateBalancer("Not enough players");
         return;
     }
@@ -3145,7 +3237,7 @@ private void BalanceAndUnstack(String name) {
     int lastMoveFrom = player.LastMoveFrom;
 
     if (totalPlayerCount >= (perMode.MaxPlayers-1)) {
-        if (DebugLevel >= 7) DebugBalance("Server is full by per-mode Max Players, no balancing or unstacking will be attempted!");
+        if (DebugLevel >= 6) DebugBalance("Server is full by per-mode Max Players, no balancing or unstacking will be attempted!");
         IncrementTotal(); // no matching stat, reflect total deaths handled
         CheckDeativateBalancer("Full per-mode");
         return;
@@ -3269,6 +3361,18 @@ private void BalanceAndUnstack(String name) {
         case DefineStrong.RoundKPM:
             fromList.Sort(DescendingRoundKPM);
             strongMsg = "Determing strong by: Round KPM";
+            break;
+        case DefineStrong.BattlelogSPM:
+            fromList.Sort(DescendingSPM);
+            strongMsg = "Determing strong by: Battlelog SPM";
+            break;
+        case DefineStrong.BattlelogKDR:
+            fromList.Sort(DescendingKDR);
+            strongMsg = "Determing strong by: Battlelog KDR";
+            break;
+        case DefineStrong.BattlelogKPM:
+            fromList.Sort(DescendingKPM);
+            strongMsg = "Determing strong by: Battlelog KPM";
             break;
         default:
             fromList.Sort(DescendingRoundScore);
@@ -3400,7 +3504,7 @@ private void BalanceAndUnstack(String name) {
 
     if (toTeam == 0 || toTeam == player.Team) {
         if (needsBalancing || mustMove) {
-            if (DebugLevel >= 7) DebugBalance("Exempting ^b" + name + "^n, target team selected is same or zero");
+            if (DebugLevel >= 8) DebugBalance("Exempting ^b" + name + "^n, target team selected is same or zero");
             fExemptRound = fExemptRound + 1;
             IncrementTotal();
             return;
@@ -3414,7 +3518,7 @@ private void BalanceAndUnstack(String name) {
     int toTeamSize = (lt == null) ? 0 : lt.Count;
 
     if (toTeamSize == maxTeamSlots || toTeamSize == maxTeamPerMode) {
-        if (DebugLevel >= 7) DebugBalance("Exempting ^b" + name + "^n, target team is full " + toTeamSize);
+        if (DebugLevel >= 8) DebugBalance("Exempting ^b" + name + "^n, target team is full " + toTeamSize);
         fExemptRound = fExemptRound + 1;
         IncrementTotal();
         return;
@@ -3581,7 +3685,7 @@ private void BalanceAndUnstack(String name) {
     }
 
     if ((fUnstackedRound/2) >= perMode.MaxUnstackingSwapsPerRound) {
-        if (DebugLevel >= 7) DebugBalance("Maximum swaps have already occurred this round (" + (fUnstackedRound/2) + ")");
+        if (DebugLevel >= 6) DebugBalance("Maximum swaps have already occurred this round (" + (fUnstackedRound/2) + ")");
         fUnstackState = UnstackState.Off;
         IncrementTotal(); // no matching stat, reflect total deaths handled
         return;
@@ -3615,7 +3719,7 @@ private void BalanceAndUnstack(String name) {
     String um = "Ticket ratio " + (ratio*100.0).ToString("F0") + " vs. unstack ratio of " + (unstackTicketRatio*100.0).ToString("F0");
 
     if (unstackTicketRatio == 0 || ratio < unstackTicketRatio) {
-        if (DebugLevel >= 7) DebugBalance("No unstacking needed: " + um);
+        if (DebugLevel >= 6) DebugBalance("No unstacking needed: " + um);
         IncrementTotal(); // no matching stat, reflect total deaths handled
         return;
     }
@@ -3630,7 +3734,7 @@ private void BalanceAndUnstack(String name) {
     double nsis = NextSwapGroupInSeconds(perMode); // returns 0 for case 1 and case 2
 
     if (nsis > 0) {
-        if (DebugLevel >= 7) DebugBalance("Too soon to do another unstack swap group, wait another " + nsis.ToString("F1") + " seconds!");
+        if (DebugLevel >= 6) DebugBalance("Too soon to do another unstack swap group, wait another " + nsis.ToString("F1") + " seconds!");
         IncrementTotal(); // no matching stat, reflect total deaths handled
         return;
     } else {
@@ -3685,7 +3789,7 @@ private void BalanceAndUnstack(String name) {
             if (isStrong) {
                 // Don't move to same team
                 if (player.Team == losingTeam) {
-                    if (DebugLevel >= 7) DebugBalance("Skipping strong ^b" + name + "^n, don't move player to his own team!");
+                    if (DebugLevel >= 6) DebugBalance("Skipping strong ^b" + name + "^n, don't move player to his own team!");
                     fExemptRound = fExemptRound + 1;
                     IncrementTotal();
                     return;
@@ -3706,7 +3810,7 @@ private void BalanceAndUnstack(String name) {
             if (!isStrong) {
                 // Don't move to same team
                 if (player.Team == winningTeam) {
-                    if (DebugLevel >= 7) DebugBalance("Skipping weak ^b" + name + "^n, don't move player to his own team!");
+                    if (DebugLevel >= 6) DebugBalance("Skipping weak ^b" + name + "^n, don't move player to his own team!");
                     fExemptRound = fExemptRound + 1;
                     IncrementTotal();
                     return;
@@ -3738,7 +3842,7 @@ private void BalanceAndUnstack(String name) {
     moveUnstack.Format(this, ChatMovedToUnstack, false, false);
     moveUnstack.Format(this, YellMovedToUnstack, true, false);
 
-    DebugWrite("^9" + moveUnstack, 7);
+    DebugWrite("^9" + moveUnstack, 8);
 
     if (player.LastMoveFrom == 0) player.LastMoveFrom = player.Team;
     StartMoveImmediate(moveUnstack, false);
@@ -4894,6 +4998,61 @@ private void SetTag(PlayerModel player, Hashtable data) {
     player.TagVerified = true;
 }
 
+private void SetStats(PlayerModel player, Hashtable stats) {
+    if (stats == null) {
+        ConsoleDebug("SetStats ^b" + player.Name + "^n stats = null");
+        return;
+    }
+
+    Dictionary<String,double> propValues = new Dictionary<String,double>();
+    propValues["kdRatio"] = -1;
+    propValues["timePlayed"] = -1;
+    propValues["kills"] = -1;
+    propValues["scorePerMinute"] = -1;
+    propValues["rsDeaths"] = -1;
+    propValues["rsKills"] = -1;
+    propValues["rsScore"] = -1;
+    propValues["rsTimePlayed"] = -1;
+    
+    foreach (DictionaryEntry entry in stats) {
+        try {
+            String entryKey = (String)(entry.Key.ToString());
+
+            // skip entries we are not interested in 
+            if (!propValues.ContainsKey(entryKey)) continue;
+
+            String entryValue = (String)(entry.Value.ToString());
+
+            double dValue = -1;
+            Double.TryParse(entryValue, out dValue);
+            propValues[entryKey] = (Double.IsNaN(dValue)) ? -1 : dValue;
+        } catch (Exception) {}
+    }
+
+    // Now set the player values, starting with AllTime
+    double allTimeMinutes = Math.Max(1, propValues["timePlayed"] / 60);
+    player.KDR = propValues["kdRatio"];
+    player.SPM = propValues["scorePerMinute"];
+    player.KPM = propValues["kills"] / allTimeMinutes;
+
+    // Using Reset?
+    String type = "All-Time";
+    if (WhichBattlelogStats == BattlelogStats.Reset && propValues["rsTimePlayed"] > 0) {
+        type = "Reset";
+        double resetMinutes = Math.Max(1, propValues["rsTimePlayed"] / 60);
+        double resetKDR = propValues["rsKills"] / Math.Max(1, propValues["rsDeaths"]);
+        if (resetKDR > 0) player.KDR = resetKDR;
+        double resetSPM = propValues["rsScore"] / resetMinutes;
+        if (resetSPM > 0) player.SPM = resetSPM;
+        double resetKPM = propValues["rsKills"] / resetMinutes; 
+        if (resetKPM > 0) player.KPM = resetKPM;
+    }
+    player.FetchStatus.State = FetchState.Succeeded;
+    player.StatsVerified = true;
+    String msg = type + " [bKDR:" + player.KDR.ToString("F2") + ", bSPM:" + player.SPM.ToString("F0") + ", bKPM:" + player.KPM.ToString("F1") + "]";
+    DebugFetch("Player stats updated ^0^b" + player.Name + "^n, " + msg);
+}
+
 
 private void Scrambler(List<TeamScore> teamScores) {
     // Check all the reasons not to scramble
@@ -5191,6 +5350,21 @@ private void ScramblerLoop () {
                                 sr.Metric = sr.Metric + p.KPMRound;
                             }
                             break;
+                        case DefineStrong.BattlelogSPM:
+                            foreach (PlayerModel p in sr.Roster) {
+                                sr.Metric = sr.Metric + ((p.StatsVerified) ? p.SPM : p.SPMRound);
+                            }
+                            break;
+                        case DefineStrong.BattlelogKDR:
+                            foreach (PlayerModel p in sr.Roster) {
+                                sr.Metric = sr.Metric + ((p.StatsVerified) ? p.KDR : p.KDRRound);
+                            }
+                            break;
+                        case DefineStrong.BattlelogKPM:
+                            foreach (PlayerModel p in sr.Roster) {
+                                sr.Metric = sr.Metric + ((p.StatsVerified) ? p.KPM : p.KPMRound);
+                            }
+                            break;
                         default:
                             foreach (PlayerModel p in sr.Roster) {
                                 sr.Metric = sr.Metric + p.ScoreRound;
@@ -5252,7 +5426,7 @@ private void ScramblerLoop () {
                     }
                     // Recalc team metrics
                     SumMetricByTeam(usScrambled, ruScrambled, out usMetric, out ruMetric);
-                    if (DebugLevel >= 7) ConsoleDebug("Updated scrambler metrics " + ScrambleBy + ": US(" + usScrambled.Count + ") = " + usMetric.ToString("F1") + ", RU(" + ruScrambled.Count + ") = " + ruMetric.ToString("F1"));
+                    if (DebugLevel >= 6) ConsoleDebug("Updated scrambler metrics " + ScrambleBy + ": US(" + usScrambled.Count + ") = " + usMetric.ToString("F1") + ", RU(" + ruScrambled.Count + ") = " + ruMetric.ToString("F1"));
                     if (usScrambled.Count >= teamMax && ruScrambled.Count < teamMax) {
                         target = ruScrambled;
                         squadTable = ruSquads;
@@ -5291,7 +5465,7 @@ private void ScramblerLoop () {
                 }
 
                 DebugScrambler("DONE!");
-                if (DebugLevel >= 7) CommandToLog("scrambled");
+                if (DebugLevel >= 6) CommandToLog("scrambled");
             } catch (Exception e) {
                 ConsoleException(e);
             }
@@ -5403,6 +5577,30 @@ private void SumMetricByTeam(List<PlayerModel> usScrambled, List<PlayerModel> ru
                 ruMetric = ruMetric + p.KPMRound;
             }
             break;
+        case DefineStrong.BattlelogSPM:
+            foreach (PlayerModel p in usScrambled) {
+                usMetric = usMetric + ((p.StatsVerified) ? p.SPM : p.SPMRound);
+            }
+            foreach (PlayerModel p in ruScrambled) {
+                ruMetric = ruMetric + ((p.StatsVerified) ? p.SPM : p.SPMRound);
+            }
+            break;
+        case DefineStrong.BattlelogKDR:
+            foreach (PlayerModel p in usScrambled) {
+                usMetric = usMetric + ((p.StatsVerified) ? p.KDR : p.KDRRound);
+            }
+            foreach (PlayerModel p in ruScrambled) {
+                ruMetric = ruMetric + ((p.StatsVerified) ? p.KDR : p.KDRRound);
+            }
+            break;
+        case DefineStrong.BattlelogKPM:
+            foreach (PlayerModel p in usScrambled) {
+                usMetric = usMetric + ((p.StatsVerified) ? p.KPM : p.KPMRound);
+            }
+            foreach (PlayerModel p in ruScrambled) {
+                ruMetric = ruMetric + ((p.StatsVerified) ? p.KPM : p.KPMRound);
+            }
+            break;
         default:
             foreach (PlayerModel p in usScrambled) {
                 usMetric = usMetric + p.ScoreRound;
@@ -5461,11 +5659,11 @@ private void AddPlayerFetch(String name) {
     PlayerModel player = GetPlayer(name);
     if (player == null) return;
     player.FetchStatus.State = FetchState.InQueue;
-    lock (fFetchQ) {
-        if (!fFetchQ.Contains(name)) {
-            fFetchQ.Enqueue(name);
-            Monitor.Pulse(fFetchQ);
-        }
+    lock (fPriorityFetchQ) {
+        if (!fPriorityFetchQ.Contains(name)) {
+            fPriorityFetchQ.Enqueue(name);
+            Monitor.Pulse(fPriorityFetchQ);
+        } 
     }
 }
 
@@ -5473,8 +5671,8 @@ private void RemovePlayerFetch(String name) {
     if (String.IsNullOrEmpty(name)) return;
     PlayerModel player = GetPlayer(name);
     if (player == null) return;
-    lock (fFetchQ) {
-        if (fFetchQ.Contains(name)) {
+    lock (fPriorityFetchQ) {
+        if (fPriorityFetchQ.Contains(name)) {
             player.FetchStatus.State = FetchState.Aborted;
         }
     }
@@ -5487,24 +5685,37 @@ public void FetchLoop() {
 
         while (fIsEnabled) {
             String name = null;
+            bool isTagRequest = true;
             int n = 0;
-            lock (fFetchQ) {
-                while (fFetchQ.Count == 0) {
-                    Monitor.Wait(fFetchQ);
+            lock (fPriorityFetchQ) {
+                while (fPriorityFetchQ.Count == 0) {
+                    Monitor.Wait(fPriorityFetchQ);
                     if (!fIsEnabled) return;
                 }
-                name = fFetchQ.Dequeue();
-                n = fFetchQ.Count;
+                /*
+                Tag requests have priority over stats requests.
+                Exhaust the tag queue before taking from the stats queue.
+                */
+                if (fPriorityFetchQ.TagQueue.Count > 0) {
+                    name = fPriorityFetchQ.TagQueue.Dequeue();
+                } else if (fPriorityFetchQ.StatsQueue.Count > 0) {
+                    name = fPriorityFetchQ.StatsQueue.Dequeue();
+                    isTagRequest = false;
+                }
+                n = fPriorityFetchQ.Count;
             }
 
             if (since == DateTime.MinValue) since = DateTime.Now;
 
-            String msg = n.ToString() + " player" + ((n > 1) ? "s" : "") + " in clan tag fetch queue";
-            if (n == 0) msg = "no more players in clan tag fetch queue";
-            DebugFetch("^0" + msg);
+            String msg = n.ToString() + " request" + ((n > 1) ? "s" : "") + " in Battlelog request queue";
+            if (n == 0) msg = "no more requests in Battlelog request queue";
+            DebugWrite("^5(FETCH)^0 " + msg, 3);
 
             PlayerModel player = GetPlayer(name);
             if (player == null) continue;
+            if (!EnableBattlelogRequests) {
+                player.FetchStatus.State = FetchState.Aborted; // drain the fetch queue
+            }
             if (player.FetchStatus.State == FetchState.Aborted) {
                 if (DebugLevel >= 8) ConsoleDebug("FetchLoop: fetch for ^b" + name + "^n was aborted!");
                 continue;
@@ -5518,6 +5729,7 @@ public void FetchLoop() {
                     while (delay > 0) {
                         Thread.Sleep(1000);
                         if (!fIsEnabled) return;
+                        if (!EnableBattlelogRequests) break;
                         --delay;
                     }
                 }
@@ -5525,10 +5737,11 @@ public void FetchLoop() {
                 since = DateTime.Now;
             }
 
+            String requestType = (isTagRequest) ? "clanTag" : "overview";
             if (fIsCacheEnabled) {
-                SendCacheRequest(name, "clanTag"); // only getting clan tag for now
+                SendCacheRequest(name, requestType);
             } else {
-                SendBattlelogRequest(name, "clanTag");
+                SendBattlelogRequest(name, requestType);
             }
         }
     } catch (Exception e) {
@@ -5541,7 +5754,7 @@ public void FetchLoop() {
 private void SendBattlelogRequest(String name, String requestType) {
     try {
         String result = String.Empty;
-        String personaId = String.Empty;
+        String err = String.Empty;
 
         PlayerModel player = GetPlayer(name);
         if (player == null) return;
@@ -5551,45 +5764,83 @@ private void SendBattlelogRequest(String name, String requestType) {
         status.RequestType = requestType;
         DebugFetch("Fetching from Battlelog " + requestType + "(^b" + name + "^n)");
 
-        // Get the main page
-        if (!fIsEnabled) return;
-        bool ok = FetchWebPage(ref result, "http://battlelog.battlefield.com/bf3/user/" + name);
-        if (!fIsEnabled) return;
+        if (String.IsNullOrEmpty(player.PersonaId)) {
+            // Get the main page
+            if (!fIsEnabled) return;
+            bool ok = FetchWebPage(ref result, "http://battlelog.battlefield.com/bf3/user/" + name);
+            if (!fIsEnabled) return;
 
-        if (!ok) {
-            status.State = FetchState.Failed;
-            return;
-        }
+            if (!ok) {
+                status.State = FetchState.Failed;
+                return;
+            }
 
-        // Extract the personaId
-        MatchCollection pid = Regex.Matches(result, @"bf3/soldier/" + name + @"/stats/(\d+)(['""]|/\s*['""]|/[^/'""]+)", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            // Extract the personaId
+            MatchCollection pid = Regex.Matches(result, @"bf3/soldier/" + name + @"/stats/(\d+)(['""]|/\s*['""]|/[^/'""]+)", RegexOptions.IgnoreCase | RegexOptions.Singleline);
 
-        foreach (Match match in pid) {
-            if (match.Success && !Regex.Match(match.Groups[2].Value.Trim(), @"(ps3|xbox)", RegexOptions.IgnoreCase).Success) {
-                personaId = match.Groups[1].Value.Trim();
-                break;
+            foreach (Match match in pid) {
+                if (match.Success && !Regex.Match(match.Groups[2].Value.Trim(), @"(ps3|xbox)", RegexOptions.IgnoreCase).Success) {
+                    player.PersonaId = match.Groups[1].Value.Trim();
+                    break;
+                }
+            }
+
+            if (String.IsNullOrEmpty(player.PersonaId)) {
+                DebugFetch("Request for ^b" + name +"^n failed, could not find persona-id!");
+                return;
             }
         }
 
-        if (String.IsNullOrEmpty(personaId)) {
-            DebugFetch("Request for ^b" + name +"^n failed, could not find persona-id!");
-            return;
-        }
+        if (requestType == "clanTag") {
+            // Extract the player tag
+            Match tag = Regex.Match(result, player.PersonaId + @"[/'"">\s]+\[\s*([a-zA-Z0-9]+)\s*\]\s*" + name, RegexOptions.IgnoreCase | RegexOptions.Singleline); // Fixed #9
+            //Match tag = Regex.Match(result, @"\[\s*([a-zA-Z0-9]+)\s*\]\s*" + name, RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            if (tag.Success) {
+                Hashtable data = new Hashtable();
+                data["clanTag"] = tag.Groups[1].Value;
+                status.State = FetchState.Succeeded;
+                SetTag(player, data);
+                DebugFetch("Player tag updated: ^b" + player.FullName);
+            } else {
+                // No tag
+                player.TagVerified = true;
+                status.State = FetchState.Succeeded;
+                DebugFetch("Battlelog says ^b" + player.Name + "^n has no tag");
+            }
+        } else if (requestType == "overview") {
+            if (!fIsEnabled || WhichBattlelogStats == BattlelogStats.None) return;
+            String furl = "http://battlelog.battlefield.com/bf3/overviewPopulateStats/" + player.PersonaId + "/bf3-us-assault/1/";
+            if (FetchWebPage(ref result, furl)) {
+                if (!fIsEnabled) return;
 
-        // Extract the player tag
-        Match tag = Regex.Match(result, personaId + @"[/'"">\s]+\[\s*([a-zA-Z0-9]+)\s*\]\s*" + name, RegexOptions.IgnoreCase | RegexOptions.Singleline); // Fixed #9
-        //Match tag = Regex.Match(result, @"\[\s*([a-zA-Z0-9]+)\s*\]\s*" + name, RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        if (tag.Success) {
-            Hashtable data = new Hashtable();
-            data["clanTag"] = tag.Groups[1].Value;
-            player.FetchStatus.State = FetchState.Succeeded;
-            SetTag(player, data);
-            DebugFetch("Player tag updated: ^b" + player.FullName);
-        } else {
-            // No tag
-            player.TagVerified = true;
-            player.FetchStatus.State = FetchState.Succeeded;
-            DebugFetch("Battlelog says ^b" + player.Name + "^n has no tag");
+                Hashtable json = (Hashtable)JSON.JsonDecode(result);
+
+                // verify we got a success message
+                if (!CheckSuccess(json, out err)) {
+                    status.State = FetchState.Failed;
+                    DebugFetch("Request " + status.RequestType + "(^b" + name + "^n): " + err);
+                    return;
+                }
+
+                // verify there is data structure
+                Hashtable data = null;
+                if (!json.ContainsKey("data") || (data = (Hashtable)json["data"]) == null) {
+                    status.State = FetchState.Failed;
+                    DebugFetch("Request " + status.RequestType + "(^b" + name + "^n): JSON response does not contain a data field (^4" + furl + "^0)");
+                    return;
+                }
+
+                // verify there is stats structure
+                Hashtable stats = null;
+                if (!data.ContainsKey("overviewStats") || (stats = (Hashtable)data["overviewStats"]) == null) {
+                    status.State = FetchState.Failed;
+                    DebugFetch("Request " + status.RequestType + "(^b" + name + "^n): JSON response data does not contain overviewStats (^4" + furl + "^0)");
+                    return;
+                }
+
+                // extract the fields from the stats
+                SetStats(player, stats);
+            }
         }
     } catch (Exception e) {
         ConsoleException(e);
@@ -5650,7 +5901,7 @@ public void CacheResponse(params String[] response) {
             for (int i = 0; i < response.Length; ++i) {
                 DebugFetch("#" + i + ") Length: " + response[i].Length);
                 val = response[i];
-                if (val.Length > 100) val = val.Substring(0, 100) + " ... ";
+                if (val.Length > 100) val = val.Substring(0, 500) + " ... ";
                 if (val.Contains("{")) val = val.Replace('{', '<').Replace('}', '>'); // ConsoleWrite doesn't like messages with "{" in it
                 DebugFetch("#" + i + ") Value: " + val);
             }
@@ -5677,19 +5928,27 @@ public void CacheResponse(params String[] response) {
         String err = String.Empty;
 
         if (CheckSuccess(header, out err)) {
-            player.FetchStatus.State = FetchState.Succeeded;
+            status.State = FetchState.Succeeded;
             if (fetchTime > 0) {
                 DebugFetch("Request " + status.RequestType + "(^b" + name + "^n) succeeded, cache refreshed from Battlelog, took ^2" + fetchTime.ToString("F1") + " seconds");
             } else if (age > 0) {
                 TimeSpan a = TimeSpan.FromSeconds(age);
                 DebugFetch("Request " + status.RequestType + "(^b" + name + "^n) succeeded, cached stats used, age is " + a.ToString().Substring(0, 8));
             }
-        
+            
+            // verify there is data structure
             Hashtable d = null;
             if (!header.ContainsKey("data") || (d = (Hashtable)header["data"]) == null) {
                 ConsoleDebug("CacheResponse header does not contain data field!");
-                player.FetchStatus.State = FetchState.Failed;
+                status.State = FetchState.Failed;
                 return;
+            }
+
+            status.RequestType = String.Empty;
+            if (d.ContainsKey("clanTag")) {
+                status.RequestType = "clanTag";
+            } else if (d.ContainsKey("overviewStats")) {
+                status.RequestType = "overview";
             }
 
             // Apply the result to the player
@@ -5702,6 +5961,17 @@ public void CacheResponse(params String[] response) {
                         DebugFetch("Player tag updated: ^b" + player.FullName);
                     }
                     break;
+                case "overview": {
+                    // verify there is stats structure
+                    Hashtable stats = null;
+                    if ((stats = (Hashtable)d["overviewStats"]) == null) {
+                        status.State = FetchState.Failed;
+                        DebugFetch("Request " + status.RequestType + "(^b" + name + "^n): Battlelog Cache response data does not contain overviewStats");
+                        return;
+                    }
+                    SetStats(player, stats);
+                    break;
+                }
                 default:
                     break;
             }
@@ -6046,9 +6316,9 @@ private void UpdatePresetValue() {
 private void Reset() {
     ResetRound();
     
-    lock (fFetchQ) {
-        fFetchQ.Clear();
-        Monitor.Pulse(fFetchQ);
+    lock (fPriorityFetchQ) {
+        fPriorityFetchQ.Clear();
+        Monitor.Pulse(fPriorityFetchQ);
     }
 
     lock (fMoveQ) {
@@ -6427,7 +6697,7 @@ private int ToTeam(String name, int fromTeam, bool isReassign, out int diff, ref
         }
 
         if (disTeam != 0) {
-            DebugWrite("^9ToTeam for ^b" + name + "^n: dispersal returned team " + disTeam, 7);
+            DebugWrite("^9ToTeam for ^b" + name + "^n: dispersal returned team " + disTeam, 6);
             return disTeam;
         }
         // fall thru if dispersal doesn't find a suitable team
@@ -6441,7 +6711,7 @@ private int ToTeam(String name, int fromTeam, bool isReassign, out int diff, ref
             ds = ds + descendingTickets[k] + " ";
         }
         ds = ds + "]";
-        DebugWrite(ds, 7);
+        DebugWrite(ds, 8);
     }
 
     // diff is maximum difference between any two teams
@@ -6709,7 +6979,7 @@ private int ToSquad(String name, int team) {
             // otherwise return the best squad
             ret = squad;
         }
-        if (DebugLevel >= 7) {
+        if (DebugLevel >= 6) {
             String ss = "selected " + ret + " out of ";
             for (int k = 1; k < squads.Length; ++k) {
                 if (squads[k] == 0) continue;
@@ -6773,8 +7043,8 @@ private void StopThreads() {
                     fMoveThread = null;
                     JoinWith(fListPlayersThread, 3);
                     fListPlayersThread = null;
-                    lock (fFetchQ) {
-                        Monitor.Pulse(fFetchQ);
+                    lock (fPriorityFetchQ) {
+                        Monitor.Pulse(fPriorityFetchQ);
                     }
                     JoinWith(fFetchThread, 3);
                     fFetchThread = null;
@@ -7017,6 +7287,55 @@ public static int DescendingMetricSquad(SquadRoster lhs, SquadRoster rhs) {
 }
 
 
+// Sort delegate
+public static int DescendingSPM(PlayerModel lhs, PlayerModel rhs) {
+    if (lhs == null) {
+        return ((rhs == null) ? 0 : -1);
+    } else if (rhs == null) {
+        return ((lhs == null) ? 0 : 1);
+    }
+    double lSPM = (lhs.StatsVerified) ? lhs.SPM : lhs.SPMRound;
+    double rSPM = (rhs.StatsVerified) ? rhs.SPM : rhs.SPMRound;
+    if (lSPM < rSPM) return 1;
+    if (lSPM > rSPM) return -1;
+    return 0;
+}
+
+
+// Sort delegate
+public static int DescendingKDR(PlayerModel lhs, PlayerModel rhs) {
+    if (lhs == null) {
+        return ((rhs == null) ? 0 : -1);
+    } else if (rhs == null) {
+        return ((lhs == null) ? 0 : 1);
+    }
+    double lKDR = (lhs.StatsVerified) ? lhs.KDR : lhs.KDRRound;
+    double rKDR = (rhs.StatsVerified) ? rhs.KDR : rhs.KDRRound;
+    if (lKDR < rKDR) return 1;
+    if (lKDR > rKDR) return -1;
+    return 0;
+}
+
+
+// Sort delegate
+public static int DescendingKPM(PlayerModel lhs, PlayerModel rhs) {
+    if (lhs == null) {
+        return ((rhs == null) ? 0 : -1);
+    } else if (rhs == null) {
+        return ((lhs == null) ? 0 : 1);
+    }
+    double lKPM = (lhs.StatsVerified) ? lhs.KPM : lhs.KPMRound;
+    double rKPM = (rhs.StatsVerified) ? rhs.KPM : rhs.KPMRound;
+    if (lKPM < rKPM) return 1;
+    if (lKPM > rKPM) return -1;
+    return 0;
+}
+
+
+
+
+
+
 
 
 private void GatherProconGoodies() {
@@ -7098,7 +7417,7 @@ private void DebugUnswitch(String msg) {
 
 
 private void DebugFetch(String msg) {
-    DebugWrite("^5(FETCH)^9 " + msg, 6);
+    DebugWrite("^5(FETCH)^9 " + msg, 7);
 }
 
 private void DebugScrambler(String msg) {
@@ -7146,11 +7465,19 @@ private String GetPlayerStatsString(String name) {
 
     if (!ok) return("NO STATS FOR: " + name);
 
+    String type = "ROUND";
+    if (WhichBattlelogStats != BattlelogStats.None && m.StatsVerified) {
+        type = (WhichBattlelogStats == BattlelogStats.AllTime) ? "ALL-TIME" : "RESET";
+        kdr = m.KDR;
+        spm = m.SPM;
+        kpm = m.KPM;
+    }
+
     Match rm = Regex.Match(tir.ToString(), @"([0-9]+:[0-9]+:[0-9]+)");
     String sTIR = (rm.Success) ? rm.Groups[1].Value : "?";
     String vn = m.FullName;
 
-    return("STATS: ^b" + vn + "^n [T:" + team + ", S:" + score + ", K:" + kills + ", D:" + deaths + ", KDR:" + kdr.ToString("F2") + ", SPM:" + spm.ToString("F0") + ", KPM:" + kpm.ToString("F1") + ", TIR: " + sTIR + "]");
+    return("^0" + type + " STATS: ^b" + vn + "^n [T:" + team + ", S:" + score + ", K:" + kills + ", D:" + deaths + ", KDR:" + kdr.ToString("F2") + ", SPM:" + spm.ToString("F0") + ", KPM:" + kpm.ToString("F1") + ", TIR: " + sTIR + "]");
 }
 
 
@@ -7246,7 +7573,7 @@ private void CheckDeativateBalancer(String reason) {
         double dur = DateTime.Now.Subtract(fLastBalancedTimestamp).TotalSeconds;
         if (fLastBalancedTimestamp == DateTime.MinValue) dur = 0;
         if (dur > 0) {
-            if (DebugLevel >= 7) DebugBalance("^2^b" + reason + "^n: Was active for " + dur.ToString("F0") + " seconds!");
+            if (DebugLevel >= 6) DebugBalance("^2^b" + reason + "^n: Was active for " + dur.ToString("F0") + " seconds!");
         }
     }
 }
@@ -7430,6 +7757,15 @@ private void ListSideBySide(List<PlayerModel> us, List<PlayerModel> ru) {
             case DefineStrong.RoundKPM:
                 stat = player.KPMRound;
                 break;
+            case DefineStrong.BattlelogSPM:
+                stat = ((player.StatsVerified) ? player.SPM :player.SPMRound);
+                break;
+            case DefineStrong.BattlelogKDR:
+                stat = ((player.StatsVerified) ? player.KDR :player.KDRRound);
+                break;
+            case DefineStrong.BattlelogKPM:
+                stat = ((player.StatsVerified) ? player.KPM :player.KPMRound);
+                break;
             default:
                 break;
         }
@@ -7463,6 +7799,15 @@ private void ListSideBySide(List<PlayerModel> us, List<PlayerModel> ru) {
             case DefineStrong.RoundKPM:
                 stat = player.KPMRound;
                 break;
+            case DefineStrong.BattlelogSPM:
+                stat = ((player.StatsVerified) ? player.SPM :player.SPMRound);
+                break;
+            case DefineStrong.BattlelogKDR:
+                stat = ((player.StatsVerified) ? player.KDR :player.KDRRound);
+                break;
+            case DefineStrong.BattlelogKPM:
+                stat = ((player.StatsVerified) ? player.KPM :player.KPMRound);
+                break;
             default:
                 break;
         }
@@ -7495,6 +7840,18 @@ private void ListSideBySide(List<PlayerModel> us, List<PlayerModel> ru) {
         case DefineStrong.RoundKPM:
             all.Sort(DescendingRoundKPM);
             kstat = "KPM";
+            break;
+        case DefineStrong.BattlelogSPM:
+            all.Sort(DescendingSPM);
+            kstat = "bSPM";
+            break;
+        case DefineStrong.BattlelogKDR:
+            all.Sort(DescendingKDR);
+            kstat = "bKDR";
+            break;
+        case DefineStrong.BattlelogKPM:
+            all.Sort(DescendingKPM);
+            kstat = "bKPM";
             break;
         default:
             all.Sort(DescendingRoundScore);
@@ -7983,7 +8340,7 @@ private void SetDispersalListGroups() {
         }
     }
     // debugging
-    if (DebugLevel >= 7) {
+    if (DebugLevel >= 6) {
         String g1 = "Group 1: ";
         String g2 = "Group 2: ";
         String g3 = "Group 3: ";
@@ -8021,7 +8378,7 @@ private void AssignGroups() {
         all.AddRange(fTeam4);
         foreach (PlayerModel p in all) {
             if (IsDispersal(p)) {
-                if (DebugLevel >= 7) ConsoleDebug("AssignGroups assigned ^b" + p.FullName + "^n to Group " + p.DispersalGroup);
+                if (DebugLevel >= 6) ConsoleDebug("AssignGroups assigned ^b" + p.FullName + "^n to Group " + p.DispersalGroup);
             }
         }
 
@@ -8101,7 +8458,7 @@ private void AssignGroups() {
             fGroupAssignments[i] = i;
         }
     } finally {
-        if (DebugLevel >= 7) {
+        if (DebugLevel >= 6) {
             String msg = "Group assignments: ";
             for (int i = 1; i <= 4; ++i) {
                 msg = msg + fGroupAssignments[i];
@@ -8158,7 +8515,7 @@ private void SetFriends() {
     // Update player model
     UpdateFriends();
     // debugging
-    if (DebugLevel >= 7) {
+    if (DebugLevel >= 6) {
         ConsoleDebug("SetFriends list of friends: ");
         foreach (int k in fFriends.Keys) {
             ConsoleDebug(k.ToString() + ": " + String.Join(", ", fFriends[k].ToArray()));
@@ -8771,14 +9128,14 @@ static class MULTIbalancerUtils {
 
 <h3>Definition of Strong</h3>
 <p>To configure the selection of strong players and weak players, you choose a definition for strong determined from:
-<ul>
-<li>Round Score</li>
-<li>Round SPM</li>
-<li>Round Kills</li>
-<li>Round KDR</li>
-<li>Player Rank</li>
-<li>Round KPM</li>
-</ul></p>
+<table border='0'>
+<tr><td>Round Score</td><td> </td></tr>
+<tr><td>Round SPM</td><td>Battlelog SPM</td></tr>
+<tr><td>Round Kills</td><td> </td></tr>
+<tr><td>Round KDR</td><td>Battlelog KDR</td></tr>
+<tr><td>Player Rank</td><td> </td></tr>
+<tr><td>Round KPM</td><td>Battlelog KPM</td></tr>
+</table></p>
 
 <h3>Ticket Percentage (Ratio)</h3>
 <p>The ticket percentage ratio is calculated by taking the tickets of the winning team and dividing them by the tickets of the losing team, expressed as a percentage. For example, if the winning team has 550 tickets and the losing team has 500 tickets, the ticket percentage ratio is 110. This ratio is used to determine when teams are stacked. If the ticket percentage ratio exceeds the level that you set, unstacking swaps will begin.</p>
@@ -8806,7 +9163,9 @@ static class MULTIbalancerUtils {
 
 <p><b>Maximum Server Size</b>: Number from 8 to 64, default 64. Maximum number of slots on your game server, regardless of game mode.</p>
 
-<p><b>Enable Battlelog Requests</b>: True or False, default True. Enables making requests to Battlelog (uses BattlelogCache if available). Used to obtain clan tag for players.</p>
+<p><b>Enable Battlelog Requests</b>: True or False, default True. Enables making requests to Battlelog and uses BattlelogCache if available. Used to obtain clan tag for players and optionally, overview stats SPM, KDR, and KPM.</p>
+
+<p><b>Which Battlelog Stats</b>: None, AllTime, or Reset. Selects the type of Battlelog stats you want to use, All-Time or Reset stats.</p>
 
 <p><b>Maximum Request Rate</b>: Number from 1 to 15, default 10. If <b>Enable Battlelog Requests</b> is set to True, defines the maximum number of Battlelog requests that are sent every 20 seconds.</p>
 
