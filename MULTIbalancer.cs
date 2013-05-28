@@ -7411,7 +7411,8 @@ public static int DescendingMetricSquad(SquadRoster lhs, SquadRoster rhs) {
     // Dividing by Clan Tag takes precedence, only when both are zero is the metric used
     if (lhs.ClanTagCount > 0 || rhs.ClanTagCount > 0) {
         if (lhs.ClanTagCount < rhs.ClanTagCount) { return 1; }
-        else return -1;
+        if (lhs.ClanTagCount > rhs.ClanTagCount) { return -1; }
+        return 0;
     }
 
     if (lhs.Metric < rhs.Metric) return 1;
