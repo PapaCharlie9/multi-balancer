@@ -87,7 +87,9 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     public enum UnswitchChoice {Always, Never, LatePhaseOnly};
 
-    public enum BattlelogStats {None, AllTime, Reset};
+    public enum BattlelogStats {ClanTagOnly, AllTime, Reset};
+
+    public enum DivideByChoices {None, ClanTag, DispersalGroup};
 
     /* Constants & Statics */
 
@@ -504,16 +506,22 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         public int Squad = 0; 
         public double Metric = 0;
         public List<PlayerModel> Roster = null;
+        public int ClanTagCount = 0;
+        public int DispersalGroup = 0;
 
         public SquadRoster(int squad) {
             Squad = squad;
             Metric = 0;
             Roster = new List<PlayerModel>();
+            ClanTagCount = 0;
+            DispersalGroup = 0;
         }
 
         public SquadRoster(int squad, List<PlayerModel> roster) {
             Squad = squad;
             Roster = roster;
+            ClanTagCount = 0;
+            DispersalGroup = 0;
         }
     } // end SquadRoster
 
@@ -657,7 +665,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
 
         public void Enqueue(String name) {
             TagQueue.Enqueue(name);
-            if (fPlugin.WhichBattlelogStats != BattlelogStats.None) {
+            if (fPlugin.WhichBattlelogStats != BattlelogStats.ClanTagOnly) {
                 StatsQueue.Enqueue(name);
             }
         }
@@ -824,6 +832,8 @@ public double OnlyOnFinalTicketPercentage; // 0 means scramble regardless of fin
 public DefineStrong ScrambleBy;
 public bool KeepSquadsTogether;
 public bool KeepClanTagsInSameSquad;
+public DivideByChoices DivideBy;
+public String ClanTagToDivideBy;
 public double DelaySeconds;
 
 public bool QuietMode;
@@ -1011,7 +1021,7 @@ public MULTIbalancer() {
     EnableBattlelogRequests = true;
     MaximumRequestRate = 10; // in 20 seconds
     WaitTimeout = 30; // seconds
-    WhichBattlelogStats = BattlelogStats.None;
+    WhichBattlelogStats = BattlelogStats.ClanTagOnly;
     MaxTeamSwitchesByStrongPlayers = 1;
     MaxTeamSwitchesByWeakPlayers = 2;
     UnlimitedTeamSwitchingDuringFirstMinutesOfRound = 5.0;
@@ -1059,6 +1069,8 @@ public MULTIbalancer() {
     ScrambleBy = DefineStrong.RoundScore;
     KeepSquadsTogether = true;
     KeepClanTagsInSameSquad = true;
+    DivideBy = DivideByChoices.None;
+    ClanTagToDivideBy = String.Empty;
     DelaySeconds = 30;
 
     /* ===== SECTION 5 - Messages ===== */
@@ -1525,6 +1537,15 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
             lstReturn.Add(new CPluginVariable("4 - Scrambler|Keep Clan Tags In Same Squad", KeepClanTagsInSameSquad.GetType(), KeepClanTagsInSameSquad));
         }
 
+        var_name = "4 - Scrambler|Divide By";
+        var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(DivideByChoices))) + ")";
+        
+        lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(DivideByChoices), DivideBy)));
+
+        if (DivideBy == DivideByChoices.ClanTag) {
+            lstReturn.Add(new CPluginVariable("4 - Scrambler|Clan Tag To Divide By", ClanTagToDivideBy.GetType(), ClanTagToDivideBy));
+        }
+
         lstReturn.Add(new CPluginVariable("4 - Scrambler|Delay Seconds", DelaySeconds.GetType(), DelaySeconds));
 
         /* ===== SECTION 5 - Messages ===== */
@@ -1780,6 +1801,13 @@ public void SetPluginVariable(String strVariable, String strValue) {
                 fieldType = typeof(DefineStrong);
                 try {
                     field.SetValue(this, (DefineStrong)Enum.Parse(fieldType, strValue));
+                } catch (Exception e) {
+                    ConsoleException(e);
+                }
+            } else if (tmp == "Divide By") {
+                fieldType = typeof(DivideByChoices);
+                try {
+                    field.SetValue(this, (DivideByChoices)Enum.Parse(fieldType, strValue));
                 } catch (Exception e) {
                     ConsoleException(e);
                 }
@@ -2074,6 +2102,8 @@ private void ResetSettings() {
     OnlyOnFinalTicketPercentage = rhs.OnlyOnFinalTicketPercentage;
     ScrambleBy = rhs.ScrambleBy;
     KeepClanTagsInSameSquad = rhs.KeepClanTagsInSameSquad;
+    DivideBy = rhs.DivideBy;
+    ClanTagToDivideBy = rhs.ClanTagToDivideBy;
     DelaySeconds = rhs.DelaySeconds;
 
     /* ===== SECTION 5 - Messages ===== */
@@ -5200,8 +5230,14 @@ private void ScramblerLoop () {
                     }
                 }
 
+                String extra = String.Empty;
+                if (DivideBy == DivideByChoices.ClanTag) extra = " [" + ClanTagToDivideBy + "]";
+                String kst = String.Empty;
+                if (KeepSquadsTogether) kst = ", KeepSquadsTogether";
+                String kctiss = String.Empty;
+                if (KeepClanTagsInSameSquad) kctiss = ", KeepClansTagsInSameSquad";
                 DebugScrambler("Starting scramble of " + TotalPlayerCount + " players, winner was " + GetTeamName(fWinner));
-                DebugScrambler("Using (" + ScrambleBy + ", KeepSquadsTogether = " + KeepSquadsTogether + ", KeepClansTagsInSameSquad = " + KeepClanTagsInSameSquad + ")");
+                DebugScrambler("Using (" + ScrambleBy + kst + kst + ", DivideBy = " + DivideBy + extra + ")");
                 last = DateTime.Now;
 
                 // Build a filtered list
@@ -5235,6 +5271,7 @@ private void ScramblerLoop () {
                 Dictionary<int,SquadRoster> squads = new Dictionary<int,SquadRoster>(); // key int is (team * 1000) + squad
                 List<PlayerModel> loneWolves = new List<PlayerModel>();
                 int key = 0;
+                String debugMsg = String.Empty;
 
                 foreach (String egg in toScramble) {
                     try {
@@ -5375,6 +5412,35 @@ private void ScramblerLoop () {
                     String ot = (sr.Roster[0].Team == 1) ? "US" : "RU";
                     DebugScrambler(ot + "/" + SQUAD_NAMES[sr.Squad] + " " + ScrambleBy + ":" + sr.Metric.ToString("F1"));
 
+                    switch (DivideBy) {
+                        case DivideByChoices.ClanTag:
+                            foreach (PlayerModel p in sr.Roster) {
+                                if (!String.IsNullOrEmpty(ClanTagToDivideBy) && ExtractTag(p) == ClanTagToDivideBy) sr.ClanTagCount  = sr.ClanTagCount + 1;
+                            }
+                            debugMsg = " ClanTag[" + ClanTagToDivideBy + "] " + sr.ClanTagCount;
+                            break;
+                        case DivideByChoices.DispersalGroup: {
+                            int[] gCount = new int[3]{0,0,0};
+                            foreach (PlayerModel p in sr.Roster) {
+                                if (IsDispersal(p)) {
+                                    if (p.DispersalGroup == 1 || p.DispersalGroup == 2) {
+                                        gCount[p.DispersalGroup] = gCount[p.DispersalGroup] + 1;
+                                    }
+                                }
+                            }
+                            if (gCount[1] != 0 || gCount[2] != 0) {
+                                sr.DispersalGroup = (gCount[1] > gCount[2]) ? 1 : 2;
+                            }
+                            debugMsg = " Dispersal Group = " + sr.DispersalGroup;
+                            break;
+                        }
+                        case DivideByChoices.None:
+                        default:
+                            break;
+                    }
+
+                    DebugScrambler(ot + "/" + SQUAD_NAMES[sr.Squad] + " " + DivideBy + ": " + debugMsg);
+
                     all.Add(sr);
                 }
                 squads.Clear();
@@ -5403,14 +5469,42 @@ private void ScramblerLoop () {
                 List<PlayerModel> target = (fWinner == 0 || fWinner == 1) ? ruScrambled : usScrambled;
                 Dictionary<int,SquadRoster> squadTable = (fWinner == 0 || fWinner == 1) ? ruSquads : usSquads;
                 int teamMax = MaximumServerSize/2;
+                debugMsg = String.Empty;
+
+                // Pre-process DivideBy setting
+                if (DivideBy == DivideByChoices.DispersalGroup) {
+                    // Skim the dispersal squads off the top
+                    List<PlayerModel> localTarget = null;
+                    List<SquadRoster> copy = new List<SquadRoster>(all);
+                    foreach (SquadRoster disp in copy) {
+                        if (disp.DispersalGroup == 1 && usScrambled.Count < teamMax) {
+                            localTarget = usScrambled;
+                            debugMsg = "US";
+                        } else if (disp.DispersalGroup == 2 && ruScrambled.Count < teamMax) {
+                            localTarget = ruScrambled;
+                            debugMsg = "RU";
+                        } else {
+                            continue;
+                        }
+                        DebugScrambler("Squad " + SQUAD_NAMES[disp.Squad] + ", Dispersal Group " + disp.DispersalGroup + " to " + debugMsg);
+                        AssignSquadToTeam(disp, squadTable, usScrambled, ruScrambled, localTarget);
+                        all.Remove(disp);
+                    }
+                    if (usScrambled == target && target.Count >= teamMax) target = ruScrambled;
+                    if (ruScrambled == target && target.Count >= teamMax) target = usScrambled;
+                }
 
                 foreach (SquadRoster squad in all) { // strongest to weakest
+
+                    AssignSquadToTeam(squad, squadTable, usScrambled, ruScrambled, target);
+                    /*
                     if (usScrambled.Count >= teamMax && ruScrambled.Count >= teamMax) {
                         DebugScrambler("BOTH teams full! Skipping remaining free pool!");
                         break;
                     }
                     int wasSquad = squad.Roster[0].Squad;
-                    // Is there a squad id collision?
+
+                    // Remap if there is a squad collision
                     if (squadTable.ContainsKey(squad.Squad)) {
                         RemapSquad(squadTable, squad);
                     }
@@ -5420,25 +5514,32 @@ private void ScramblerLoop () {
                     String gt = (target == usScrambled) ? "US" : "RU";
                     DebugScrambler(st + "/" + SQUAD_NAMES[wasSquad] + " scrambled to " + gt + "/" + SQUAD_NAMES[squad.Squad]);
 
+                    // Assign the squad to the target team
                     foreach (PlayerModel p in squad.Roster) {
                         p.ScrambledSquad = squad.Squad;
                         if (target.Count < teamMax && IsKnownPlayer(p.Name)) target.Add(p);
                     }
+                    */
+
                     // Recalc team metrics
                     SumMetricByTeam(usScrambled, ruScrambled, out usMetric, out ruMetric);
                     if (DebugLevel >= 6) ConsoleDebug("Updated scrambler metrics " + ScrambleBy + ": US(" + usScrambled.Count + ") = " + usMetric.ToString("F1") + ", RU(" + ruScrambled.Count + ") = " + ruMetric.ToString("F1"));
                     if (usScrambled.Count >= teamMax && ruScrambled.Count < teamMax) {
                         target = ruScrambled;
                         squadTable = ruSquads;
+                        debugMsg = "Original target = RU";
                     } else if (ruScrambled.Count >= teamMax && usScrambled.Count < teamMax) {
                         target = usScrambled;
                         squadTable = usSquads;
+                        debugMsg = "Original target = US";
                     } else if (usMetric < ruMetric) {
                         target = usScrambled;
                         squadTable = usSquads;
+                        debugMsg = "Original target = US";
                     } else {
                         target = ruScrambled;
                         squadTable = ruSquads;
+                        debugMsg = "Original target = RU";
                     }
                 }
 
@@ -5475,6 +5576,32 @@ private void ScramblerLoop () {
     } finally {
         ConsoleWrite("^bScramblerLoop^n thread stopped");
     }
+}
+
+private void AssignSquadToTeam(SquadRoster squad, Dictionary<int,SquadRoster> squadTable, List<PlayerModel> usScrambled, List<PlayerModel> ruScrambled, List<PlayerModel> target) {
+        int teamMax = MaximumServerSize/2;
+
+        if (usScrambled.Count >= teamMax && ruScrambled.Count >= teamMax) {
+            DebugScrambler("BOTH teams full! Skipping remaining free pool!");
+            return;
+        }
+        int wasSquad = squad.Roster[0].Squad;
+
+        // Remap if there is a squad collision
+        if (squadTable.ContainsKey(squad.Squad)) {
+            RemapSquad(squadTable, squad);
+        }
+        squadTable[squad.Squad] = squad;
+        int wasTeam = squad.Roster[0].Team;
+        String st = (wasTeam == 1) ? "US" : "RU";
+        String gt = (target == usScrambled) ? "US" : "RU";
+        DebugScrambler(st + "/" + SQUAD_NAMES[wasSquad] + " scrambled to " + gt + "/" + SQUAD_NAMES[squad.Squad]);
+
+        // Assign the squad to the target team
+        foreach (PlayerModel p in squad.Roster) {
+            p.ScrambledSquad = squad.Squad;
+            if (target.Count < teamMax && IsKnownPlayer(p.Name)) target.Add(p);
+        }
 }
 
 
@@ -5808,7 +5935,7 @@ private void SendBattlelogRequest(String name, String requestType) {
                 DebugFetch("Battlelog says ^b" + player.Name + "^n has no tag");
             }
         } else if (requestType == "overview") {
-            if (!fIsEnabled || WhichBattlelogStats == BattlelogStats.None) return;
+            if (!fIsEnabled || WhichBattlelogStats == BattlelogStats.ClanTagOnly) return;
             String furl = "http://battlelog.battlefield.com/bf3/overviewPopulateStats/" + player.PersonaId + "/bf3-us-assault/1/";
             if (FetchWebPage(ref result, furl)) {
                 if (!fIsEnabled) return;
@@ -7281,6 +7408,12 @@ public static int DescendingMetricSquad(SquadRoster lhs, SquadRoster rhs) {
         return ((lhs == null) ? 0 : 1);
     }
 
+    // Dividing by Clan Tag takes precedence, only when both are zero is the metric used
+    if (lhs.ClanTagCount > 0 || rhs.ClanTagCount > 0) {
+        if (lhs.ClanTagCount < rhs.ClanTagCount) { return 1; }
+        else return -1;
+    }
+
     if (lhs.Metric < rhs.Metric) return 1;
     if (lhs.Metric > rhs.Metric) return -1;
     return 0;
@@ -7466,7 +7599,7 @@ private String GetPlayerStatsString(String name) {
     if (!ok) return("NO STATS FOR: " + name);
 
     String type = "ROUND";
-    if (WhichBattlelogStats != BattlelogStats.None && m.StatsVerified) {
+    if (WhichBattlelogStats != BattlelogStats.ClanTagOnly && m.StatsVerified) {
         type = (WhichBattlelogStats == BattlelogStats.AllTime) ? "ALL-TIME" : "RESET";
         kdr = m.KDR;
         spm = m.SPM;
@@ -9165,7 +9298,7 @@ static class MULTIbalancerUtils {
 
 <p><b>Enable Battlelog Requests</b>: True or False, default True. Enables making requests to Battlelog and uses BattlelogCache if available. Used to obtain clan tag for players and optionally, overview stats SPM, KDR, and KPM.</p>
 
-<p><b>Which Battlelog Stats</b>: None, AllTime, or Reset. Selects the type of Battlelog stats you want to use, All-Time or Reset stats.</p>
+<p><b>Which Battlelog Stats</b>: ClanTagOnly, AllTime, or Reset. Selects the type of Battlelog stats you want to use, clan tag only, All-Time or Reset stats.</p>
 
 <p><b>Maximum Request Rate</b>: Number from 1 to 15, default 10. If <b>Enable Battlelog Requests</b> is set to True, defines the maximum number of Battlelog requests that are sent every 20 seconds.</p>
 
