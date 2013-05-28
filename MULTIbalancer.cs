@@ -5246,7 +5246,7 @@ private void ScramblerLoop () {
                 String kctiss = String.Empty;
                 if (KeepClanTagsInSameSquad) kctiss = ", KeepClansTagsInSameSquad";
                 DebugScrambler("Starting scramble of " + TotalPlayerCount + " players, winner was " + GetTeamName(fWinner));
-                DebugScrambler("Using (" + ScrambleBy + kst + kst + ", DivideBy = " + DivideBy + extra + ")");
+                DebugScrambler("Using (" + ScrambleBy + kst + kctiss + ", DivideBy = " + DivideBy + extra + ")");
                 last = DateTime.Now;
 
                 // Build a filtered list
@@ -5297,7 +5297,7 @@ private void ScramblerLoop () {
                                 loneWolves.Add(player);
                                 continue;
                             } else {
-                                DebugScrambler("Keeping ^b" + player.Name + "^n together with squad, using key " + key);
+                                DebugScrambler("Keeping ^b" + player.FullName + "^n together with squad, using key " + key);
                             }
                             AddPlayerToSquadRoster(squads, player, key, squadId, true);
                         } else if (KeepClanTagsInSameSquad) {
