@@ -2454,7 +2454,7 @@ private void CommandToLog(string cmd) {
             ConsoleDump("^1^breset settings^n^0: Reset all plugin settings to default, except for ^bWhitelist^n and ^bDisperse Evenly List^n");
             ConsoleDump("^1^bscrambled^n^0: Examine list of players before and after last successful scramble");
             ConsoleDump("^1^bsizes^n^0: Examine the sizes of various data structures");
-            ConsoleDump("^1^bsort^n ^iteam^n ^itype^n^0: Examine sorted ^iteam^n (1-4) by ^itype^n (one of: score, spm, kills, kdr, rank, kpm)");
+            ConsoleDump("^1^bsort^n ^iteam^n ^itype^n^0: Examine sorted ^iteam^n (1-4) by ^itype^n (one of: score, spm, kills, kdr, rank, kpm, bspm, bkdr, bkpm)");
             ConsoleDump("^1^btags^n^0: Examine list of players sorted by clan tags");
             return;
         }
