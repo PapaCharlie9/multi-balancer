@@ -5224,7 +5224,16 @@ private void ScramblerLoop () {
 
                 // wait specified number of seconds
                 if (delay > 0) {
+                    bool listUpdated = false;
                     while (DateTime.Now.Subtract(since).TotalSeconds < delay) {
+                        try {
+                            if (!listUpdated && delay - DateTime.Now.Subtract(since).TotalSeconds <= 5) {
+                                // update the player list within 5 seconds of the delay expiring
+                                listUpdated = true;
+                                DebugScrambler("Last chance player list update, account for players who have left");
+                                ServerCommand("admin.listPlayers", "all");
+                            }
+                        } catch (Exception) {}
                         Thread.Sleep(1000); // 1 second
                         if (!fIsEnabled) return;
                     }
