@@ -4045,7 +4045,7 @@ private void UpdatePlayerTeam(String name, int team) {
         if (m.Team == 0) {
             DebugWrite("Assigning ^b" + name + "^n to " + team, 4);
         } else {
-            DebugWrite("Update player ^b" + name + "^n team from " + m.Team + " to " + team, 7);
+            DebugWrite("^9Update player ^b" + name + "^n team from " + m.Team + " to " + team, 7);
             m.Team = team;
         }
         m.LastSeenTimestamp = DateTime.Now;
