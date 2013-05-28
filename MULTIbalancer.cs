@@ -306,6 +306,12 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             Since = DateTime.Now;
             RequestType = String.Empty;
         }
+
+        public FetchInfo(FetchInfo rhs) {
+            this.State = rhs.State;
+            this.Since = rhs.Since;
+            this.RequestType = rhs.RequestType;
+        }
     }
 
     public class PlayerModel {
@@ -338,11 +344,12 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         public String Tag;
         public bool TagVerified;
         public String FullName { get {return (String.IsNullOrEmpty(Tag) ? Name : "[" + Tag + "]" + Name);}}
-        public FetchInfo FetchStatus;
+        public FetchInfo TagFetchStatus;
         public double KDR;
         public double SPM;
         public double KPM;
         public bool StatsVerified;
+        public FetchInfo StatsFetchStatus;
         
         // Computed
         public double KDRRound;
@@ -400,7 +407,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             DelayedMove = null;
             LastMoveTo = 0;
             LastMoveFrom = 0;
-            FetchStatus = new FetchInfo();
+            TagFetchStatus = new FetchInfo();
             ScrambledSquad = -1;
             DispersalGroup = 0;
             Friendex = -1;
@@ -409,6 +416,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             KPM = -1;
             StatsVerified = false;
             PersonaId = String.Empty;
+            StatsFetchStatus = new FetchInfo();
         }
         
         public PlayerModel(String name, int team) : this() {
@@ -480,7 +488,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             lhs.DelayedMove = this.DelayedMove;
             lhs.LastMoveTo = this.LastMoveTo;
             lhs.LastMoveFrom = this.LastMoveFrom;
-            lhs.FetchStatus = this.FetchStatus;
+            lhs.TagFetchStatus = new FetchInfo(this.TagFetchStatus);
             lhs.ScrambledSquad = this.ScrambledSquad;
             lhs.Friendex = this.Friendex;
             lhs.KDR = this.KDR;
@@ -488,6 +496,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             lhs.KPM = this.KPM;
             lhs.StatsVerified = this.StatsVerified;
             lhs.PersonaId = this.PersonaId;
+            lhs.StatsFetchStatus = new FetchInfo(this.StatsFetchStatus);
             return lhs;
         }
     } // end PlayerModel
@@ -3907,7 +3916,7 @@ private bool AddNewPlayer(String name, int team) {
             player = fKnownPlayers[name];
             player.Team = team;
             known = true;
-            needsFetch = !player.TagVerified;
+            needsFetch = !(player.TagVerified && player.StatsVerified);
         }
         if (player != null) player.LastSeenTimestamp = DateTime.Now;
     }
@@ -5015,9 +5024,12 @@ private Speed GetBalanceSpeed(PerModeSettings perMode) {
 
 private void SetTag(PlayerModel player, Hashtable data) {
     if (data == null) {
+        player.TagFetchStatus.State = FetchState.Failed;
         ConsoleDebug("SetTag ^b" + player.Name + "^n data = null");
         return;
     }
+    player.TagFetchStatus.State = FetchState.Succeeded;
+    player.TagVerified = true;
 
     if (!data.ContainsKey("clanTag") || ((String)data["clanTag"] == null)) {
         DebugFetch("Request clanTag(^b" + player.Name + "^n), no clanTag key in data");
@@ -5025,10 +5037,10 @@ private void SetTag(PlayerModel player, Hashtable data) {
     }
 
     player.Tag = (String)data["clanTag"];
-    player.TagVerified = true;
 }
 
 private void SetStats(PlayerModel player, Hashtable stats) {
+    player.StatsFetchStatus.State = FetchState.Failed;
     if (stats == null) {
         ConsoleDebug("SetStats ^b" + player.Name + "^n stats = null");
         return;
@@ -5077,7 +5089,7 @@ private void SetStats(PlayerModel player, Hashtable stats) {
         double resetKPM = propValues["rsKills"] / resetMinutes; 
         if (resetKPM > 0) player.KPM = resetKPM;
     }
-    player.FetchStatus.State = FetchState.Succeeded;
+    player.StatsFetchStatus.State = FetchState.Succeeded;
     player.StatsVerified = true;
     String msg = type + " [bKDR:" + player.KDR.ToString("F2") + ", bSPM:" + player.SPM.ToString("F0") + ", bKPM:" + player.KPM.ToString("F1") + "]";
     DebugFetch("Player stats updated ^0^b" + player.Name + "^n, " + msg);
@@ -5794,7 +5806,16 @@ private void AddPlayerFetch(String name) {
     if (String.IsNullOrEmpty(name)) return;
     PlayerModel player = GetPlayer(name);
     if (player == null) return;
-    player.FetchStatus.State = FetchState.InQueue;
+    if (player.TagFetchStatus.State != FetchState.New) {
+        DebugFetch("Cannot refetch tag for player ^b" + player.Name + "^n, previous result was " + player.TagFetchStatus.State);
+        if (WhichBattlelogStats == BattlelogStats.ClanTagOnly) return;
+    }
+    if (player.StatsFetchStatus.State != FetchState.New) {
+        DebugFetch("Cannot refetch stats for player ^b" + player.Name + "^n, previous result was " + player.StatsFetchStatus.State);
+        return;
+    }
+    player.TagFetchStatus.State = FetchState.InQueue;
+    player.StatsFetchStatus.State = FetchState.InQueue;
     lock (fPriorityFetchQ) {
         if (!fPriorityFetchQ.Contains(name)) {
             fPriorityFetchQ.Enqueue(name);
@@ -5809,7 +5830,8 @@ private void RemovePlayerFetch(String name) {
     if (player == null) return;
     lock (fPriorityFetchQ) {
         if (fPriorityFetchQ.Contains(name)) {
-            player.FetchStatus.State = FetchState.Aborted;
+            player.TagFetchStatus.State = FetchState.Aborted;
+            player.StatsFetchStatus.State = FetchState.Aborted;
         }
     }
 }
@@ -5850,9 +5872,10 @@ public void FetchLoop() {
             PlayerModel player = GetPlayer(name);
             if (player == null) continue;
             if (!EnableBattlelogRequests) {
-                player.FetchStatus.State = FetchState.Aborted; // drain the fetch queue
+                player.TagFetchStatus.State = FetchState.Aborted; // drain the fetch queue
+                player.StatsFetchStatus.State = FetchState.Aborted; // drain the fetch queue
             }
-            if (player.FetchStatus.State == FetchState.Aborted) {
+            if (player.TagFetchStatus.State == FetchState.Aborted || player.StatsFetchStatus.State == FetchState.Aborted) {
                 if (DebugLevel >= 8) ConsoleDebug("FetchLoop: fetch for ^b" + name + "^n was aborted!");
                 continue;
             }
@@ -5894,7 +5917,7 @@ private void SendBattlelogRequest(String name, String requestType) {
 
         PlayerModel player = GetPlayer(name);
         if (player == null) return;
-        FetchInfo status = player.FetchStatus;
+        FetchInfo status = (requestType == "clanTag") ? player.TagFetchStatus : player.StatsFetchStatus;
         status.State = FetchState.Requesting;
         status.Since = DateTime.Now;
         status.RequestType = requestType;
@@ -5902,9 +5925,16 @@ private void SendBattlelogRequest(String name, String requestType) {
 
         if (String.IsNullOrEmpty(player.PersonaId)) {
             // Get the main page
-            if (!fIsEnabled) return;
-            bool ok = FetchWebPage(ref result, "http://battlelog.battlefield.com/bf3/user/" + name);
-            if (!fIsEnabled) return;
+            bool ok = false;
+            try {
+                if (!fIsEnabled) return;
+                ok = FetchWebPage(ref result, "http://battlelog.battlefield.com/bf3/user/" + name);
+                if (!fIsEnabled) return;
+            } catch (Exception e) {
+                ConsoleException(e);
+            } finally {
+                status.State = FetchState.Failed;
+            }
 
             if (!ok) {
                 status.State = FetchState.Failed;
@@ -5923,6 +5953,7 @@ private void SendBattlelogRequest(String name, String requestType) {
 
             if (String.IsNullOrEmpty(player.PersonaId)) {
                 DebugFetch("Request for ^b" + name +"^n failed, could not find persona-id!");
+                status.State = FetchState.Failed;
                 return;
             }
         }
@@ -5934,7 +5965,6 @@ private void SendBattlelogRequest(String name, String requestType) {
             if (tag.Success) {
                 Hashtable data = new Hashtable();
                 data["clanTag"] = tag.Groups[1].Value;
-                status.State = FetchState.Succeeded;
                 SetTag(player, data);
                 DebugFetch("Player tag updated: ^b" + player.FullName);
             } else {
@@ -5947,7 +5977,10 @@ private void SendBattlelogRequest(String name, String requestType) {
             if (!fIsEnabled || WhichBattlelogStats == BattlelogStats.ClanTagOnly) return;
             String furl = "http://battlelog.battlefield.com/bf3/overviewPopulateStats/" + player.PersonaId + "/bf3-us-assault/1/";
             if (FetchWebPage(ref result, furl)) {
-                if (!fIsEnabled) return;
+                if (!fIsEnabled) {
+                    status.State = FetchState.Failed;
+                    return;
+                }
 
                 Hashtable json = (Hashtable)JSON.JsonDecode(result);
 
@@ -5976,6 +6009,8 @@ private void SendBattlelogRequest(String name, String requestType) {
 
                 // extract the fields from the stats
                 SetStats(player, stats);
+            } else {
+                status.State = FetchState.Failed;
             }
         }
     } catch (Exception e) {
@@ -6012,7 +6047,7 @@ private void SendCacheRequest(String name, String requestType) {
         // Set up response entry
         PlayerModel player = GetPlayer(name);
         if (player == null) return;
-        FetchInfo status = player.FetchStatus;
+        FetchInfo status = (requestType == "clanTag") ? player.TagFetchStatus : player.StatsFetchStatus;
         status.State = FetchState.Requesting;
         status.Since = DateTime.Now;
         status.RequestType = requestType;
@@ -6060,18 +6095,20 @@ public void CacheResponse(params String[] response) {
         Double.TryParse((String)header["age"], out age);
 
         PlayerModel player = GetPlayer(name);
-        FetchInfo status = player.FetchStatus;
         String err = String.Empty;
+        String requestType = String.Empty;
+        DateTime since = DateTime.Now;
+        
+        FetchInfo status = null;
+        if (player.TagFetchStatus.State == FetchState.Requesting) {
+            status = player.TagFetchStatus;
+            since = status.Since;
+        } else if (player.StatsFetchStatus.State == FetchState.Requesting) {
+            status = player.StatsFetchStatus;
+            since = status.Since;
+        } else return;
 
         if (CheckSuccess(header, out err)) {
-            status.State = FetchState.Succeeded;
-            if (fetchTime > 0) {
-                DebugFetch("Request " + status.RequestType + "(^b" + name + "^n) succeeded, cache refreshed from Battlelog, took ^2" + fetchTime.ToString("F1") + " seconds");
-            } else if (age > 0) {
-                TimeSpan a = TimeSpan.FromSeconds(age);
-                DebugFetch("Request " + status.RequestType + "(^b" + name + "^n) succeeded, cached stats used, age is " + a.ToString().Substring(0, 8));
-            }
-            
             // verify there is data structure
             Hashtable d = null;
             if (!header.ContainsKey("data") || (d = (Hashtable)header["data"]) == null) {
@@ -6079,16 +6116,22 @@ public void CacheResponse(params String[] response) {
                 status.State = FetchState.Failed;
                 return;
             }
-
-            status.RequestType = String.Empty;
             if (d.ContainsKey("clanTag")) {
-                status.RequestType = "clanTag";
+                requestType = "clanTag";
             } else if (d.ContainsKey("overviewStats")) {
-                status.RequestType = "overview";
+                requestType = "overview";
+            }
+
+            status.RequestType = requestType;
+            if (fetchTime > 0) {
+                DebugFetch("Request " + status.RequestType + "(^b" + name + "^n) succeeded, cache refreshed from Battlelog, took ^2" + fetchTime.ToString("F1") + " seconds");
+            } else if (age > 0) {
+                TimeSpan a = TimeSpan.FromSeconds(age);
+                DebugFetch("Request " + status.RequestType + "(^b" + name + "^n) succeeded, cached stats used, age is " + a.ToString().Substring(0, 8));
             }
 
             // Apply the result to the player
-            switch (status.RequestType) {
+            switch (requestType) {
                 case "clanTag":
                     SetTag(player, d);
                     if (String.IsNullOrEmpty(player.Tag)) {
@@ -6112,10 +6155,16 @@ public void CacheResponse(params String[] response) {
                     break;
             }
         } else {
-            player.FetchStatus.State = FetchState.Failed;
-            DebugFetch("Request " + status.RequestType + "(^b" + name + "^n): " + err);
+            if (player.TagFetchStatus.State == FetchState.Requesting) {
+                player.TagFetchStatus.State = FetchState.Failed;
+                requestType = "clanTag";
+            } else if (player.StatsFetchStatus.State == FetchState.Requesting) {
+                player.StatsFetchStatus.State = FetchState.Failed;
+                requestType = "overview";
+            }
+            DebugFetch("Request " + requestType + "(^b" + name + "^n): " + err);
         }
-        DebugFetch("^2^bTIME^n took " + DateTime.Now.Subtract(status.Since).TotalSeconds.ToString("F2") + " secs, cache lookup for ^b" + name);
+        DebugFetch("^2^bTIME^n took " + DateTime.Now.Subtract(since).TotalSeconds.ToString("F2") + " secs, cache lookup for ^b" + name);
     } catch (Exception e) {
         ConsoleException(e);
     }
