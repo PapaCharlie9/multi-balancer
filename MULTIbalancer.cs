@@ -9375,7 +9375,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 <p>If you forget the names of the balance speeds, click on the <b>Spelling Of Speed Names Reminder</b> setting. This will display all of the balance speed names for you.</p>
 
 <h3>4 - Scrambler</h3>
-<p>These settings define options for between-round scrambling of teams. The setting <b>Enable Scrambler</b> is a per-mode setting, which allows you to decide on a mode-by-mode basis whether to use scrambling between rounds or not. See the per-mode settings in Section 8 below for more details. Note that whitelisted players are <b>not</b> excluded from scrambling.</p>
+<p>These settings define options for between-round scrambling of teams. The setting <b>Enable Scrambler</b> is a per-mode setting, which allows you to decide on a mode-by-mode basis whether to use scrambling between rounds or not. See the per-mode settings in Section 8 below for more details. Note that whitelisted players are <b>not</b> excluded from scrambling and that scrambling is not possible with SQDM.</p>
 
 <p><b>Only On New Maps</b>: True or False, default True. If True, scrambles will happen only after the last round of a map. For example, if a map has 2 rounds, there will be no scramble after round 1, only after round 2. If False, scrambling will be attempted at the end of every round.</p>
 
@@ -9386,6 +9386,8 @@ For each phase, there are three unstacking settings for server population: Low, 
 <p><b>Keep Squads Together</b>: True or False, default True. If True, during scrambling, an attempt is made to keep players in a squad together so that they are moved as a squad. This is not always possible and sometimes squads may be split up even when this setting is True. The squad ID may change, e.g., if the players were originally in Alpha, they may end up in Echo on the other team.</p>
 
 <p><b>Keep Clan Tags In Same Squad</b>: True or False, default True. Only visible if <b>Keep Squads Together</b> is set to False. If True, players in a squad with other players with the same clan tag will be kept together, if possible. Players in the same squad that do not have the same tag may get moved to another squad. The squad ID may change, e.g., if the players were originally in Hotel, they may end up in Charlie on the other team.</p>
+
+<p><b>Divide By</b>: None, ClanTag, or DispersalGroup. Specifies how players should be divided into teams during scrambling. ClanTag divides all players evenly between the two teams if they have the clan tag specified in <b>Clan Tag To Divide By</b>. Only one tag be specified. DispersalGroup divides players to their assigned dispersal group, if they are in one of the two groups defined in the <b>Disperse Evenly List</b>, if any.
 
 <p><b>Delay Seconds</b>: Number of seconds greater than or equal to 0 and less than or equal to 50, default 30. Number of seconds to wait after the round ends before doing the scramble. If done too soon, many players may leave after the scramble, resulting in wildly unequal teams. If done too late, the next level may load and the game server will swap players to opposite teams, interfering with the scramble in progress, which may result in wildly unequal teams.</p>
 
