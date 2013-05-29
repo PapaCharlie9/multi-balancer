@@ -131,6 +131,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             DisperseEvenlyByRank = 0;
             EnableDisperseEvenlyList = false;
             EnableScrambler = false;
+            OnlyMoveWeakPlayers = true;
             isDefault = false;
             // Rush only
             Stage1TicketPercentageToUnstackAdjustment = 0;
@@ -285,6 +286,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         public bool EnableScrambler = false;
         public bool EnableMetroAdjustments = false;
         public int MetroAdjustedDefinitionOfLatePhase = 50;
+        public bool OnlyMoveWeakPlayers = true;
 
         // Rush only
         public double Stage1TicketPercentageToUnstackAdjustment = 0;
@@ -1360,7 +1362,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.2.8";
+    return "1.0.3.0";
 }
 
 public String GetPluginAuthor() {
@@ -1653,6 +1655,8 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Percent Of Top Of Team Is Strong", oneSet.PercentOfTopOfTeamIsStrong.GetType(), oneSet.PercentOfTopOfTeamIsStrong));
 
             }
+            
+            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Only Move Weak Players", oneSet.OnlyMoveWeakPlayers.GetType(), oneSet.OnlyMoveWeakPlayers));
 
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Disperse Evenly By Rank >=", oneSet.DisperseEvenlyByRank.GetType(), oneSet.DisperseEvenlyByRank));
 
@@ -3326,13 +3330,6 @@ private void BalanceAndUnstack(String name) {
         mustMove = false;
     }
 
-    // Wait for unassigned
-    if (!mustMove && balanceSpeed != Speed.Fast && (diff > MaxDiff()) && fUnassigned.Count >= (diff - MaxDiff())) {
-        DebugBalance("Wait for " + fUnassigned.Count + " unassigned players to be assigned before activating autobalance");
-        IncrementTotal(); // no matching stat, reflect total deaths handled
-        return;
-    }
-
     /* Activation check */
 
     if (balanceSpeed != Speed.Stop && needsBalancing) {
@@ -3343,6 +3340,13 @@ private void BalanceAndUnstack(String name) {
         fBalanceIsActive = true;
     } else {
         CheckDeativateBalancer("Deactiving autobalance");
+    }
+
+    // Wait for unassigned
+    if (!mustMove && needsBalancing && balanceSpeed != Speed.Fast && (diff > MaxDiff()) && fUnassigned.Count >= (diff - MaxDiff())) {
+        DebugBalance("Wait for " + fUnassigned.Count + " unassigned players to be assigned before moving active players");
+        IncrementTotal(); // no matching stat, reflect total deaths handled
+        return;
     }
 
     /* Exclusions */
@@ -3591,7 +3595,7 @@ private void BalanceAndUnstack(String name) {
         }
 
         if (!loggedStats) {
-            DebugBalance(GetPlayerStatsString(name));
+            DebugBalance(GetPlayerStatsString(name) + ((isStrong) ? " STRONG" : " WEAK"));
             loggedStats = true;
         }
 
@@ -3618,11 +3622,19 @@ private void BalanceAndUnstack(String name) {
             }
         }
 
+        // Exempt if only moving weak players and is strong
+        if (!mustMove && perMode.OnlyMoveWeakPlayers && isStrong) {
+            DebugBalance("Exempting strong ^b" + name + "^n, Only Move Weak Players set to True for " + simpleMode);
+            fExemptRound = fExemptRound + 1;
+            IncrementTotal();
+            return;
+        }
+
         // Strong/Weak exemptions and clan tag
         if (!mustMove && balanceSpeed != Speed.Fast && fromList.Count >= minPlayers) {
             if (DebugLevel > 5) DebugBalance(strongMsg);
-            // don't move weak player to losing team
-            if (!isStrong  && toTeam == losingTeam) {
+            // don't move weak player to losing team, unless we are only moving weak players
+            if (!isStrong  && toTeam == losingTeam && !perMode.OnlyMoveWeakPlayers) {
                 DebugBalance("Exempting ^b" + name + "^n, don't move weak player to losing team (#" + (playerIndex+1) + " of " + fromList.Count + ", top " + (strongest) + ")");
                 fExemptRound = fExemptRound + 1;
                 IncrementTotal();
@@ -5225,7 +5237,7 @@ private void ScramblerLoop () {
 
             if (since == DateTime.MinValue) continue;
 
-            if (last != DateTime.MinValue && DateTime.Now.Subtract(last).TotalMinutes < 5) {
+            if (last != DateTime.MinValue && DateTime.Now.Subtract(last).TotalMinutes < 3) {
                 DebugScrambler("^0Last scramble was less than 5 minutes ago, skipping!");
                 continue;
             }
@@ -9012,8 +9024,9 @@ private void LogStatus(bool isFinal) {
     String metroAdj = (perMode.EnableMetroAdjustments) ? ", Metro Adjustments Enabled" : String.Empty;
     String unstackDisabled = (!EnableUnstacking) ? ", Unstacking Disabled" : String.Empty;
     String logOnly = (EnableLoggingOnlyMode) ? ", Logging Only Mode Enabled" : String.Empty;
+    String weakOnly = (perMode.OnlyMoveWeakPlayers) ? ", Only Move Weak Players" : String.Empty;
 
-    DebugWrite("^bStatus^n: Plugin state = " + fPluginState + ", game state = " + fGameState + metroAdj + unstackDisabled + logOnly, 6);
+    DebugWrite("^bStatus^n: Plugin state = " + fPluginState + ", game state = " + fGameState + weakOnly + metroAdj + unstackDisabled + logOnly, 6);
     int useLevel = (isFinal) ? 2 : 4;
     if (IsRush()) {
         DebugWrite("^bStatus^n: Map = " + FriendlyMap + ", mode = " + FriendlyMode + ", stage = " + fRushStage + ", time in round = " + rt + ", tickets = " + tm, useLevel);
@@ -9532,6 +9545,8 @@ For each phase, there are three unstacking settings for server population: Low, 
 <p><b>Determine Strong Players By</b>: Choice based on method. The setting defines how strong players are determined. Any player that is not a strong player is a weak player. See the <b>Definition of Strong</b> section above for the list of settings. All players in a single team are sorted by the specified definition. Any player above the median position after sorting is considered strong. For example, suppose there are 31 players on a team and this setting is set to <i>RoundScore</i> and after sorting, the median is position #16. If this player is position #7, he is considered strong. If his position is #16 or #17, he is considered weak.</p>
 
 <p><b>Percent Of Top Of Team Is Strong</b>: Number greater than or equal to 5 and less than or equal to 50, or 0. After sorting a team with the <b>Determine Strong Players By</b> choice, this percentage determines the portion of the top players to define as strong. Default is 50 so that any player above the median counts as strong. CAUTION: This setting is changed when the <b>Preset</b> is changed, previous values are overwritten for all modes.</p>
+
+<p><b>Only Move Weak Players</b>: True or False, default True. If set to True, only weak players will be moved for balancing.</p>
 
 <p><b>Disperse Evenly By Rank &gt;=</b>: Number greater than or equal to 0 and less than or equal to 145, default 0. Any players with this absolute rank (Colonel 100 is 145) or higher will be dispersed evenly across teams. This is useful to insure that Colonel 100 ranked players don't all stack on one team. Set to 0 to disable.</p>
 
