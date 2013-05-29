@@ -673,9 +673,9 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         }
 
         public void Enqueue(String name) {
-            TagQueue.Enqueue(name);
+            if (!TagQueue.Contains(name)) TagQueue.Enqueue(name);
             if (fPlugin.WhichBattlelogStats != BattlelogStats.ClanTagOnly) {
-                StatsQueue.Enqueue(name);
+                if (!StatsQueue.Contains(name)) StatsQueue.Enqueue(name);
             }
         }
 
@@ -5806,11 +5806,11 @@ private void AddPlayerFetch(String name) {
     if (String.IsNullOrEmpty(name)) return;
     PlayerModel player = GetPlayer(name);
     if (player == null) return;
-    if (player.TagFetchStatus.State != FetchState.New) {
+    if (player.TagFetchStatus.State != FetchState.New && player.TagFetchStatus.State != FetchState.InQueue) {
         DebugFetch("Cannot refetch tag for player ^b" + player.Name + "^n, previous result was " + player.TagFetchStatus.State);
         if (WhichBattlelogStats == BattlelogStats.ClanTagOnly) return;
     }
-    if (player.StatsFetchStatus.State != FetchState.New) {
+    if (player.StatsFetchStatus.State != FetchState.New && player.TagFetchStatus.State != FetchState.InQueue) {
         DebugFetch("Cannot refetch stats for player ^b" + player.Name + "^n, previous result was " + player.StatsFetchStatus.State);
         return;
     }
