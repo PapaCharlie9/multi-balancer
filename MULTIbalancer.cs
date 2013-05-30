@@ -1362,7 +1362,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.3.0";
+    return "1.0.3.1";
 }
 
 public String GetPluginAuthor() {
@@ -1988,7 +1988,7 @@ private bool ValidateSettings(String strVariable, String strValue) {
 
         if (strVariable.Contains("Only On Final Ticket Percentage")) {ValidateDoubleRange(ref OnlyOnFinalTicketPercentage, "Only On Final Ticket Percentage", 100.0, 1000.0, 120.0, true);}
 
-        else if (strVariable.Contains("Delay Seconds")) {ValidateDoubleRange(ref DelaySeconds, "Delay Seconds", 0, 50, 30, false);}
+        else if (strVariable.Contains("Delay Seconds")) {ValidateDoubleRange(ref DelaySeconds, "Delay Seconds", 0, 70, 30, false);}
 
         /* ===== SECTION 5 - Messages ===== */
     
@@ -9459,9 +9459,9 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Keep Clan Tags In Same Squad</b>: True or False, default True. Only visible if <b>Keep Squads Together</b> is set to False. If True, players in a squad with other players with the same clan tag will be kept together, if possible. Players in the same squad that do not have the same tag may get moved to another squad. The squad ID may change, e.g., if the players were originally in Hotel, they may end up in Charlie on the other team.</p>
 
-<p><b>Divide By</b>: None, ClanTag, or DispersalGroup. Specifies how players should be divided into teams during scrambling. ClanTag divides all players evenly between the two teams if they have the clan tag specified in <b>Clan Tag To Divide By</b>. Only one tag be specified. DispersalGroup divides players to their assigned dispersal group, if they are in one of the two groups defined in the <b>Disperse Evenly List</b>, if any.
+<p><b>Divide By</b>: None, ClanTag, or DispersalGroup. Specifies how players should be divided into teams during scrambling. ClanTag divides all players evenly between the two teams if they have the clan tag specified in <b>Clan Tag To Divide By</b>. Only one tag may be specified. DispersalGroup divides players to their assigned dispersal group, if they are in one of the two groups defined in the <b>Disperse Evenly List</b>, if any.
 
-<p><b>Delay Seconds</b>: Number of seconds greater than or equal to 0 and less than or equal to 50, default 30. Number of seconds to wait after the round ends before doing the scramble. If done too soon, many players may leave after the scramble, resulting in wildly unequal teams. If done too late, the next level may load and the game server will swap players to opposite teams, interfering with the scramble in progress, which may result in wildly unequal teams.</p>
+<p><b>Delay Seconds</b>: Number of seconds greater than or equal to 0 and less than or equal to 70, default 30. Number of seconds to wait after the round ends before doing the scramble. If done too soon, many players may leave after the scramble, resulting in wildly unequal teams. If done too late, the next level may load and the game server will swap players to opposite teams, interfering with the scramble in progress, which may result in wildly unequal teams.</p>
 
 <h3>5 - Messages</h3>
 <p>These settings define all of the chat and yell messages that are sent to players when various actions are taken by the plugin. All of the messages are in pairs, one for chat, one for yell. If both the chat and the yell messages are defined and <b>Quiet&nbsp;Mode</b> is not set to True, both will be sent at the same time. The message setting descriptions apply to both chat and yell. To disable a chat message for a specific actcion, delete the message and leave it empty. To disable theyell message for a specific action, delete the message and leave it empty.</p>
