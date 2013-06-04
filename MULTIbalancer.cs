@@ -5545,7 +5545,7 @@ private void ScramblerLoop () {
 
                 // Dole out squads, keeping metric in balance, starting with the losing team
                 List<PlayerModel> target = (fWinner == 0 || fWinner == 1) ? ruScrambled : usScrambled;
-                Dictionary<int,SquadRoster> squadTable = (fWinner == 0 || fWinner == 1) ? ruSquads : usSquads;
+                Dictionary<int,SquadRoster> targetSquadTable = (fWinner == 0 || fWinner == 1) ? ruSquads : usSquads;
                 int teamMax = MaximumServerSize/2;
                 debugMsg = String.Empty;
 
@@ -5565,53 +5565,58 @@ private void ScramblerLoop () {
                             continue;
                         }
                         DebugScrambler("Squad " + SQUAD_NAMES[disp.Squad] + ", Dispersal Group " + disp.DispersalGroup + " to " + debugMsg);
-                        AssignSquadToTeam(disp, squadTable, usScrambled, ruScrambled, localTarget);
+                        AssignSquadToTeam(disp, targetSquadTable, usScrambled, ruScrambled, localTarget);
                         all.Remove(disp);
                     }
                     if (usScrambled == target && target.Count >= teamMax) target = ruScrambled;
                     if (ruScrambled == target && target.Count >= teamMax) target = usScrambled;
                 }
 
-                //foreach (SquadRoster squad in all) { // strongest to weakest
-                SquadRoster squad = all[0];
+                SquadRoster squad = (all.Count > 0) ? all[0] : null;
                 List<PlayerModel> opposing = null;
+                Dictionary<int,SquadRoster> opposingSquadTable = null;
                 do {
+                    if (squad == null) break;
+
                     all.Remove(squad);
 
-                    AssignSquadToTeam(squad, squadTable, usScrambled, ruScrambled, target);
+                    AssignSquadToTeam(squad, targetSquadTable, usScrambled, ruScrambled, target);
 
                     // Recalc team metrics
                     SumMetricByTeam(usScrambled, ruScrambled, out usMetric, out ruMetric);
                     if (logOnly || DebugLevel >= 6) ConsoleDebug("Updated scrambler metrics " + ScrambleBy + ": US(" + usScrambled.Count + ") = " + usMetric.ToString("F1") + ", RU(" + ruScrambled.Count + ") = " + ruMetric.ToString("F1"));
 
-                    // Choose new target team base on metrics
-                    if (usScrambled.Count >= teamMax && ruScrambled.Count < teamMax) {
-                        target = ruScrambled;
-                        opposing = usScrambled;
-                        squadTable = ruSquads;
-                        squad = all[0];
-                        debugMsg = "Original target = RU";
-                        continue; // skip additional checks, no other choice
-                    } else if (ruScrambled.Count >= teamMax && usScrambled.Count < teamMax) {
-                        target = usScrambled;
-                        opposing = ruScrambled;
-                        squadTable = usSquads;
-                        squad = all[0];
-                        debugMsg = "Original target = US";
-                        continue; // skip additional checks, no other choice
-                    } else if (usMetric < ruMetric) {
-                        target = usScrambled;
-                        opposing = ruScrambled;
-                        squadTable = usSquads;
-                        debugMsg = "Original target = US";
-                    } else {
-                        target = ruScrambled;
-                        opposing = usScrambled;
-                        squadTable = ruSquads;
-                        debugMsg = "Original target = RU";
+                    if (usScrambled.Count >= teamMax && ruScrambled.Count >= teamMax) {
+                        all.Clear(); // no more room, skip remaining squads
+                        break;
                     }
 
                     if (all.Count == 0) break;
+
+                    // Choose new target team base on metrics
+                    if (usScrambled.Count >= teamMax && ruScrambled.Count < teamMax) {
+                        target = ruScrambled;
+                        targetSquadTable = ruSquads;
+                        opposing = usScrambled;
+                        squad = all[0];
+                        continue; // skip additional checks, no other choice
+                    } else if (ruScrambled.Count >= teamMax && usScrambled.Count < teamMax) {
+                        target = usScrambled;
+                        targetSquadTable = usSquads;
+                        opposing = ruScrambled;
+                        squad = all[0];
+                        continue; // skip additional checks, no other choice
+                    } else if (usMetric < ruMetric) {
+                        target = usScrambled;
+                        targetSquadTable = usSquads;
+                        opposing = ruScrambled;
+                        debugMsg = "Original target = US";
+                    } else {
+                        target = ruScrambled;
+                        targetSquadTable = ruSquads;
+                        opposing = usScrambled;
+                        debugMsg = "Original target = RU";
+                    }
 
                     // Override choice if teams would be too unbalanced by player count
                     if (target.Count > opposing.Count) {
@@ -5622,10 +5627,10 @@ private void ScramblerLoop () {
                         target = opposing;
                         opposing = tmp;
                         if (target == usScrambled) {
-                            squadTable = usSquads;
+                            targetSquadTable = usSquads;
                             debugMsg = "Revised for count target = US";
                         } else {
-                            squadTable = ruSquads;
+                            targetSquadTable = ruSquads;
                             debugMsg = "Revised for count target = RU";
                         }
                     } else {
@@ -5642,28 +5647,27 @@ private void ScramblerLoop () {
                 if (Math.Abs(usScrambled.Count - ruScrambled.Count) > 1) {
                     int needed = Math.Abs(usScrambled.Count - ruScrambled.Count) - 1;
                     int targetDispersalGroup = 0;
-                    Dictionary<int,SquadRoster> targetSquadTable = null;
                     int toTeamId = 0;
 
                     if (usScrambled.Count < ruScrambled.Count) {
                         target = usScrambled;
-                        opposing = ruScrambled;
-                        squadTable = ruSquads; // opposing
                         targetSquadTable = usSquads;
                         targetDispersalGroup = 1;
                         toTeamId = 1;
+                        opposing = ruScrambled;
+                        opposingSquadTable = ruSquads;
                         debugMsg = "US needs " + needed + " more players";
                     } else {
                         target = ruScrambled;
-                        opposing = usScrambled;
-                        squadTable = usSquads; // opposing
                         targetSquadTable = ruSquads;
                         targetDispersalGroup = 2;
                         toTeamId = 2;
+                        opposing = usScrambled;
+                        opposingSquadTable = usSquads;
                         debugMsg = "RU needs " + needed + " more players";
                     }
 
-                    DebugScrambler("Adjusting team allocation, " + debugMsg);
+                    DebugScrambler("Adjusting team sizes, " + debugMsg);
 
                     // Move players from opposing to target from weak end of list
                     while (opposing.Count > 0 && (opposing.Count - target.Count) > 1) {
@@ -5691,7 +5695,7 @@ private void ScramblerLoop () {
                             // Make sure squad filler is coming from doesn't have clan tags to keep together
                             int cmt = 0;
                             SquadRoster fillerSquad = null;
-                            if ((KeepClanTagsInSameSquad || KeepSquadsTogether) && squadTable.TryGetValue(filler.Squad, out fillerSquad) && fillerSquad != null) {
+                            if ((KeepClanTagsInSameSquad || KeepSquadsTogether) && opposingSquadTable.TryGetValue(filler.Squad, out fillerSquad) && fillerSquad != null) {
                                 foreach (PlayerModel mate in fillerSquad.Roster) {
                                     if (ft == ExtractTag(mate)) ++cmt;
                                 }
@@ -5704,7 +5708,7 @@ private void ScramblerLoop () {
 
                             // Otherwise, our candidate filler player is the one to go
                             try {
-                                SquadRoster fromSquad = squadTable[filler.Squad];
+                                SquadRoster fromSquad = opposingSquadTable[filler.Squad];
                                 AssignFillerToTeam(filler, toTeamId, target, targetSquadTable);
                                 opposing.Remove(filler);
                                 fromSquad.Roster.Remove(filler);
@@ -5725,6 +5729,8 @@ private void ScramblerLoop () {
 
                 // Final counts
                 DebugScrambler("Final scrambled team counts: US(" + usScrambled.Count + "), RU(" + ruScrambled.Count + ")");
+
+                if (!fIsEnabled) return;
 
                 // Now run through each list and move any players that need moving
                 ScrambleMove(usScrambled, 1, logOnly);
