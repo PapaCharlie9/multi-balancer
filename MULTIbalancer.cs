@@ -2217,7 +2217,7 @@ private void CommandToLog(string cmd) {
             return;
         }
 
-        if (Regex.Match(cmd, @"lists", RegexOptions.IgnoreCase).Success) {
+        if (Regex.Match(cmd, @"^lists", RegexOptions.IgnoreCase).Success) {
             ConsoleDump("Whitelist(" + fSettingWhitelist.Count + "):");
             foreach (String item in fSettingWhitelist) {
                 ConsoleDump(item);
@@ -2249,7 +2249,7 @@ private void CommandToLog(string cmd) {
             return;
         }
 
-        if (Regex.Match(cmd, @"modes", RegexOptions.IgnoreCase).Success) {
+        if (Regex.Match(cmd, @"^modes", RegexOptions.IgnoreCase).Success) {
             List<String> modeList = GetSimplifiedModes();
             ConsoleDump("modes(" + modeList.Count + "):");
             foreach (String mode in modeList) {
@@ -2258,7 +2258,7 @@ private void CommandToLog(string cmd) {
             return;
         }
 
-        if (Regex.Match(cmd, @"moved", RegexOptions.IgnoreCase).Success) {
+        if (Regex.Match(cmd, @"^moved", RegexOptions.IgnoreCase).Success) {
             lock (fKnownPlayers) {
                 foreach (String name in fKnownPlayers.Keys) {
                     PlayerModel p = fKnownPlayers[name];
@@ -2270,18 +2270,18 @@ private void CommandToLog(string cmd) {
             return;
         }
 
-        if (Regex.Match(cmd, @"rage", RegexOptions.IgnoreCase).Success) {
+        if (Regex.Match(cmd, @"^rage", RegexOptions.IgnoreCase).Success) {
             ConsoleDump("Rage stats: " + fGrandRageQuits + " rage of " + fGrandTotalQuits + " total, this round " + fRageQuits + " rage of " + fTotalQuits + " total"); 
             return;
         }
         
-        if (Regex.Match(cmd, @"reset settings", RegexOptions.IgnoreCase).Success) {
+        if (Regex.Match(cmd, @"^reset settings", RegexOptions.IgnoreCase).Success) {
             ConsoleDump("^8^bRESETTING ALL PLUGIN SETTINGS (except Whitelist and Dispersal list) TO DEFAULT!");
             ResetSettings();
             return;
         }
 
-        if (Regex.Match(cmd, @"scramble[d]?", RegexOptions.IgnoreCase).Success) {
+        if (Regex.Match(cmd, @"^scramble[d]?", RegexOptions.IgnoreCase).Success) {
             if (fDebugScramblerBefore[0].Count == 0
               || fDebugScramblerBefore[1].Count == 0
               || fDebugScramblerAfter[0].Count == 0
@@ -2301,7 +2301,7 @@ private void CommandToLog(string cmd) {
             return;
         }
 
-        if (Regex.Match(cmd, @"size[s]?", RegexOptions.IgnoreCase).Success) {
+        if (Regex.Match(cmd, @"^size[s]?", RegexOptions.IgnoreCase).Success) {
             int kp = fKnownPlayers.Count;
             int ap = fAllPlayers.Count;
             int old = 0;
@@ -2411,7 +2411,7 @@ private void CommandToLog(string cmd) {
             return;
         }
 
-        if (Regex.Match(cmd, @"tags?", RegexOptions.IgnoreCase).Success) {
+        if (Regex.Match(cmd, @"^tags?", RegexOptions.IgnoreCase).Success) {
             Dictionary<String,List<PlayerModel>> byTag = new Dictionary<String,List<PlayerModel>>();
 
             lock (fAllPlayers) {
@@ -2464,13 +2464,13 @@ private void CommandToLog(string cmd) {
         }
         
         // Undocumented command: test scrambler
-        if (Regex.Match(cmd, @"test scrambler", RegexOptions.IgnoreCase).Success) {
+        if (Regex.Match(cmd, @"^test scrambler", RegexOptions.IgnoreCase).Success) {
             ConsoleDump("Testing scrambler:");
             ScrambleByCommand(true); // log only
             return;
         }
 
-        if (Regex.Match(cmd, @"help", RegexOptions.IgnoreCase).Success || !String.IsNullOrEmpty(cmd)) {
+        if (Regex.Match(cmd, @"^\s*help", RegexOptions.IgnoreCase).Success || !String.IsNullOrEmpty(cmd)) {
             ConsoleDump("^1^bgen^n ^imode^n^0: Generate settings listing for ^imode^n (one of: cs, cl, ctf, gm, r, sqdm, sr, s, tdm, u)");
             ConsoleDump("^1^bgen^n ^isection^n^0: Generate settings listing for ^isection^n (1-6,9)");
             ConsoleDump("^1^blists^n^0: Examine all settings that are lists");
