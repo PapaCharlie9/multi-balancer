@@ -714,6 +714,7 @@ private DateTime fLastVersionCheckTimestamp = DateTime.MinValue;
 private double fTimeOutOfJoint = 0;
 private List<PlayerModel>[] fDebugScramblerBefore = null;
 private List<PlayerModel>[] fDebugScramblerAfter = null;
+private List<PlayerModel>[] fDebugScramblerStartRound = null;
 private DelayedRequest fUpdateThreadLock;
 private DateTime fLastServerInfoTimestamp;
 private String fHost;
@@ -722,7 +723,7 @@ private List<String> fRushMap3Stages = null;
 private List<String> fRushMap5Stages = null;
 private int[] fGroupAssignments = null; // index is group number, value is team id
 private List<String>[] fDispersalGroups;
-private bool fNeedGroupAssignment = false;
+private bool fNeedPlayerListUpdate = false;
 
 // Data model
 private List<String> fAllPlayers = null;
@@ -914,6 +915,7 @@ public MULTIbalancer() {
     fServerCrashed = false;
     fDebugScramblerBefore = new List<PlayerModel>[2]{new List<PlayerModel>(), new List<PlayerModel>()};
     fDebugScramblerAfter = new List<PlayerModel>[2]{new List<PlayerModel>(), new List<PlayerModel>()};
+    fDebugScramblerStartRound = new List<PlayerModel>[2]{new List<PlayerModel>(), new List<PlayerModel>()};
 
     fBalancedRound = 0;
     fUnstackedRound = 0;
@@ -1005,7 +1007,7 @@ public MULTIbalancer() {
     fRushMap5Stages = new List<String>(new String[4]{"MP_013", "XP3_Valley", "MP_017", "XP5_001"});
     fGroupAssignments = new int[5]{0,0,0,0,0};
     fDispersalGroups = new List<String>[5]{null, new List<String>(), new List<String>(), new List<String>(), new List<String>()};
-    fNeedGroupAssignment = false;
+    fNeedPlayerListUpdate = false;
     fFriends = new Dictionary<int, List<String>>();
     fAllFriends = new List<String>();
     
@@ -2291,6 +2293,10 @@ private void CommandToLog(string cmd) {
             ListSideBySide(fDebugScramblerBefore[0], fDebugScramblerBefore[1]);
             ConsoleDump("===== AFTER =====");
             ListSideBySide(fDebugScramblerAfter[0], fDebugScramblerAfter[1]);
+            if (fDebugScramblerStartRound[0].Count > 0 && fDebugScramblerStartRound[1].Count > 0) {
+                ConsoleDump("===== START OF ROUND =====");
+                ListSideBySide(fDebugScramblerStartRound[0], fDebugScramblerStartRound[1]);
+            }
             ConsoleDump("===== END =====");
             return;
         }
@@ -2454,6 +2460,13 @@ private void CommandToLog(string cmd) {
                 }
             }
             ConsoleDump(" === END OF TAGS === ");
+            return;
+        }
+        
+        // Undocumented command: test scrambler
+        if (Regex.Match(cmd, @"test scrambler", RegexOptions.IgnoreCase).Success) {
+            ConsoleDump("Testing scrambler:");
+            ScrambleByCommand(true); // log only
             return;
         }
 
@@ -2808,7 +2821,7 @@ public override void OnPlayerKilled(Kill kKillerVictimDetails) {
             bool wasUnknown = (fGameState == GameState.Unknown);
             fGameState = (this.TotalPlayerCount < 4) ? GameState.Warmup : GameState.Playing;
             if (wasUnknown || fGameState == GameState.Playing) DebugWrite("OnPlayerKilled: ^b^3Game state = " + fGameState, 6);  
-            fNeedGroupAssignment = (fGameState == GameState.Playing);
+            fNeedPlayerListUpdate = (fGameState == GameState.Playing);
         }
     
         if (!isAdminKill) {
@@ -2892,10 +2905,11 @@ public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subs
             DebugWrite("^b^3State = " + fPluginState, 6);  
         }
 
-        // Use updated player list
-        if (fNeedGroupAssignment) {
-            AssignGroups();
-            fNeedGroupAssignment = false;
+        // Use updated player list, one-time updates
+        if (fNeedPlayerListUpdate) {
+            try { AssignGroups(); } catch (Exception e) { ConsoleException(e); }
+            try { RememberTeams(); } catch (Exception e) { ConsoleException(e); }
+            fNeedPlayerListUpdate = false;
         }
     } catch (Exception e) {
         ConsoleException(e);
@@ -3122,7 +3136,7 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
             bool wasUnknown = (fGameState == GameState.Unknown);
             fGameState = (this.TotalPlayerCount < 4) ? GameState.Warmup : GameState.Playing;
             if (wasUnknown || fGameState == GameState.Playing) DebugWrite("OnPlayerSpawned: ^b^3Game state = " + fGameState, 6);  
-            fNeedGroupAssignment = (fGameState == GameState.Playing);
+            fNeedPlayerListUpdate = (fGameState == GameState.Playing);
         } else if (fGameState == GameState.RoundStarting) {
             // First spawn after Level Loaded is the official start of a round
             DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1First spawn detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
@@ -3134,7 +3148,7 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
             fIsFullRound = true;
             ServerCommand("serverInfo");
             ScheduleListPlayers(2);
-            fNeedGroupAssignment = (fGameState == GameState.Playing);
+            fNeedPlayerListUpdate = (fGameState == GameState.Playing);
         }
     
         if (fPluginState == PluginState.Active) {
@@ -5192,6 +5206,8 @@ private void Scrambler(List<TeamScore> teamScores) {
         fDebugScramblerBefore[1].Clear();
         fDebugScramblerAfter[0].Clear();
         fDebugScramblerAfter[1].Clear();
+        fDebugScramblerStartRound[0].Clear();
+        fDebugScramblerStartRound[1].Clear();
     } catch (Exception e) {
         ConsoleException(e);
     }
@@ -5199,6 +5215,26 @@ private void Scrambler(List<TeamScore> teamScores) {
     // Activate the scrambler thread
     lock (fScramblerLock) {
         fScramblerLock.MaxDelay = DelaySeconds;
+        fScramblerLock.LastUpdate = DateTime.Now;
+        Monitor.Pulse(fScramblerLock);
+    }
+}
+
+private void ScrambleByCommand(bool logOnly) {
+    try {
+        fDebugScramblerBefore[0].Clear();
+        fDebugScramblerBefore[1].Clear();
+        fDebugScramblerAfter[0].Clear();
+        fDebugScramblerAfter[1].Clear();
+        fDebugScramblerStartRound[0].Clear();
+        fDebugScramblerStartRound[1].Clear();
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+
+    // Activate the scrambler thread
+    lock (fScramblerLock) {
+        fScramblerLock.MaxDelay = (logOnly) ? -1 : DelaySeconds;
         fScramblerLock.LastUpdate = DateTime.Now;
         Monitor.Pulse(fScramblerLock);
     }
@@ -5221,6 +5257,7 @@ private void ScramblerLoop () {
     */
     try {
         DateTime last = DateTime.MinValue;
+        bool logOnly = false;
         while (fIsEnabled) {
             double delay = 0;
             DateTime since = DateTime.MinValue;
@@ -5228,6 +5265,10 @@ private void ScramblerLoop () {
                 while (fScramblerLock.MaxDelay == 0) {
                     Monitor.Wait(fScramblerLock);
                     if (!fIsEnabled) return;
+                }
+                if (fScramblerLock.MaxDelay == -1) {
+                    fScramblerLock.MaxDelay = 0;
+                    logOnly = true;
                 }
                 delay = fScramblerLock.MaxDelay;
                 since = fScramblerLock.LastUpdate;
@@ -5237,7 +5278,7 @@ private void ScramblerLoop () {
 
             if (since == DateTime.MinValue) continue;
 
-            if (last != DateTime.MinValue && DateTime.Now.Subtract(last).TotalMinutes < 3) {
+            if (!logOnly && last != DateTime.MinValue && DateTime.Now.Subtract(last).TotalMinutes < 3) {
                 DebugScrambler("^0Last scramble was less than 5 minutes ago, skipping!");
                 continue;
             }
@@ -5579,8 +5620,8 @@ private void ScramblerLoop () {
                 if (!fIsEnabled) return;
 
                 // Now run through each list and move any players that need moving
-                ScrambleMove(usScrambled, 1);
-                ScrambleMove(ruScrambled, 2);
+                ScrambleMove(usScrambled, 1, logOnly);
+                ScrambleMove(ruScrambled, 2, logOnly);
 
                 ScheduleListPlayers(1); // refresh
 
@@ -5599,7 +5640,7 @@ private void ScramblerLoop () {
                 }
 
                 DebugScrambler("DONE!");
-                if (DebugLevel >= 6) CommandToLog("scrambled");
+                if (logOnly || DebugLevel >= 6) CommandToLog("scrambled");
             } catch (Exception e) {
                 ConsoleException(e);
             }
@@ -5638,7 +5679,7 @@ private void AssignSquadToTeam(SquadRoster squad, Dictionary<int,SquadRoster> sq
 }
 
 
-private void ScrambleMove(List<PlayerModel> scrambled, int where) {
+private void ScrambleMove(List<PlayerModel> scrambled, int where, bool logOnly) {
     int toSquad = 0;
     int toTeam = where;
 
@@ -5660,7 +5701,7 @@ private void ScrambleMove(List<PlayerModel> scrambled, int where) {
         if (dude.Team == toTeam && dude.Squad == toSquad) continue;
 
         // Do the move
-        if (!EnableLoggingOnlyMode) {
+        if (!EnableLoggingOnlyMode && !logOnly) {
             DebugScrambler("^1^bMOVE^n^0 ^b" + name + "^n to " + GetTeamName(toTeam) + " team, squad " + SQUAD_NAMES[toSquad]);
             ServerCommand("admin.movePlayer", dude.Name, toTeam.ToString(), toSquad.ToString(), "false");
             Thread.Sleep(20);
@@ -5782,6 +5823,24 @@ private void RemapSquad(Dictionary<int,SquadRoster> squadTable, SquadRoster squa
         }
     }
     squad.Squad = emptyId;
+}
+
+private void RememberTeams() {
+    lock (fAllPlayers) {
+        foreach (String egg in fAllPlayers) {
+            try {
+                PlayerModel player = GetPlayer(egg);
+                if (player == null) continue;
+
+                // For debugging
+                if (IsKnownPlayer(player.Name) && player.Team > 0 && player.Team <= 2) {
+                    fDebugScramblerStartRound[player.Team-1].Add(player.ClonePlayer());
+                } else continue; // skip joining players
+            } catch (Exception e) {
+                if (DebugLevel >= 8) ConsoleException(e);
+            }
+        }
+    }
 }
 
 
@@ -6567,6 +6626,8 @@ private void Reset() {
     fDebugScramblerBefore[1].Clear();
     fDebugScramblerAfter[0].Clear();
     fDebugScramblerAfter[1].Clear();
+    fDebugScramblerStartRound[0].Clear();
+    fDebugScramblerStartRound[1].Clear();
 }
 
 private void ResetRound() {
