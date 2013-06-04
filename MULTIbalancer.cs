@@ -3435,17 +3435,17 @@ private void BalanceAndUnstack(String name) {
             int maxCount = fromList.Count;
             if (maxCount < 5) {
                 topPlayersPerTeam = 0;
-            } else if (maxCount < 8) {
+            } else if (maxCount <= 8) {
                 topPlayersPerTeam = 1;
-            } else if (totalPlayerCount < 16) {
+            } else if (totalPlayerCount <= 16) {
                 topPlayersPerTeam = 2;
             } else {
                 topPlayersPerTeam = 3;
             }
         } else {
-            if (totalPlayerCount < 22) {
+            if (totalPlayerCount <= 22) {
                 topPlayersPerTeam = 1;
-            } else if (totalPlayerCount > 42) {
+            } else if (totalPlayerCount >= 42) {
                 topPlayersPerTeam = 3;
             } else {
                 topPlayersPerTeam = 2;
