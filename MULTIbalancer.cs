@@ -5176,19 +5176,19 @@ private void Scrambler(List<TeamScore> teamScores) {
             // ratio of difference from max
             if (a < b) {
                 ratio = (goal - a) / Math.Max(1, (goal - b)); 
-                DebugScrambler("Ratio us/ru: " + a + " vs " + b + " <- [" + goal + "]: " + (goal-a) + "/" + Math.Max(1, (goal-b)) + " = " + ratio.ToString("F2"));
+                DebugScrambler("Ratio US/RU: " + a + " vs " + b + " <- [" + goal + "]: " + (goal-a) + "/" + Math.Max(1, (goal-b)) + " = " + ratio.ToString("F2"));
             } else {
                 ratio = (goal - b) / Math.Max(1, (goal - a));
-                DebugScrambler("Ratio ru/us: " + a + " vs " + b + " <- [" + goal + "]: " + (goal-b) + "/" + Math.Max(1, (goal-a)) + " = " + ratio.ToString("F2"));
+                DebugScrambler("Ratio RU/US: " + a + " vs " + b + " <- [" + goal + "]: " + (goal-b) + "/" + Math.Max(1, (goal-a)) + " = " + ratio.ToString("F2"));
             }
         } else {
             // direct ratio
             if (a > b) {
                 ratio = a / Math.Max(1, b);
-                DebugScrambler("Ratio us/ru: " + a + " vs " + b + " -> [" + goal + "]: " + a + "/" + Math.Max(1, b) + " = " + ratio.ToString("F2"));
+                DebugScrambler("Ratio US/RU: " + a + " vs " + b + " -> [" + goal + "]: " + a + "/" + Math.Max(1, b) + " = " + ratio.ToString("F2"));
             } else {
                 ratio = b / Math.Max(1, a);
-                DebugScrambler("Ratio ru/us: " + a + " vs " + b + " -> [" + goal + "]: " + b + "/" + Math.Max(1, a) + " = " + ratio.ToString("F2"));
+                DebugScrambler("Ratio RU/US: " + a + " vs " + b + " -> [" + goal + "]: " + b + "/" + Math.Max(1, a) + " = " + ratio.ToString("F2"));
             }
         } 
         if ((ratio * 100) < OnlyOnFinalTicketPercentage) {
@@ -5257,10 +5257,12 @@ private void ScramblerLoop () {
     */
     try {
         DateTime last = DateTime.MinValue;
-        bool logOnly = false;
         while (fIsEnabled) {
             double delay = 0;
             DateTime since = DateTime.MinValue;
+            bool logOnly = false;
+            int oldLevel = DebugLevel;
+
             lock (fScramblerLock) {
                 while (fScramblerLock.MaxDelay == 0) {
                     Monitor.Wait(fScramblerLock);
@@ -5269,6 +5271,8 @@ private void ScramblerLoop () {
                 if (fScramblerLock.MaxDelay == -1) {
                     fScramblerLock.MaxDelay = 0;
                     logOnly = true;
+                    oldLevel = DebugLevel;
+                    DebugLevel = 6;
                 }
                 delay = fScramblerLock.MaxDelay;
                 since = fScramblerLock.LastUpdate;
@@ -5489,7 +5493,7 @@ private void ScramblerLoop () {
                     switch (DivideBy) {
                         case DivideByChoices.ClanTag:
                             foreach (PlayerModel p in sr.Roster) {
-                                if (!String.IsNullOrEmpty(ClanTagToDivideBy) && ExtractTag(p) == ClanTagToDivideBy) sr.ClanTagCount  = sr.ClanTagCount + 1;
+                                if (!String.IsNullOrEmpty(ClanTagToDivideBy) && ExtractTag(p) == ClanTagToDivideBy) sr.ClanTagCount = sr.ClanTagCount + 1;
                             }
                             debugMsg = " ClanTag[" + ClanTagToDivideBy + "] " + sr.ClanTagCount;
                             break;
@@ -5568,56 +5572,159 @@ private void ScramblerLoop () {
                     if (ruScrambled == target && target.Count >= teamMax) target = usScrambled;
                 }
 
-                foreach (SquadRoster squad in all) { // strongest to weakest
+                //foreach (SquadRoster squad in all) { // strongest to weakest
+                SquadRoster squad = all[0];
+                List<PlayerModel> opposing = null;
+                do {
+                    all.Remove(squad);
 
                     AssignSquadToTeam(squad, squadTable, usScrambled, ruScrambled, target);
-                    /*
-                    if (usScrambled.Count >= teamMax && ruScrambled.Count >= teamMax) {
-                        DebugScrambler("BOTH teams full! Skipping remaining free pool!");
-                        break;
-                    }
-                    int wasSquad = squad.Roster[0].Squad;
-
-                    // Remap if there is a squad collision
-                    if (squadTable.ContainsKey(squad.Squad)) {
-                        RemapSquad(squadTable, squad);
-                    }
-                    squadTable[squad.Squad] = squad;
-                    int wasTeam = squad.Roster[0].Team;
-                    String st = (wasTeam == 1) ? "US" : "RU";
-                    String gt = (target == usScrambled) ? "US" : "RU";
-                    DebugScrambler(st + "/" + SQUAD_NAMES[wasSquad] + " scrambled to " + gt + "/" + SQUAD_NAMES[squad.Squad]);
-
-                    // Assign the squad to the target team
-                    foreach (PlayerModel p in squad.Roster) {
-                        p.ScrambledSquad = squad.Squad;
-                        if (target.Count < teamMax && IsKnownPlayer(p.Name)) target.Add(p);
-                    }
-                    */
 
                     // Recalc team metrics
                     SumMetricByTeam(usScrambled, ruScrambled, out usMetric, out ruMetric);
-                    if (DebugLevel >= 6) ConsoleDebug("Updated scrambler metrics " + ScrambleBy + ": US(" + usScrambled.Count + ") = " + usMetric.ToString("F1") + ", RU(" + ruScrambled.Count + ") = " + ruMetric.ToString("F1"));
+                    if (logOnly || DebugLevel >= 6) ConsoleDebug("Updated scrambler metrics " + ScrambleBy + ": US(" + usScrambled.Count + ") = " + usMetric.ToString("F1") + ", RU(" + ruScrambled.Count + ") = " + ruMetric.ToString("F1"));
+
+                    // Choose new target team base on metrics
                     if (usScrambled.Count >= teamMax && ruScrambled.Count < teamMax) {
                         target = ruScrambled;
+                        opposing = usScrambled;
                         squadTable = ruSquads;
+                        squad = all[0];
                         debugMsg = "Original target = RU";
+                        continue; // skip additional checks, no other choice
                     } else if (ruScrambled.Count >= teamMax && usScrambled.Count < teamMax) {
                         target = usScrambled;
+                        opposing = ruScrambled;
                         squadTable = usSquads;
+                        squad = all[0];
                         debugMsg = "Original target = US";
+                        continue; // skip additional checks, no other choice
                     } else if (usMetric < ruMetric) {
                         target = usScrambled;
+                        opposing = ruScrambled;
                         squadTable = usSquads;
                         debugMsg = "Original target = US";
                     } else {
                         target = ruScrambled;
+                        opposing = usScrambled;
                         squadTable = ruSquads;
                         debugMsg = "Original target = RU";
                     }
-                }
+
+                    if (all.Count == 0) break;
+
+                    // Override choice if teams would be too unbalanced by player count
+                    if (target.Count > opposing.Count) {
+                        // Take a weak squad from the end of the list instead
+                        squad = all[all.Count-1];
+                        // assign to the opposing team
+                        List<PlayerModel> tmp = target;
+                        target = opposing;
+                        opposing = tmp;
+                        if (target == usScrambled) {
+                            squadTable = usSquads;
+                            debugMsg = "Revised for count target = US";
+                        } else {
+                            squadTable = ruSquads;
+                            debugMsg = "Revised for count target = RU";
+                        }
+                    } else {
+                        squad = all[0]; // use strongest squad
+                    }
+
+                    if (logOnly || DebugLevel >= 6) ConsoleDebug(debugMsg + ", squad " + SQUAD_NAMES[squad.Squad] + " (" + squad.Roster.Count + ")");
+
+                } while (all.Count > 0);
 
                 if (!fIsEnabled) return;
+
+                // Make sure player counts aren't too out of balance
+                if (Math.Abs(usScrambled.Count - ruScrambled.Count) > 1) {
+                    int needed = Math.Abs(usScrambled.Count - ruScrambled.Count) - 1;
+                    int targetDispersalGroup = 0;
+                    Dictionary<int,SquadRoster> targetSquadTable = null;
+                    int toTeamId = 0;
+
+                    if (usScrambled.Count < ruScrambled.Count) {
+                        target = usScrambled;
+                        opposing = ruScrambled;
+                        squadTable = ruSquads; // opposing
+                        targetSquadTable = usSquads;
+                        targetDispersalGroup = 1;
+                        toTeamId = 1;
+                        debugMsg = "US needs " + needed + " more players";
+                    } else {
+                        target = ruScrambled;
+                        opposing = usScrambled;
+                        squadTable = usSquads; // opposing
+                        targetSquadTable = ruSquads;
+                        targetDispersalGroup = 2;
+                        toTeamId = 2;
+                        debugMsg = "RU needs " + needed + " more players";
+                    }
+
+                    DebugScrambler("Adjusting team allocation, " + debugMsg);
+
+                    // Move players from opposing to target from weak end of list
+                    while (opposing.Count > 0 && (opposing.Count - target.Count) > 1) {
+                        PlayerModel filler = null;
+
+                        // Loop through the opposing team to find a filler player to move to the target team
+                        for (int i = opposing.Count - 1; i >= 0; --i) {
+                            filler = opposing[i];
+                            if (filler == null) break;
+
+                            // Check to make sure Dispersal isn't violated
+                            if (DivideBy == DivideByChoices.DispersalGroup && IsDispersal(filler) && filler.DispersalGroup != targetDispersalGroup) {
+                                filler = null;
+                                continue;
+                            }
+
+                            // Make sure player doesn't have clan tag being divided
+                            String ft = ExtractTag(filler);
+                            if (ft == null) ft = String.Empty;
+                            if (DivideBy == DivideByChoices.ClanTag && ft == ClanTagToDivideBy) {
+                                filler = null;
+                                continue;
+                            }
+
+                            // Make sure squad filler is coming from doesn't have clan tags to keep together
+                            int cmt = 0;
+                            SquadRoster fillerSquad = null;
+                            if ((KeepClanTagsInSameSquad || KeepSquadsTogether) && squadTable.TryGetValue(filler.Squad, out fillerSquad) && fillerSquad != null) {
+                                foreach (PlayerModel mate in fillerSquad.Roster) {
+                                    if (ft == ExtractTag(mate)) ++cmt;
+                                }
+
+                                if (cmt >= 2) {
+                                    filler = null;
+                                    continue;
+                                }
+                            }
+
+                            // Otherwise, our candidate filler player is the one to go
+                            try {
+                                SquadRoster fromSquad = squadTable[filler.Squad];
+                                AssignFillerToTeam(filler, toTeamId, target, targetSquadTable);
+                                opposing.Remove(filler);
+                                fromSquad.Roster.Remove(filler);
+                            } catch (Exception e) {
+                                ConsoleException(e);
+                            }
+                            // That's one down, how may more to go? Check in the outer while loop
+                            break;
+                        }
+
+                        // Check to make sure we found a filler
+                        if (filler == null) {
+                            DebugScrambler("Unable to balance teams for player count, giving up!");
+                            break;
+                        }
+                    }
+                }
+
+                // Final counts
+                DebugScrambler("Final scrambled team counts: US(" + usScrambled.Count + "), RU(" + ruScrambled.Count + ")");
 
                 // Now run through each list and move any players that need moving
                 ScrambleMove(usScrambled, 1, logOnly);
@@ -5844,6 +5951,43 @@ private void RememberTeams() {
 }
 
 
+
+private void AssignFillerToTeam(PlayerModel filler, int toTeamId, List<PlayerModel> target, Dictionary<int,SquadRoster> targetSquadTable) {
+    // Find a squad with room to add this player, otherwise create a squad
+    int toSquadId = 0;
+    int emptyId = 1;
+    SquadRoster toSquad = null;
+    foreach (int key in targetSquadTable.Keys) {
+        toSquad = targetSquadTable[key];
+        if (toSquad.Roster.Count == 4) continue;
+        toSquadId = key;
+        break;
+    }
+    if (toSquadId == 0) {
+        // Create a new squad
+        while (targetSquadTable.ContainsKey(emptyId)) {
+            ++emptyId;
+            if (emptyId >= SQUAD_NAMES.Length) {
+                emptyId = 0;
+                break;
+            }
+        }
+        toSquadId = emptyId;
+    }
+    String who = (toTeamId == 1) ? "US" : "RU";
+    DebugScrambler("Filling in " + who + " team with player ^b" + filler.FullName + "^n to squad " + SQUAD_NAMES[toSquadId]);
+    filler.Team = toTeamId;
+    filler.Squad = toSquadId;
+    target.Add(filler);
+    toSquad = null;
+    if (!targetSquadTable.ContainsKey(toSquadId)) {
+        toSquad = new SquadRoster(toSquadId);
+        targetSquadTable[toSquadId] = toSquad;
+    } else {
+        toSquad = targetSquadTable[toSquadId];
+    }
+    toSquad.Roster.Add(filler);
+}
 
 
 
