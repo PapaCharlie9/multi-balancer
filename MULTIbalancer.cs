@@ -704,7 +704,7 @@ private Thread fFetchThread = null;
 private Thread fListPlayersThread = null;
 private Thread fScramblerThread = null;
 private List<String> fReservedSlots = null;
-private bool fGotVersion = false;
+private bool fRefreshCommand = false;
 private int fServerUptime = -1;
 private bool fServerCrashed = false; // because fServerUptime >  fServerInfo.ServerUptime
 private DateTime fLastBalancedTimestamp = DateTime.MinValue;
@@ -910,7 +910,7 @@ public MULTIbalancer() {
     fPluginState = PluginState.Disabled;
     fGameState = GameState.Unknown;
     fServerInfo = null;
-    fGotVersion = false;
+    fRefreshCommand = false;
     fServerUptime = 0;
     fServerCrashed = false;
     fDebugScramblerBefore = new List<PlayerModel>[2]{new List<PlayerModel>(), new List<PlayerModel>()};
@@ -2275,6 +2275,12 @@ private void CommandToLog(string cmd) {
             return;
         }
         
+        if (Regex.Match(cmd, @"^refresh", RegexOptions.IgnoreCase).Success) {
+            fRefreshCommand = true;
+            ConsoleDump("Player model will be revalidated on next listPlayers event");
+            return;
+        }
+        
         if (Regex.Match(cmd, @"^reset settings", RegexOptions.IgnoreCase).Success) {
             ConsoleDump("^8^bRESETTING ALL PLUGIN SETTINGS (except Whitelist and Dispersal list) TO DEFAULT!");
             ResetSettings();
@@ -2477,6 +2483,7 @@ private void CommandToLog(string cmd) {
             ConsoleDump("^1^bmodes^n^0: Examine the known game modes");
             ConsoleDump("^1^bmoved^n^0: Examine which players were moved, how many times total and how long ago");
             ConsoleDump("^1^brage^n^0: Examine rage quit statistics");
+            ConsoleDump("^1^brefresh^n^0: Force refresh of player list");
             ConsoleDump("^1^breset settings^n^0: Reset all plugin settings to default, except for ^bWhitelist^n and ^bDisperse Evenly List^n");
             ConsoleDump("^1^bscrambled^n^0: Examine list of players before and after last successful scramble");
             ConsoleDump("^1^bsizes^n^0: Examine the sizes of various data structures");
@@ -2600,7 +2607,7 @@ public override void OnVersion(String type, String ver) {
     
     DebugWrite("Got ^bOnVersion^n: " + type + " " + ver, 7);
     try {
-        fGotVersion = true;
+        fRefreshCommand = true;
     } catch (Exception e) {
         ConsoleException(e);
     }
@@ -2869,14 +2876,14 @@ public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subs
         don't do a full reset
         */
         if (fServerCrashed 
-        || fGotVersion 
+        || fRefreshCommand 
         || (this.TotalPlayerCount >= 16 
             && this.TotalPlayerCount > players.Count 
             && (this.TotalPlayerCount - players.Count) >= Math.Min(CRASH_COUNT_HEURISTIC, this.TotalPlayerCount)) 
         || this.TotalPlayerCount > MaximumServerSize
         || (fTimeOutOfJoint > 0 && GetTimeInRoundMinutes() - fTimeOutOfJoint > 3.0))  {
             fServerCrashed = false;
-            fGotVersion = false;
+            fRefreshCommand = false;
             fTimeOutOfJoint = 0;
             ValidateModel(players);
         } else {
@@ -3339,7 +3346,7 @@ private void BalanceAndUnstack(String name) {
     if (mustMove && balanceSpeed == Speed.Stop) {
         DebugBalance("Removing MUST MOVE status from dispersal player ^b" + player.FullName + "^n T:" + player.Team + ", due to Balance Speed = Stop");
         mustMove = false;
-    } else if (GetPhase(perMode, false) == Phase.Late) {
+    } else if (mustMove && GetPhase(perMode, false) == Phase.Late) {
         DebugBalance("Removing MUST MOVE status from dispersal player ^b" + player.FullName + "^n T:" + player.Team + ", due to Phase = Late");
         mustMove = false;
     }
@@ -6760,7 +6767,7 @@ private void Reset() {
 
     fServerInfo = null; // release Procon reference
     fListPlayersTimestamp = DateTime.MinValue;
-    fGotVersion = false;
+    fRefreshCommand = false;
     fServerUptime = 0;
     fServerCrashed  = false;
     fFinalStatus = null;
