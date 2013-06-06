@@ -6681,7 +6681,7 @@ private List<String> GetSimplifiedModes() {
                 case "Assault64":
                     simple = "Conquest Large";
                     break;
-                case "Conquest":
+                case "Conquest Small": // Fix for Issue #34
                 case "Assault":
                 case "Assault #2":
                 case "Conquest Domination":
@@ -8065,6 +8065,7 @@ private PerModeSettings GetPerModeSettings() {
     && perMode != null) {
         return perMode;
     }
+    ConsoleDebug("GetPerModeSettings: using default settings for " + fServerInfo.GameMode + " => " + simpleMode);
     return new PerModeSettings();
 }
 
