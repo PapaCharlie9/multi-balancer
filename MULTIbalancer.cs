@@ -2296,12 +2296,12 @@ private void CommandToLog(string cmd) {
                 return;
             }
             ConsoleDump("===== BEFORE =====");
-            ListSideBySide(fDebugScramblerBefore[0], fDebugScramblerBefore[1]);
+            ListSideBySide(fDebugScramblerBefore[0], fDebugScramblerBefore[1], (KeepSquadsTogether || KeepClanTagsInSameSquad));
             ConsoleDump("===== AFTER =====");
-            ListSideBySide(fDebugScramblerAfter[0], fDebugScramblerAfter[1]);
+            ListSideBySide(fDebugScramblerAfter[0], fDebugScramblerAfter[1], (KeepSquadsTogether || KeepClanTagsInSameSquad));
             if (fDebugScramblerStartRound[0].Count > 0 && fDebugScramblerStartRound[1].Count > 0) {
                 ConsoleDump("===== START OF ROUND =====");
-                ListSideBySide(fDebugScramblerStartRound[0], fDebugScramblerStartRound[1]);
+                ListSideBySide(fDebugScramblerStartRound[0], fDebugScramblerStartRound[1], (KeepSquadsTogether || KeepClanTagsInSameSquad));
             }
             ConsoleDump("===== END =====");
             return;
@@ -5651,7 +5651,7 @@ private void ScramblerLoop () {
                 if (!fIsEnabled) return;
 
                 // Make sure player counts aren't too out of balance
-                if (Math.Abs(usScrambled.Count - ruScrambled.Count) > 1) {
+                if (usScrambled.Count <= teamMax && ruScrambled.Count <= teamMax && Math.Abs(usScrambled.Count - ruScrambled.Count) > 1) {
                     int needed = Math.Abs(usScrambled.Count - ruScrambled.Count) - 1;
                     int targetDispersalGroup = 0;
                     int toTeamId = 0;
@@ -5674,7 +5674,7 @@ private void ScramblerLoop () {
                         debugMsg = "RU needs " + needed + " more players";
                     }
 
-                    DebugScrambler("Adjusting team sizes, " + debugMsg);
+                    DebugScrambler("Adjusting team sizes, US(" + usScrambled.Count + "/" + fTeam1.Count + ") vs RU(" + ruScrambled.Count + "/" + fTeam2.Count + ") " + debugMsg);
 
                     // Move players from opposing to target from weak end of list
                     while (opposing.Count > 0 && (opposing.Count - target.Count) > 1) {
@@ -5728,7 +5728,7 @@ private void ScramblerLoop () {
 
                         // Check to make sure we found a filler
                         if (filler == null) {
-                            DebugScrambler("Unable to balance teams for player count, giving up!");
+                            DebugScrambler("^8Unable to balance teams for player count, giving up!");
                             break;
                         }
                     }
@@ -5740,41 +5740,50 @@ private void ScramblerLoop () {
                 if (!fIsEnabled) return;
 
                 // Make copies of the lists so that the live PlayerModels don't change during the moves
-                List<PlayerModel> usClone = new List<PlayerModel>();
-                List<PlayerModel> ruClone = new List<PlayerModel>();
+                List<PlayerModel> usClones = new List<PlayerModel>();
+                List<PlayerModel> ruClones = new List<PlayerModel>();
                 foreach (PlayerModel dude in usScrambled) {
                     PlayerModel clone = dude.ClonePlayer();
-                    usClone.Add(clone);
+                    usClones.Add(clone);
                 }
                 foreach (PlayerModel dude in ruScrambled) {
                     PlayerModel clone = dude.ClonePlayer();
-                    ruClone.Add(clone);
+                    ruClones.Add(clone);
                 }
 
                 // Using live PlayerModels, move players into squad 0 of their unscrambled teams 
                 // to avoid movement order overflows of squad size
-                UnsquadMove(usSquads, ruSquads, logOnly);
+                List<String> unsquaded = new List<String>();
+                UnsquadMove(usSquads, ruSquads, logOnly, unsquaded);
+
+                // Mark clones that were unsquaded to insure they get assigned a squad
+                foreach (PlayerModel clone in usClones) {
+                    if (unsquaded.Contains(clone.Name)) {
+                        clone.Squad = 0;
+                    }
+                }
+                foreach (PlayerModel clone in ruClones) {
+                    if (unsquaded.Contains(clone.Name)) {
+                        clone.Squad = 0;
+                    }
+                }
 
                 // Now run through each cloned list and move any players that need moving
-                DebugScrambler("STARTED SCRAMBLE MOVES");
-                ScrambleMove(usClone, 1, logOnly);
-                ScrambleMove(ruClone, 2, logOnly);
+                DebugScrambler("STARTING SCRAMBLE MOVES");
+                ScrambleMove(usClones, 1, logOnly);
+                ScrambleMove(ruClones, 2, logOnly);
                 DebugScrambler("FINISHED SCRAMBLE MOVES");
 
                 ScheduleListPlayers(1); // refresh
 
                 // For debugging
-                foreach (PlayerModel dude in usClone) {
-                    if (!IsKnownPlayer(dude.Name)) continue;
-                    player = dude;
-                    player.Squad = player.ScrambledSquad;
-                    fDebugScramblerAfter[0].Add(player);
+                foreach (PlayerModel clone in usClones) {
+                    if (!IsKnownPlayer(clone.Name)) continue;
+                    fDebugScramblerAfter[0].Add(clone);
                 }
-                foreach (PlayerModel dude in ruClone) {
-                    if (!IsKnownPlayer(dude.Name)) continue;
-                    player = dude;
-                    player.Squad = player.ScrambledSquad;
-                    fDebugScramblerAfter[1].Add(player);
+                foreach (PlayerModel clone in ruClones) {
+                    if (!IsKnownPlayer(clone.Name)) continue;
+                    fDebugScramblerAfter[1].Add(clone);
                 }
 
                 DebugScrambler("DONE!");
@@ -5828,12 +5837,12 @@ private void ScrambleMove(List<PlayerModel> scrambled, int where, bool logOnly) 
     int toTeam = where;
 
     // Move to available squad
-    foreach (PlayerModel dude in scrambled) {
-        if (!IsKnownPlayer(dude.Name)) continue; // might have left
-        String xt = ExtractTag(dude);
-        String name = dude.Name;
+    foreach (PlayerModel clone in scrambled) {
+        if (!IsKnownPlayer(clone.Name)) continue; // might have left
+        String xt = ExtractTag(clone);
+        String name = clone.Name;
         if (!String.IsNullOrEmpty(xt)) name = "[" + xt + "]" + name;
-        toSquad = dude.ScrambledSquad;
+        toSquad = clone.ScrambledSquad;
         if (toSquad < 0 || toSquad > (SQUAD_NAMES.Length - 1)) {
             ConsoleDebug("ScrambleMove: why is ^b" + name + "^n scrambled to squad " + toSquad + "?");
             continue;
@@ -5842,16 +5851,23 @@ private void ScrambleMove(List<PlayerModel> scrambled, int where, bool logOnly) 
             ConsoleDebug("ScrambleMove: why is ^b" + name + "^n scrambled to squad 0?");
             continue;
         }
-        if (dude.Team == toTeam && dude.Squad == toSquad) continue;
+        if (clone.Team == toTeam && clone.Squad == toSquad) {
+            ConsoleDebug("ScrambleMove: skipping scramble move of ^b" + clone.FullName + "^n, already in right team and squad");
+            continue;
+        }
 
         // Do the move
         if (!EnableLoggingOnlyMode && !logOnly) {
-            DebugScrambler("^1^bMOVE^n^0 ^b" + dude.FullName + "^n to " + GetTeamName(toTeam) + " team, squad " + SQUAD_NAMES[toSquad]);
-            ServerCommand("admin.movePlayer", dude.Name, toTeam.ToString(), toSquad.ToString(), "false");
+            DebugScrambler("^1^bMOVE^n^0 ^b" + clone.FullName + "^n to " + GetTeamName(toTeam) + " team, squad " + SQUAD_NAMES[toSquad]);
+            ServerCommand("admin.movePlayer", clone.Name, toTeam.ToString(), toSquad.ToString(), "false");
             Thread.Sleep(20);
         } else {
-            DebugScrambler("^9(SIMULATED) ^1^bMOVE^n^0 ^b" + dude.FullName + "^n to " + GetTeamName(toTeam) + " team, squad " + SQUAD_NAMES[toSquad]);
+            DebugScrambler("^9(SIMULATED) ^1^bMOVE^n^0 ^b" + clone.FullName + "^n to " + GetTeamName(toTeam) + " team, squad " + SQUAD_NAMES[toSquad]);
         }
+
+        // For debugging and since this is a clone model, update Team & Squad to reflect move
+        clone.Team = toTeam;
+        clone.Squad = toSquad;
     }
 }
 
@@ -5995,6 +6011,7 @@ private void AssignFillerToTeam(PlayerModel filler, int toTeamId, List<PlayerMod
         DebugScrambler("Team " + who + " is full, skipping filler assignment of ^b" + filler.FullName);
         return;
     }
+    if (!IsKnownPlayer(filler.Name)) return; // might have left
 
     // Find a squad with room to add this player, otherwise create a squad
     int toSquadId = 0;
@@ -6016,8 +6033,10 @@ private void AssignFillerToTeam(PlayerModel filler, int toTeamId, List<PlayerMod
             }
         }
         toSquadId = emptyId;
+        ConsoleDebug("AssignFillerToTeam: created new squad " + SQUAD_NAMES[toSquadId]);
+    } else {
+        ConsoleDebug("AssignFillerToTeam: using existing squad " + SQUAD_NAMES[toSquadId]);
     }
-    if (!IsKnownPlayer(filler.Name)) return; // might have left
     DebugScrambler("Filling in " + who + " team with player ^b" + filler.FullName + "^n to squad " + SQUAD_NAMES[toSquadId]);
     filler.ScrambledSquad = toSquadId;
     target.Add(filler);
@@ -6031,7 +6050,7 @@ private void AssignFillerToTeam(PlayerModel filler, int toTeamId, List<PlayerMod
     toSquad.Roster.Add(filler);
 }
 
-private void UnsquadMove(Dictionary<int,SquadRoster> usSquads, Dictionary<int,SquadRoster> ruSquads, bool logOnly) {
+private void UnsquadMove(Dictionary<int,SquadRoster> usSquads, Dictionary<int,SquadRoster> ruSquads, bool logOnly, List<String> unsquaded) {
     DebugScrambler("UNSQUADING DUPLICATE SQUADS");
     // Only need to unsquad when squad id exists on both teams
 
@@ -6054,6 +6073,7 @@ private void UnsquadMove(Dictionary<int,SquadRoster> usSquads, Dictionary<int,Sq
             if ((tid == 1 && ruSquads.ContainsKey(livePlayerModel.ScrambledSquad))
             || (tid == 2 && usSquads.ContainsKey(livePlayerModel.ScrambledSquad))) {
                 Unsquad(livePlayerModel, livePlayerModel.Team, logOnly);
+                unsquaded.Add(livePlayerModel.Name);
             } else {
                 int key = (1000 * livePlayerModel.Team) + livePlayerModel.ScrambledSquad;
                 if (!onlyLogOnce.Contains(key)) {
@@ -8227,7 +8247,7 @@ private int CountMatchingTags(PlayerModel player, Scope scope) {
 }
 
 
-private void ListSideBySide(List<PlayerModel> us, List<PlayerModel> ru) {
+private void ListSideBySide(List<PlayerModel> us, List<PlayerModel> ru, bool useSquadSort) {
     int max = Math.Max(us.Count, ru.Count);
 
     // Sort lists by specified metric, which might have changed by now, oh well
@@ -8366,34 +8386,65 @@ private void ListSideBySide(List<PlayerModel> us, List<PlayerModel> ru) {
 
     // Sort teams
     
-    us.Sort(delegate(PlayerModel lhs, PlayerModel rhs) { // descending position in allNames
-        if (lhs == null && rhs == null) return 0;
-        if (lhs == null) return -1;
-        if (rhs == null) return 1;
+    if (useSquadSort) {
+        us.Sort(delegate(PlayerModel lhs, PlayerModel rhs) { // ascending squad id
+            if (lhs == null && rhs == null) return 0;
+            if (lhs == null) return -1;
+            if (rhs == null) return 1;
 
-        int l = allNames.IndexOf(lhs.Name)+1;
-        int r = allNames.IndexOf(rhs.Name)+1;
-        if (l == 0 && r == 0) return 0;
-        if (l == 0) return 1; // 0 sorts to end
-        if (r == 0) return 1;
-        if (l < r) return -1;
-        if (l > r) return 1;
-        return 0;
-    });
-    ru.Sort(delegate(PlayerModel lhs, PlayerModel rhs) { // descending position in allNames
-        if (lhs == null && rhs == null) return 0;
-        if (lhs == null) return -1;
-        if (rhs == null) return 1;
+            int l = lhs.Squad;
+            int r = rhs.Squad;
+            if (l == 0 && r == 0) return 0;
+            if (l == 0) l = 999; // 0 sorts to end
+            if (r == 0) r = 999;
+            if (l < r) return -1;
+            if (l > r) return 1;
+            return 0;
+        });
+        ru.Sort(delegate(PlayerModel lhs, PlayerModel rhs) { // ascending squad id
+            if (lhs == null && rhs == null) return 0;
+            if (lhs == null) return -1;
+            if (rhs == null) return 1;
 
-        int l = allNames.IndexOf(lhs.Name)+1;
-        int r = allNames.IndexOf(rhs.Name)+1;
-        if (l == 0 && r == 0) return 0;
-        if (l == 0) return 1; // 0 sorts to end
-        if (r == 0) return 1;
-        if (l < r) return -1;
-        if (l > r) return 1;
-        return 0;
-    });
+            int l = lhs.Squad;
+            int r = rhs.Squad;
+            if (l == 0 && r == 0) return 0;
+            if (l == 0) l = 999; // 0 sorts to end
+            if (r == 0) r = 999;
+            if (l < r) return -1;
+            if (l > r) return 1;
+            return 0;
+        });
+    } else {
+        us.Sort(delegate(PlayerModel lhs, PlayerModel rhs) { // descending position in allNames
+            if (lhs == null && rhs == null) return 0;
+            if (lhs == null) return -1;
+            if (rhs == null) return 1;
+
+            int l = allNames.IndexOf(lhs.Name)+1;
+            int r = allNames.IndexOf(rhs.Name)+1;
+            if (l == 0 && r == 0) return 0;
+            if (l == 0) return 1; // 0 sorts to end
+            if (r == 0) return 1;
+            if (l < r) return -1;
+            if (l > r) return 1;
+            return 0;
+        });
+        ru.Sort(delegate(PlayerModel lhs, PlayerModel rhs) { // descending position in allNames
+            if (lhs == null && rhs == null) return 0;
+            if (lhs == null) return -1;
+            if (rhs == null) return 1;
+
+            int l = allNames.IndexOf(lhs.Name)+1;
+            int r = allNames.IndexOf(rhs.Name)+1;
+            if (l == 0 && r == 0) return 0;
+            if (l == 0) return 1; // 0 sorts to end
+            if (r == 0) return 1;
+            if (l < r) return -1;
+            if (l > r) return 1;
+            return 0;
+        });
+    }
 
     for (int i = 0; i < max; ++i) {
         String u = " ";
@@ -8411,7 +8462,8 @@ private void ListSideBySide(List<PlayerModel> us, List<PlayerModel> ru) {
                 }
                 sq = Math.Max(0, Math.Min(player.Squad, SQUAD_NAMES.Length - 1));
             } catch (Exception e) { ConsoleException (e); }
-            u = xt + " (" + SQUAD_NAMES[sq] + ", " + kstat + ":#" + (allNames.IndexOf(player.Name)+1) + ")";
+            //u = xt + " (" + SQUAD_NAMES[sq] + ", " + kstat + ":#" + (allNames.IndexOf(player.Name)+1) + ")";
+            u = "(" + SQUAD_NAMES[sq] + ", " + kstat + ":#" + (allNames.IndexOf(player.Name)+1) + ") " + xt;
         }
         if (i < ru.Count) {
             try {
@@ -8426,9 +8478,9 @@ private void ListSideBySide(List<PlayerModel> us, List<PlayerModel> ru) {
             } catch (Exception e) { ConsoleException(e); }
             r = xt + " (" + SQUAD_NAMES[sq] + ", " + kstat + ":#" + (allNames.IndexOf(player.Name)+1) + ")";
         }
-        ConsoleDump(String.Format("{0,-32} - {1,32}", u, r));
+        ConsoleDump(String.Format("{0,-40} - {1,40}", u, r));
     }
-    ConsoleDump(String.Format("{0,-32} - {1,32}", 
+    ConsoleDump(String.Format("{0,-40} - {1,40}", 
         "US AVG " + kstat + ":" + usAvg.ToString("F2"),
         "RU AVG " + kstat + ":" + ruAvg.ToString("F2")
     ));
