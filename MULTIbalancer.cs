@@ -2645,7 +2645,7 @@ public override void OnPlayerSquadChange(String soldierName, int teamId, int squ
 public override void OnPlayerTeamChange(String soldierName, int teamId, int squadId) {
     if (!fIsEnabled) return;
     
-    DebugWrite("^9^bGot OnPlayerTeamChange^n: " + soldierName + " " + teamId + " " + squadId, 7);
+    DebugWrite("^9^bGot OnPlayerTeamChange^n: " + soldierName + " " + teamId + " " + squadId, 6);
 
     if (fPluginState == PluginState.Disabled || fPluginState == PluginState.Error) return;
 
@@ -5131,11 +5131,17 @@ private void SetStats(PlayerModel player, Hashtable stats) {
 
 private void Scrambler(List<TeamScore> teamScores) {
     // Check all the reasons not to scramble
-    if (fServerInfo == null) return;
+    if (fServerInfo == null) {
+        ConsoleDebug("Scrambler: fServerInfo is null!");
+        return;
+    }
 
     PerModeSettings perMode = GetPerModeSettings();
 
-    if (!perMode.EnableScrambler) return;
+    if (!perMode.EnableScrambler) {
+        DebugScrambler("Enable Scrambler is False, no scramble this round");
+        return;
+    }
 
     int current = fServerInfo.CurrentRound + 1; // zero based index
     if (OnlyOnNewMaps && current < fServerInfo.TotalRounds) {
@@ -5502,7 +5508,7 @@ private void ScramblerLoop () {
                             foreach (PlayerModel p in sr.Roster) {
                                 if (!String.IsNullOrEmpty(ClanTagToDivideBy) && ExtractTag(p) == ClanTagToDivideBy) sr.ClanTagCount = sr.ClanTagCount + 1;
                             }
-                            debugMsg = " ClanTag[" + ClanTagToDivideBy + "] " + sr.ClanTagCount;
+                            debugMsg = "ClanTag[" + ClanTagToDivideBy + "] " + sr.ClanTagCount;
                             break;
                         case DivideByChoices.DispersalGroup: {
                             int[] gCount = new int[3]{0,0,0};
@@ -5516,7 +5522,7 @@ private void ScramblerLoop () {
                             if (gCount[1] != 0 || gCount[2] != 0) {
                                 sr.DispersalGroup = (gCount[1] > gCount[2]) ? 1 : 2;
                             }
-                            debugMsg = " Dispersal Group = " + sr.DispersalGroup;
+                            debugMsg = "Dispersal Group = " + sr.DispersalGroup;
                             break;
                         }
                         case DivideByChoices.None:
@@ -5524,7 +5530,7 @@ private void ScramblerLoop () {
                             break;
                     }
 
-                    DebugScrambler(ot + "/" + SQUAD_NAMES[sr.Squad] + " " + DivideBy + ": " + debugMsg);
+                    if (DivideBy != DivideByChoices.None) DebugScrambler("Divide " + ot + "/" + SQUAD_NAMES[sr.Squad] + " by " + debugMsg);
 
                     all.Add(sr);
                 }
@@ -5591,7 +5597,7 @@ private void ScramblerLoop () {
 
                     // Recalc team metrics
                     SumMetricByTeam(usScrambled, ruScrambled, out usMetric, out ruMetric);
-                    if (logOnly || DebugLevel >= 6) ConsoleDebug("Updated scrambler metrics " + ScrambleBy + ": US(" + usScrambled.Count + ") = " + usMetric.ToString("F1") + ", RU(" + ruScrambled.Count + ") = " + ruMetric.ToString("F1"));
+                    if (logOnly || DebugLevel >= 6) DebugScrambler("Updated scrambler metrics " + ScrambleBy + ": US(" + usScrambled.Count + ") = " + usMetric.ToString("F1") + ", RU(" + ruScrambled.Count + ") = " + ruMetric.ToString("F1"));
 
                     if (usScrambled.Count >= teamMax && ruScrambled.Count >= teamMax) {
                         all.Clear(); // no more room, skip remaining squads
@@ -5617,12 +5623,12 @@ private void ScramblerLoop () {
                         target = usScrambled;
                         targetSquadTable = usSquads;
                         opposing = ruScrambled;
-                        debugMsg = "Original target = US";
+                        debugMsg = "Scrambling to target = US";
                     } else {
                         target = ruScrambled;
                         targetSquadTable = ruSquads;
                         opposing = usScrambled;
-                        debugMsg = "Original target = RU";
+                        debugMsg = "Scrambling to target = RU";
                     }
 
                     // Override choice if teams would be too unbalanced by player count
@@ -5635,16 +5641,19 @@ private void ScramblerLoop () {
                         opposing = tmp;
                         if (target == usScrambled) {
                             targetSquadTable = usSquads;
-                            debugMsg = "Revised for count target = US";
+                            debugMsg = "^4REVISED for count target = US";
                         } else {
                             targetSquadTable = ruSquads;
-                            debugMsg = "Revised for count target = RU";
+                            debugMsg = "^4REVISED for count target = RU";
                         }
                     } else {
                         squad = all[0]; // use strongest squad
                     }
 
-                    if (logOnly || DebugLevel >= 6) ConsoleDebug(debugMsg + ", squad " + SQUAD_NAMES[squad.Squad] + " (" + squad.Roster.Count + ")");
+                    if (logOnly || DebugLevel >= 6) {
+                        DebugScrambler(" ");
+                        DebugScrambler(debugMsg + ", squad " + SQUAD_NAMES[squad.Squad] + " (" + squad.Roster.Count + ")");
+                    }
 
                 } while (all.Count > 0);
 
@@ -5787,7 +5796,7 @@ private void ScramblerLoop () {
                 }
 
                 DebugScrambler("DONE!");
-                if (logOnly || DebugLevel >= 6) CommandToLog("scrambled");
+                //if (logOnly || DebugLevel >= 6) CommandToLog("scrambled");
             } catch (Exception e) {
                 ConsoleException(e);
             }
@@ -6001,6 +6010,7 @@ private void RememberTeams() {
             }
         }
     }
+    if (DebugLevel >= 6) CommandToLog("scrambled");
 }
 
 
@@ -8238,10 +8248,10 @@ private int CountMatchingTags(PlayerModel player, Scope scope) {
     String loc = (scope == Scope.SameSquad) ? sname : GetTeamName(team);
 
     if (verified < 2) {
-        if (DebugLevel >= 6) DebugBalance("Count for matching tags for player ^b" + player.Name + "^n in " + loc + ", not enough verified tags to find matches");
+        if (DebugLevel >= 7) DebugBalance("Count for matching tags for player ^b" + player.Name + "^n in " + loc + ", not enough verified tags to find matches");
         return 0;
     } else {
-        if (DebugLevel >= 6 && same > 1) DebugBalance("Count for matching tags for player ^b" + player.Name + "^n in " + loc + ", found " + same + " matching tags [" + tag + "]");
+        if (DebugLevel >= 7 && same > 1) DebugBalance("Count for matching tags for player ^b" + player.Name + "^n in " + loc + ", found " + same + " matching tags [" + tag + "]");
     }
     return same;
 }
