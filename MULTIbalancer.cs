@@ -5359,6 +5359,10 @@ private void ScramblerLoop () {
 
                 // Build squad table and overall list
                 List<SquadRoster> all = new List<SquadRoster>();
+                List<PlayerModel> usHaveNoSquad = new List<PlayerModel>();
+                List<PlayerModel> ruHaveNoSquad = new List<PlayerModel>();
+                List<SquadRoster> usSquadOfOne = new List<SquadRoster>();
+                List<SquadRoster> ruSquadOfOne = new List<SquadRoster>();
                 Dictionary<int,SquadRoster> squads = new Dictionary<int,SquadRoster>(); // key int is (team * 1000) + squad
                 List<PlayerModel> loneWolves = new List<PlayerModel>();
                 int key = 0;
@@ -5370,7 +5374,13 @@ private void ScramblerLoop () {
                         player = GetPlayer(egg);
                         if (player == null) continue;
                         if (player.Team < 1) continue; // skip players that are still joining
-                        if (player.Squad < 1) continue; // skip players not in a squad
+                        if (player.Squad < 1) {
+                            if (player.Squad == 0) {
+                                if (player.Team == 1) { usHaveNoSquad.Add(player); }
+                                else if (player.Team == 2) { ruHaveNoSquad.Add(player); }
+                            }
+                            continue; // skip players not in a squad
+                        }
                         key = 9000; // free pool
                         int squadId = player.Squad;
                         if (KeepSquadsTogether) {
@@ -5447,6 +5457,10 @@ private void ScramblerLoop () {
                 // Sum up the metric for each squad
                 foreach (int k in squads.Keys) {
                     SquadRoster sr = squads[k];
+                    if (sr.Roster.Count == 1) {
+                        if (sr.Roster[0].Team == 1) { usSquadOfOne.Add(sr); }
+                        else if (sr.Roster[0].Team == 2) { ruSquadOfOne.Add(sr); }
+                    }
                     switch (ScrambleBy) {
                         case DefineStrong.RoundScore:
                             foreach (PlayerModel p in sr.Roster) {
@@ -5501,7 +5515,7 @@ private void ScramblerLoop () {
                     }
 
                     String ot = (sr.Roster[0].Team == 1) ? "US" : "RU";
-                    DebugScrambler(ot + "/" + SQUAD_NAMES[sr.Squad] + " " + ScrambleBy + ":" + sr.Metric.ToString("F1"));
+                    DebugScrambler(ot + "/" + SQUAD_NAMES[sr.Squad] + "(" + sr.Roster.Count + ") " + ScrambleBy + ":" + sr.Metric.ToString("F1"));
 
                     switch (DivideBy) {
                         case DivideByChoices.ClanTag:
@@ -5664,6 +5678,10 @@ private void ScramblerLoop () {
                     int needed = Math.Abs(usScrambled.Count - ruScrambled.Count) - 1;
                     int targetDispersalGroup = 0;
                     int toTeamId = 0;
+                    List<PlayerModel> opposingCopy = new List<PlayerModel>();
+                    List<PlayerModel> tmpCopy = new List<PlayerModel>();
+                    List<PlayerModel> oppHaveNoSquad = null;
+                    List<SquadRoster> oppSquadOfOne = null;
 
                     if (usScrambled.Count < ruScrambled.Count) {
                         target = usScrambled;
@@ -5672,6 +5690,8 @@ private void ScramblerLoop () {
                         toTeamId = 1;
                         opposing = ruScrambled;
                         opposingSquadTable = ruSquads;
+                        oppHaveNoSquad = ruHaveNoSquad;
+                        oppSquadOfOne = ruSquadOfOne;
                         debugMsg = "US needs " + needed + " more players";
                     } else {
                         target = ruScrambled;
@@ -5680,18 +5700,40 @@ private void ScramblerLoop () {
                         toTeamId = 2;
                         opposing = usScrambled;
                         opposingSquadTable = usSquads;
+                        oppHaveNoSquad = usHaveNoSquad;
+                        oppSquadOfOne = usSquadOfOne;
                         debugMsg = "RU needs " + needed + " more players";
                     }
 
                     DebugScrambler("Adjusting team sizes, US(" + usScrambled.Count + "/" + fTeam1.Count + ") vs RU(" + ruScrambled.Count + "/" + fTeam2.Count + ") " + debugMsg);
 
-                    // Move players from opposing to target from weak end of list
+                    // Rearrange opposing team scrambled list so that squad-of-one and have-no-squad players come first
+                    tmpCopy.AddRange(opposing);
+                    foreach (SquadRoster monoSquad in oppSquadOfOne) {
+                        PlayerModel op = monoSquad.Roster[0];
+                        opposingCopy.Add(op);
+                        tmpCopy.Remove(op);
+                    }
+                    oppSquadOfOne.Clear();
+                    foreach (PlayerModel op in oppHaveNoSquad) {
+                        opposingCopy.Add(op);
+                        tmpCopy.Remove(op);
+                    }
+                    oppHaveNoSquad.Clear();
+                    // Since team list is sorted, take from the weak end of the team
+                    for (int j = tmpCopy.Count - 1; j >= 0; --j) {
+                        opposingCopy.Add(tmpCopy[j]);
+                    }
+                    tmpCopy.Clear();
+
+                    // Move players from opposing team to target team until counts are in balance
                     while (opposing.Count > 0 && (opposing.Count - target.Count) > 1) {
                         PlayerModel filler = null;
 
-                        // Loop through the opposing team to find a filler player to move to the target team
-                        for (int i = opposing.Count - 1; i >= 0; --i) {
-                            filler = opposing[i];
+                        // Loop through the rearranged copy of opposing team to find a filler player to move to the target team
+                        // We use a copy since the original list has to be modified
+                        foreach (PlayerModel f in opposingCopy) {
+                            filler = f;
                             if (filler == null) break;
 
                             // Check to make sure Dispersal isn't violated
@@ -5711,7 +5753,7 @@ private void ScramblerLoop () {
                             // Make sure squad filler is coming from doesn't have clan tags to keep together
                             int cmt = 0;
                             SquadRoster fillerSquad = null;
-                            if ((KeepClanTagsInSameSquad || KeepSquadsTogether) && opposingSquadTable.TryGetValue(filler.Squad, out fillerSquad) && fillerSquad != null) {
+                            if ((KeepClanTagsInSameSquad || KeepSquadsTogether) && filler.Squad > 0 && opposingSquadTable.TryGetValue(filler.Squad, out fillerSquad) && fillerSquad != null) {
                                 foreach (PlayerModel mate in fillerSquad.Roster) {
                                     if (ft == ExtractTag(mate)) ++cmt;
                                 }
@@ -5724,10 +5766,13 @@ private void ScramblerLoop () {
 
                             // Otherwise, our candidate filler player is the one to go
                             try {
-                                SquadRoster fromSquad = opposingSquadTable[filler.Squad];
+                                int formerSquad = filler.Squad;
                                 AssignFillerToTeam(filler, toTeamId, target, targetSquadTable);
                                 opposing.Remove(filler);
-                                fromSquad.Roster.Remove(filler);
+                                if (formerSquad > 0) {
+                                    SquadRoster fromSquad = opposingSquadTable[formerSquad];
+                                    fromSquad.Roster.Remove(filler);
+                                }
                             } catch (Exception e) {
                                 ConsoleException(e);
                             }
@@ -5739,6 +5784,8 @@ private void ScramblerLoop () {
                         if (filler == null) {
                             DebugScrambler("^8Unable to balance teams for player count, giving up!");
                             break;
+                        } else {
+                            opposingCopy.Remove(filler);
                         }
                     }
                 }
@@ -5995,6 +6042,8 @@ private void RemapSquad(Dictionary<int,SquadRoster> squadTable, SquadRoster squa
 }
 
 private void RememberTeams() {
+    fDebugScramblerStartRound[0].Clear();
+    fDebugScramblerStartRound[1].Clear();
     lock (fAllPlayers) {
         foreach (String egg in fAllPlayers) {
             try {
