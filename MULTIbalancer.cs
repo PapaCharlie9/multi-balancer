@@ -1364,7 +1364,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.3.1";
+    return "1.0.3.2";
 }
 
 public String GetPluginAuthor() {
@@ -2636,7 +2636,7 @@ public override void OnPlayerLeft(CPlayerInfo playerInfo) {
 public override void OnPlayerSquadChange(String soldierName, int teamId, int squadId) {
     if (!fIsEnabled) return;
 
-    if (squadId == 0) return;
+    if (fGameState == GameState.Playing && squadId == 0) return;
     
     DebugWrite("^9^bGot OnPlayerSquadChange^n: " + soldierName + " " + teamId + " " + squadId, 7);
 }
@@ -5812,14 +5812,20 @@ private void ScramblerLoop () {
                 List<String> unsquaded = new List<String>();
                 UnsquadMove(usSquads, ruSquads, logOnly, unsquaded);
 
+                // Pause 2 seconds to let game server catch up
+                DebugScrambler("Pause 2 seconds to let game server catch up");
+                Thread.Sleep(2*1000);
+
                 // Mark clones that were unsquaded to insure they get assigned a squad
                 foreach (PlayerModel clone in usClones) {
                     if (unsquaded.Contains(clone.Name)) {
+                        if (clone.ScrambledSquad == -1) clone.ScrambledSquad = clone.Squad;
                         clone.Squad = 0;
                     }
                 }
                 foreach (PlayerModel clone in ruClones) {
                     if (unsquaded.Contains(clone.Name)) {
+                        if (clone.ScrambledSquad == -1) clone.ScrambledSquad = clone.Squad;
                         clone.Squad = 0;
                     }
                 }
@@ -5916,7 +5922,7 @@ private void ScrambleMove(List<PlayerModel> scrambled, int where, bool logOnly) 
         if (!EnableLoggingOnlyMode && !logOnly) {
             DebugScrambler("^1^bMOVE^n^0 ^b" + clone.FullName + "^n to " + GetTeamName(toTeam) + " team, squad " + SQUAD_NAMES[toSquad]);
             ServerCommand("admin.movePlayer", clone.Name, toTeam.ToString(), toSquad.ToString(), "false");
-            Thread.Sleep(20);
+            Thread.Sleep(60);
         } else {
             DebugScrambler("^9(SIMULATED) ^1^bMOVE^n^0 ^b" + clone.FullName + "^n to " + GetTeamName(toTeam) + " team, squad " + SQUAD_NAMES[toSquad]);
         }
@@ -6124,6 +6130,9 @@ private void UnsquadMove(Dictionary<int,SquadRoster> usSquads, Dictionary<int,Sq
             if (livePlayerModel.ScrambledSquad <= 0 || livePlayerModel.ScrambledSquad > (SQUAD_NAMES.Length - 1)) {
                 continue;
             }
+                Unsquad(livePlayerModel, livePlayerModel.Team, logOnly); // Let's try unsquading all
+                unsquaded.Add(livePlayerModel.Name);
+            /*
             int tid = livePlayerModel.Team;
             // If the opposing team has the same squad, there's a chance the squad on the opposing team might
             // get moved to this team before room is made for it, causing a squad size overflow on this team.
@@ -6140,6 +6149,7 @@ private void UnsquadMove(Dictionary<int,SquadRoster> usSquads, Dictionary<int,Sq
                     onlyLogOnce.Add(key);
                 }
             }
+            */
         } catch (Exception e) {
             ConsoleException(e);
         }
@@ -6154,7 +6164,7 @@ private void Unsquad(PlayerModel dude, int toTeam, bool logOnly) {
     if (!EnableLoggingOnlyMode && !logOnly) {
         DebugScrambler("^1^bMOVE^n^0 ^b" + dude.FullName + "^n to " + GetTeamName(toTeam) + " team, UNSQUAD");
         ServerCommand("admin.movePlayer", dude.Name, toTeam.ToString(), toSquad.ToString(), "false");
-        //Thread.Sleep(10);
+        Thread.Sleep(60);
     } else {
         DebugScrambler("^9(SIMULATED) ^1^bMOVE^n^0 ^b" + dude.FullName + "^n to " + GetTeamName(toTeam) + " team, UNSQUAD");
     }
