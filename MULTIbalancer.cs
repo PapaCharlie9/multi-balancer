@@ -5769,8 +5769,8 @@ private void ScramblerLoop () {
                                 int formerSquad = filler.Squad;
                                 AssignFillerToTeam(filler, toTeamId, target, targetSquadTable);
                                 opposing.Remove(filler);
-                                if (formerSquad > 0) {
-                                    SquadRoster fromSquad = opposingSquadTable[formerSquad];
+                                SquadRoster fromSquad = null;
+                                if (formerSquad > 0 && opposingSquadTable.TryGetValue(formerSquad, out fromSquad) && fromSquad != null) {
                                     fromSquad.Roster.Remove(filler);
                                 }
                             } catch (Exception e) {
