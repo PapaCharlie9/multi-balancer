@@ -5675,7 +5675,7 @@ private void ScramblerLoop () {
 
                 // Make sure player counts aren't too out of balance
                 if (usScrambled.Count <= teamMax && ruScrambled.Count <= teamMax && Math.Abs(usScrambled.Count - ruScrambled.Count) > 1) {
-                    int needed = Math.Abs(usScrambled.Count - ruScrambled.Count) - 1;
+                    int needed = Math.Abs(usScrambled.Count - ruScrambled.Count)/2;
                     int targetDispersalGroup = 0;
                     int toTeamId = 0;
                     List<PlayerModel> opposingCopy = new List<PlayerModel>();
