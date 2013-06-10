@@ -2303,6 +2303,7 @@ private void CommandToLog(string cmd) {
                 ConsoleDump("===== START OF ROUND =====");
                 ListSideBySide(fDebugScramblerStartRound[0], fDebugScramblerStartRound[1], (KeepSquadsTogether || KeepClanTagsInSameSquad));
                 if (KeepSquadsTogether || KeepClanTagsInSameSquad) {
+                    ConsoleDump(" ");
                     // After team swaps, compare squads
                     CompareSquads(1, fDebugScramblerAfter[1], fDebugScramblerStartRound[0]);
                     CompareSquads(2, fDebugScramblerAfter[0], fDebugScramblerStartRound[1]);
@@ -6211,6 +6212,7 @@ private void AssignFillerToTeam(PlayerModel filler, int toTeamId, List<PlayerMod
     }
     DebugScrambler("Filling in " + who + " team with player ^b" + filler.FullName + "^n to squad " + SQUAD_NAMES[toSquadId]);
     filler.ScrambledSquad = toSquadId;
+    filler.Team = toTeamId;
     target.Add(filler);
     toSquad = null;
     if (!targetSquadTable.ContainsKey(toSquadId)) {
