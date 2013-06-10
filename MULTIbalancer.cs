@@ -2302,8 +2302,8 @@ private void CommandToLog(string cmd) {
             if (KeepSquadsTogether || KeepClanTagsInSameSquad) {
                 ConsoleDump(" ");
                 // After scramble, compare squads
-                CompareSquads(1, fDebugScramblerBefore[0], fDebugScramblerAfter[0]);
-                CompareSquads(2, fDebugScramblerBefore[1], fDebugScramblerAfter[1]);
+                CompareSquads(1, fDebugScramblerBefore[0], fDebugScramblerAfter[0], false);
+                CompareSquads(2, fDebugScramblerBefore[1], fDebugScramblerAfter[1], false);
             }
             if (fDebugScramblerStartRound[0].Count > 0 && fDebugScramblerStartRound[1].Count > 0) {
                 ConsoleDump("===== START OF ROUND =====");
@@ -2311,8 +2311,8 @@ private void CommandToLog(string cmd) {
                 if (KeepSquadsTogether || KeepClanTagsInSameSquad) {
                     ConsoleDump(" ");
                     // After team swaps, compare squads
-                    CompareSquads(1, fDebugScramblerAfter[1], fDebugScramblerStartRound[0]);
-                    CompareSquads(2, fDebugScramblerAfter[0], fDebugScramblerStartRound[1]);
+                    CompareSquads(1, fDebugScramblerAfter[1], fDebugScramblerStartRound[0], true);
+                    CompareSquads(2, fDebugScramblerAfter[0], fDebugScramblerStartRound[1], true);
                 }
             }
             ConsoleDump("===== END =====");
@@ -2511,7 +2511,7 @@ private void CommandToLog(string cmd) {
     }
 }
 
-private void CompareSquads(int team, List<PlayerModel> before, List<PlayerModel> after) {
+private void CompareSquads(int team, List<PlayerModel> before, List<PlayerModel> after, bool checkSquadChange) {
     Dictionary<int,List<String>> beforeTable = new Dictionary<int,List<String>>();
     Dictionary<int,List<String>> afterTable = new Dictionary<int,List<String>>();
     // Load the expected squad assignments into a table indexed by squad
@@ -2539,11 +2539,11 @@ private void CompareSquads(int team, List<PlayerModel> before, List<PlayerModel>
 
     // Compare
     foreach (int expectedSquad in beforeTable.Keys) {
-        AnalyzeSquadLists(team, expectedSquad, beforeTable[expectedSquad], afterTable);
+        AnalyzeSquadLists(team, expectedSquad, beforeTable[expectedSquad], afterTable, checkSquadChange);
     }
 }
 
-private void AnalyzeSquadLists(int expectedTeam, int expectedSquad, List<String> expectedSquadList, Dictionary<int, List<String>> actualTable) {
+private void AnalyzeSquadLists(int expectedTeam, int expectedSquad, List<String> expectedSquadList, Dictionary<int, List<String>> actualTable, bool checkSquadChange) {
     if (expectedTeam < 1 || expectedTeam > 2 || expectedSquad < 0 || expectedSquad >= SQUAD_NAMES.Length) return;
     List<String> inExpectedNotInActual = new List<String>();
     Dictionary<String,int> endedUpIn = new Dictionary<string,int>();
@@ -2607,7 +2607,7 @@ private void AnalyzeSquadLists(int expectedTeam, int expectedSquad, List<String>
             split = split + "end.";
             ConsoleDump("^8UNEXPECTED: " + ts + " was split!" + split);
         }
-    } else if (differentSquad != -1) {
+    } else if (differentSquad != -1 && checkSquadChange) {
         ConsoleDump(ts + " is intact, but ended up in a different squad than expected: " + SQUAD_NAMES[differentSquad]);
     }
     // Dump nothing if everything is as expected
