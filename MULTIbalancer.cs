@@ -1364,7 +1364,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.3.2";
+    return "1.0.3.3";
 }
 
 public String GetPluginAuthor() {
@@ -2299,6 +2299,12 @@ private void CommandToLog(string cmd) {
             ListSideBySide(fDebugScramblerBefore[0], fDebugScramblerBefore[1], (KeepSquadsTogether || KeepClanTagsInSameSquad));
             ConsoleDump("===== AFTER =====");
             ListSideBySide(fDebugScramblerAfter[0], fDebugScramblerAfter[1], (KeepSquadsTogether || KeepClanTagsInSameSquad));
+            if (KeepSquadsTogether || KeepClanTagsInSameSquad) {
+                ConsoleDump(" ");
+                // After scramble, compare squads
+                CompareSquads(1, fDebugScramblerBefore[0], fDebugScramblerAfter[0]);
+                CompareSquads(2, fDebugScramblerBefore[1], fDebugScramblerAfter[1]);
+            }
             if (fDebugScramblerStartRound[0].Count > 0 && fDebugScramblerStartRound[1].Count > 0) {
                 ConsoleDump("===== START OF ROUND =====");
                 ListSideBySide(fDebugScramblerStartRound[0], fDebugScramblerStartRound[1], (KeepSquadsTogether || KeepClanTagsInSameSquad));
@@ -5482,43 +5488,44 @@ private void ScramblerLoop () {
                         player = GetPlayer(egg);
                         if (player == null) continue;
                         if (player.Team < 1) continue; // skip players that are still joining
-                        if (player.Squad < 1) {
-                            if (player.Squad == 0) {
-                                if (player.Team == 1) { usHaveNoSquad.Add(player); }
-                                else if (player.Team == 2) { ruHaveNoSquad.Add(player); }
+                        PlayerModel clone = player.ClonePlayer(); // from now on, use a clone
+                        if (clone.Squad < 1) {
+                            if (clone.Squad == 0) {
+                                if (clone.Team == 1) { usHaveNoSquad.Add(clone); }
+                                else if (clone.Team == 2) { ruHaveNoSquad.Add(clone); }
                             }
                             continue; // skip players not in a squad
                         }
                         key = 9000; // free pool
-                        int squadId = player.Squad;
+                        int squadId = clone.Squad;
                         if (KeepSquadsTogether) {
-                            key = (Math.Max(0, player.Team) * 1000) + Math.Max(0, player.Squad);
+                            key = (Math.Max(0, clone.Team) * 1000) + Math.Max(0, clone.Squad);
                             if (key < 1000) {
-                                loneWolves.Add(player);
+                                loneWolves.Add(clone);
                                 continue;
                             } else {
-                                DebugScrambler("Keeping ^b" + player.FullName + "^n together with squad, using key " + key);
+                                DebugScrambler("Keeping ^b" + clone.FullName + "^n together with squad, using key " + key);
                             }
-                            AddPlayerToSquadRoster(squads, player, key, squadId, true);
+                            AddPlayerToSquadRoster(squads, clone, key, squadId, true);
                         } else if (KeepClanTagsInSameSquad) {
-                            int nt = CountMatchingTags(player, Scope.SameSquad);
-                            String tt = ExtractTag(player);
+                            int nt = CountMatchingTags(clone, Scope.SameSquad);
+                            String tt = ExtractTag(clone);
                             if (tt == null) tt = String.Empty;
                             if (nt >= 2) {
-                                key = (Math.Max(0, player.Team) * 1000) + Math.Max(0, player.Squad); // 0 is okay, makes lone-wolf pool
+                                key = (Math.Max(0, clone.Team) * 1000) + Math.Max(0, clone.Squad); // 0 is okay, makes lone-wolf pool
                                 if (key < 1000) {
-                                    loneWolves.Add(player);
+                                    loneWolves.Add(clone);
                                     continue;
                                 } else {
-                                    DebugScrambler("Keeping ^b" + player.Name + "^n together with " + nt + " tags [" + tt + "] with squad, using key " + key);
+                                    DebugScrambler("Keeping ^b" + clone.Name + "^n together with " + nt + " tags [" + tt + "] with squad, using key " + key);
                                 }
                             } else {
-                                loneWolves.Add(player);
+                                loneWolves.Add(clone);
                                 continue;
                             }
-                            AddPlayerToSquadRoster(squads, player, key, squadId, true);
+                            AddPlayerToSquadRoster(squads, clone, key, squadId, true);
                         } else {
-                            loneWolves.Add(player);
+                            loneWolves.Add(clone);
                         }
                     } catch (Exception e) {
                         if (DebugLevel >= 8) ConsoleException(e);
@@ -5677,7 +5684,6 @@ private void ScramblerLoop () {
                 Dictionary<int,SquadRoster> ruSquads = new Dictionary<int,SquadRoster>();
                 double ruMetric = 0;
 
-
                 // Dole out squads, keeping metric in balance, starting with the losing team
                 List<PlayerModel> target = (fWinner == 0 || fWinner == 1) ? ruScrambled : usScrambled;
                 Dictionary<int,SquadRoster> targetSquadTable = (fWinner == 0 || fWinner == 1) ? ruSquads : usSquads;
@@ -5692,14 +5698,14 @@ private void ScramblerLoop () {
                     foreach (SquadRoster disp in copy) {
                         if (disp.DispersalGroup == 1 && usScrambled.Count < teamMax) {
                             localTarget = usScrambled;
-                            debugMsg = "US";
+                            debugMsg = GetTeamName(1);
                         } else if (disp.DispersalGroup == 2 && ruScrambled.Count < teamMax) {
                             localTarget = ruScrambled;
-                            debugMsg = "RU";
+                            debugMsg = GetTeamName(2);
                         } else {
                             continue;
                         }
-                        DebugScrambler("Squad " + SQUAD_NAMES[disp.Squad] + ", Dispersal Group " + disp.DispersalGroup + " to " + debugMsg);
+                        DebugScrambler("Squad " + SQUAD_NAMES[disp.Squad] + ", Dispersal Group " + disp.DispersalGroup + " to " + debugMsg + " team");
                         AssignSquadToTeam(disp, targetSquadTable, usScrambled, ruScrambled, localTarget);
                         all.Remove(disp);
                     }
@@ -5728,7 +5734,7 @@ private void ScramblerLoop () {
 
                     if (all.Count == 0) break;
 
-                    // Choose new target team base on metrics
+                    // Choose new target team based on metrics
                     if (usScrambled.Count >= teamMax && ruScrambled.Count < teamMax) {
                         target = ruScrambled;
                         targetSquadTable = ruSquads;
@@ -5745,12 +5751,12 @@ private void ScramblerLoop () {
                         target = usScrambled;
                         targetSquadTable = usSquads;
                         opposing = ruScrambled;
-                        debugMsg = "Scrambling to target = US";
+                        debugMsg = "Scrambling to target = " + GetTeamName(1);
                     } else {
                         target = ruScrambled;
                         targetSquadTable = ruSquads;
                         opposing = usScrambled;
-                        debugMsg = "Scrambling to target = RU";
+                        debugMsg = "Scrambling to target = " + GetTeamName(2);
                     }
 
                     // Override choice if teams would be too unbalanced by player count
@@ -5763,10 +5769,10 @@ private void ScramblerLoop () {
                         opposing = tmp;
                         if (target == usScrambled) {
                             targetSquadTable = usSquads;
-                            debugMsg = "^4REVISED for count target = US";
+                            debugMsg = "^4REVISED for count target = " + GetTeamName(1);
                         } else {
                             targetSquadTable = ruSquads;
-                            debugMsg = "^4REVISED for count target = RU";
+                            debugMsg = "^4REVISED for count target = " + GetTeamName(2);
                         }
                     } else {
                         squad = all[0]; // use strongest squad
@@ -5800,7 +5806,7 @@ private void ScramblerLoop () {
                         opposingSquadTable = ruSquads;
                         oppHaveNoSquad = ruHaveNoSquad;
                         oppSquadOfOne = ruSquadOfOne;
-                        debugMsg = "US needs " + needed + " more players";
+                        debugMsg = GetTeamName(1) + " needs " + needed + " more players";
                     } else {
                         target = ruScrambled;
                         targetSquadTable = ruSquads;
@@ -5810,7 +5816,7 @@ private void ScramblerLoop () {
                         opposingSquadTable = usSquads;
                         oppHaveNoSquad = usHaveNoSquad;
                         oppSquadOfOne = usSquadOfOne;
-                        debugMsg = "RU needs " + needed + " more players";
+                        debugMsg = GetTeamName(2) + " needs " + needed + " more players";
                     }
 
                     DebugScrambler("Adjusting team sizes, US(" + usScrambled.Count + "/" + fTeam1.Count + ") vs RU(" + ruScrambled.Count + "/" + fTeam2.Count + ") " + debugMsg);
@@ -5901,57 +5907,100 @@ private void ScramblerLoop () {
                 // Final counts
                 DebugScrambler("Final scrambled team counts: US(" + usScrambled.Count + "), RU(" + ruScrambled.Count + ")");
 
-                if (!fIsEnabled) return;
+                // Assert that everyone is in their proper team
+                foreach (PlayerModel clone in usScrambled) {
+                    if (clone.Team != 1) {
+                        ConsoleDebug("WARNING: ^b" + clone.FullName + "^n was in " + GetTeamName(clone.Team) + ", correcting to " + GetTeamName(1));
+                        clone.Team = 1;
+                    }
+                }
+                foreach (PlayerModel clone in ruScrambled) {
+                    if (clone.Team != 2) {
+                        ConsoleDebug("WARNING: ^b" + clone.FullName + "^n was in " + GetTeamName(clone.Team) + ", correcting to " + GetTeamName(2));
+                        clone.Team = 2;
+                    }
+                }
 
-                // Make copies of the lists so that the live PlayerModels don't change during the moves
-                List<PlayerModel> usClones = new List<PlayerModel>();
-                List<PlayerModel> ruClones = new List<PlayerModel>();
-                foreach (PlayerModel dude in usScrambled) {
-                    PlayerModel clone = dude.ClonePlayer();
-                    usClones.Add(clone);
-                }
-                foreach (PlayerModel dude in ruScrambled) {
-                    PlayerModel clone = dude.ClonePlayer();
-                    ruClones.Add(clone);
-                }
+                if (!fIsEnabled) return;
 
                 // Using live PlayerModels, move players into squad 0 of their unscrambled teams 
                 // to avoid movement order overflows of squad size
                 List<String> unsquaded = new List<String>();
                 UnsquadMove(usSquads, ruSquads, logOnly, unsquaded);
 
-                // Pause 2 seconds to let game server catch up
-                DebugScrambler("Pause 2 seconds to let game server catch up");
-                Thread.Sleep(2*1000);
+                // Pause 1 second to let game server catch up
+                DebugScrambler("Pause 1 second to let game server catch up");
+                Thread.Sleep(1*1000);
 
                 // Mark clones that were unsquaded to insure they get assigned a squad
-                foreach (PlayerModel clone in usClones) {
+                foreach (PlayerModel clone in usScrambled) {
                     if (unsquaded.Contains(clone.Name)) {
                         if (clone.ScrambledSquad == -1) clone.ScrambledSquad = clone.Squad;
                         clone.Squad = 0;
+                    } else {
+                        ConsoleDebug("Why wasn't ^b" + clone.FullName + "^n unsquaded? " + GetTeamName(clone.Team) + " team,  Squad = " + clone.Squad + ", ScrambledSquad = " + clone.ScrambledSquad);
                     }
                 }
-                foreach (PlayerModel clone in ruClones) {
+                foreach (PlayerModel clone in ruScrambled) {
                     if (unsquaded.Contains(clone.Name)) {
                         if (clone.ScrambledSquad == -1) clone.ScrambledSquad = clone.Squad;
                         clone.Squad = 0;
+                    } else {
+                        ConsoleDebug("Why wasn't ^b" + clone.FullName + "^n unsquaded? " + GetTeamName(clone.Team) + " team,  Squad = " + clone.Squad + ", ScrambledSquad = " + clone.ScrambledSquad);
                     }
                 }
+                
+                // Assert that no squad has more than 4 players
+                Dictionary<int,int> playerCount = new Dictionary<int,int>();
+                foreach (PlayerModel clone in usScrambled) {
+                    int num = 0;
+                    if (clone.ScrambledSquad < 1 || clone.ScrambledSquad >= SQUAD_NAMES.Length) {
+                        ConsoleDebug("After unsquading " + GetTeamName(1) + ", ^b" + clone.FullName + "^n has invalid ScrambledSquad = " + clone.ScrambledSquad);
+                        continue;
+                    }
+                    if (playerCount.TryGetValue(clone.ScrambledSquad, out num)) {
+                        num = num + 1;
+                    }
+                    playerCount[clone.Squad] = num;
+                }
+                foreach (int squadId in playerCount.Keys) {
+                    if (playerCount[squadId] > 4) {
+                        ConsoleDebug("ERROR: " + GetTeamName(1) + "/" + SQUAD_NAMES[squadId] + " has > 4 players! = " + playerCount[squadId]);
+                    }
+                }
+                playerCount.Clear();
+                foreach (PlayerModel clone in ruScrambled) {
+                    int num = 0;
+                    if (clone.ScrambledSquad < 1 || clone.ScrambledSquad >= SQUAD_NAMES.Length) {
+                        ConsoleDebug("After unsquading " + GetTeamName(2) + ", ^b" + clone.FullName + "^n has invalid ScrambledSquad = " + clone.ScrambledSquad);
+                        continue;
+                    }
+                    if (playerCount.TryGetValue(clone.ScrambledSquad, out num)) {
+                        num = num + 1;
+                    }
+                    playerCount[clone.Squad] = num;
+                }
+                foreach (int squadId in playerCount.Keys) {
+                    if (playerCount[squadId] > 4) {
+                        ConsoleDebug("ERROR: " + GetTeamName(1) + "/" + SQUAD_NAMES[squadId] + " has > 4 players! = " + playerCount[squadId]);
+                    }
+                }
+                playerCount.Clear();
 
                 // Now run through each cloned list and move any players that need moving
                 DebugScrambler("STARTING SCRAMBLE MOVES");
-                ScrambleMove(usClones, 1, logOnly);
-                ScrambleMove(ruClones, 2, logOnly);
+                ScrambleMove(usScrambled, 1, logOnly);
+                ScrambleMove(ruScrambled, 2, logOnly);
                 DebugScrambler("FINISHED SCRAMBLE MOVES");
 
                 ScheduleListPlayers(1); // refresh
 
                 // For debugging
-                foreach (PlayerModel clone in usClones) {
+                foreach (PlayerModel clone in usScrambled) {
                     if (!IsKnownPlayer(clone.Name)) continue;
                     fDebugScramblerAfter[0].Add(clone);
                 }
-                foreach (PlayerModel clone in ruClones) {
+                foreach (PlayerModel clone in ruScrambled) {
                     if (!IsKnownPlayer(clone.Name)) continue;
                     fDebugScramblerAfter[1].Add(clone);
                 }
@@ -5990,14 +6039,18 @@ private void AssignSquadToTeam(SquadRoster squad, Dictionary<int,SquadRoster> sq
         }
         squadTable[squad.Squad] = squad;
         int wasTeam = squad.Roster[0].Team;
-        String st = (wasTeam == 1) ? "US" : "RU";
-        String gt = (target == usScrambled) ? "US" : "RU";
+        String st = GetTeamName(wasTeam);
+        String gt = GetTeamName((target == usScrambled) ? 1 : 2);
         DebugScrambler(st + "/" + SQUAD_NAMES[wasSquad] + " scrambled to " + gt + "/" + SQUAD_NAMES[squad.Squad]);
 
         // Assign the squad to the target team
-        foreach (PlayerModel p in squad.Roster) {
-            p.ScrambledSquad = squad.Squad;
-            if (target.Count < teamMax && IsKnownPlayer(p.Name)) target.Add(p);
+        int toTeam = (target == usScrambled) ? 1 : 2;
+        foreach (PlayerModel clone in squad.Roster) {
+            clone.ScrambledSquad = squad.Squad;
+            if (target.Count < teamMax && IsKnownPlayer(clone.Name)) {
+                clone.Team = toTeam;
+                target.Add(clone);
+            }
         }
 }
 
@@ -6179,7 +6232,7 @@ private void RememberTeams() {
 
 
 private void AssignFillerToTeam(PlayerModel filler, int toTeamId, List<PlayerModel> target, Dictionary<int,SquadRoster> targetSquadTable) {
-    String who = (toTeamId == 1) ? "US" : "RU";
+    String who = GetTeamName(toTeamId);
     if ((target.Count + 1) > (MaximumServerSize/2)) {
         DebugScrambler("Team " + who + " is full, skipping filler assignment of ^b" + filler.FullName);
         return;
@@ -6236,29 +6289,8 @@ private void UnsquadMove(Dictionary<int,SquadRoster> usSquads, Dictionary<int,Sq
     foreach (String name in liveNames) {
         try {
             PlayerModel livePlayerModel = GetPlayer(name); // Using live player model
-            if (livePlayerModel.ScrambledSquad <= 0 || livePlayerModel.ScrambledSquad > (SQUAD_NAMES.Length - 1)) {
-                continue;
-            }
-                Unsquad(livePlayerModel, livePlayerModel.Team, logOnly); // Let's try unsquading all
-                unsquaded.Add(livePlayerModel.Name);
-            /*
-            int tid = livePlayerModel.Team;
-            // If the opposing team has the same squad, there's a chance the squad on the opposing team might
-            // get moved to this team before room is made for it, causing a squad size overflow on this team.
-            // To avoid that problem, unsquad the player on this team. All the players on both teams that
-            // have the same squadID should end up unsquaded.
-            if ((tid == 1 && ruSquads.ContainsKey(livePlayerModel.ScrambledSquad))
-            || (tid == 2 && usSquads.ContainsKey(livePlayerModel.ScrambledSquad))) {
-                Unsquad(livePlayerModel, livePlayerModel.Team, logOnly);
-                unsquaded.Add(livePlayerModel.Name);
-            } else {
-                int key = (1000 * livePlayerModel.Team) + livePlayerModel.ScrambledSquad;
-                if (!onlyLogOnce.Contains(key)) {
-                    DebugScrambler("Team " + GetTeamName(livePlayerModel.Team) + ", Squad " + SQUAD_NAMES[livePlayerModel.ScrambledSquad] + " is unique, no need to unsquad");
-                    onlyLogOnce.Add(key);
-                }
-            }
-            */
+            Unsquad(livePlayerModel, livePlayerModel.Team, logOnly);
+            unsquaded.Add(livePlayerModel.Name);
         } catch (Exception e) {
             ConsoleException(e);
         }
