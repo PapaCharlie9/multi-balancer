@@ -2659,7 +2659,8 @@ public void OnPluginLoaded(String strHostName, String strPort, String strPRoConV
         "OnPlayerIsAlive",
         "OnReservedSlotsList",
         "OnEndRound",
-        "OnRunNextLevel"
+        "OnRunNextLevel",
+        "OnResponseError"
     );
 }
 
@@ -3310,6 +3311,17 @@ public override void OnRunNextLevel() {
     if (!fIsEnabled) return;
     
     DebugWrite("^9^bGot OnRunNextLevel^n", 7);
+}
+
+public override void OnResponseError(List<string> lstRequestWords, string strError) {
+    if (!fIsEnabled) return;
+    String msg = "Request(" + String.Join(", ", lstRequestWords.ToArray()) + "): ERROR = " + strError;
+
+    DebugWrite("^9^bGot OnResponseError, " + msg, 7);
+
+    if (lstRequestWords.Count > 2 && lstRequestWords[0] == "admin.movePlayer") {
+        DebugWrite("^1Move of ^b" + lstRequestWords[1] + "^n failed with error: " + strError, 4); 
+    }
 }
 
 
