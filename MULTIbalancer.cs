@@ -6117,13 +6117,13 @@ private ScrambleStatus ScrambleTeams(List<PlayerModel> usOrig, List<PlayerModel>
 
     // Move one by one, sending to the smallest team
     while (usClone.Count + ruClone.Count > 0) {
-        if (DebugLevel >= 7) ConsoleDebug("ScrambleTeams: max = " + maxTeam + ", US(" + usCount + "), RU(" + ruCount + ")");
+        if (DebugLevel >= 7) DebugScrambler("Team counts: Max = " + maxTeam + ", " + GetTeamName(1) + "(" + usCount + "), " + GetTeamName(2) + "(" + ruCount + ")");
 
         // Pick next list to pull from, using the one that represents moving to the lowest live count
         int nextList = 0;
-        if (usCount < maxTeam && usClone.Count > 0 && usCount <= ruCount) {
+        if (usCount < maxTeam && usClone.Count > 0 && (usCount <= ruCount || ruClone.Count == 0)) {
             nextList = 1;
-        } else if (ruCount < maxTeam && ruClone.Count > 0 && ruCount < usCount) {
+        } else if (ruCount < maxTeam && ruClone.Count > 0 && (ruCount <= usCount || usClone.Count == 0)) {
             nextList = 2;
         } else {
             if (first) return ScrambleStatus.Failure; // can't continue scramble, server is full
@@ -6131,7 +6131,7 @@ private ScrambleStatus ScrambleTeams(List<PlayerModel> usOrig, List<PlayerModel>
         }
 
         // Pull from list and do the move
-        DebugScrambler("Remaining to be moved: " + GetTeamName(1) + "(" + usClone.Count + "), " + GetTeamName(2) + "(" + ruClone.Count + ")");
+        DebugScrambler("Remaining to be moved: To " + GetTeamName(1) + "(" + usClone.Count + "), To " + GetTeamName(2) + "(" + ruClone.Count + ")");
         List<PlayerModel> pullFrom = (nextList == 1) ? usClone : ruClone;
         PlayerModel clone = pullFrom[0];
         pullFrom.Remove(clone);
