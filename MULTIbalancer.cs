@@ -2313,8 +2313,8 @@ private void CommandToLog(string cmd) {
                 if (KeepSquadsTogether || KeepClanTagsInSameSquad) {
                     ConsoleDump(" ");
                     // After team swaps, compare squads
-                    CompareSquads(2, 1, fDebugScramblerAfter[1], fDebugScramblerStartRound[0], 2, null, true);
-                    CompareSquads(1, 2, fDebugScramblerAfter[0], fDebugScramblerStartRound[1], 1, null, true);
+                    CompareSquads(2, 1, fDebugScramblerAfter[1], fDebugScramblerStartRound[0], 2, fDebugScramblerStartRound[1], true);
+                    CompareSquads(1, 2, fDebugScramblerAfter[0], fDebugScramblerStartRound[1], 1, fDebugScramblerStartRound[0], true);
                 }
             }
             ConsoleDump("===== END =====");
@@ -2516,7 +2516,7 @@ private void CommandToLog(string cmd) {
 private void CompareSquads(int beforeTeam, int afterTeam, List<PlayerModel> before, List<PlayerModel> after, int otherTeam, List<PlayerModel> otherAfter,  bool finalCheck) {
     Dictionary<int,List<String>> beforeTable = new Dictionary<int,List<String>>();
     Dictionary<int,List<String>> afterTable = new Dictionary<int,List<String>>();
-    Dictionary<int,List<String>> otherTable = null;
+    Dictionary<int,List<String>> otherTable = new Dictionary<int,List<String>>();
     // Load the expected squad assignments into a table indexed by squad
     foreach (PlayerModel b in before) {
         List<String> s = null;
@@ -2539,18 +2539,15 @@ private void CompareSquads(int beforeTeam, int afterTeam, List<PlayerModel> befo
             afterTable[a.Squad] = s;
         }
     }
-    // For the initial check before/after scrambling, check for cross-team moves
-    if (!finalCheck && otherAfter != null) {
-        otherTable = new Dictionary<int,List<String>>();
-        foreach (PlayerModel o in otherAfter) {
-            List<String> s = null;
-            if (otherTable.TryGetValue(o.Squad, out s) && s != null) {
-                s.Add(o.Name);
-            } else {
-                s = new List<String>();
-                s.Add(o.Name);
-                otherTable[o.Squad] = s;
-            }
+    // Check for cross-team moves
+    foreach (PlayerModel o in otherAfter) {
+        List<String> s = null;
+        if (otherTable.TryGetValue(o.Squad, out s) && s != null) {
+            s.Add(o.Name);
+        } else {
+            s = new List<String>();
+            s.Add(o.Name);
+            otherTable[o.Squad] = s;
         }
     }
 
@@ -2566,36 +2563,29 @@ private void CompareSquads(int beforeTeam, int afterTeam, List<PlayerModel> befo
 
 private void AnalyzeSquadLists(int beforeTeam, int beforeSquad, List<String> beforeSquadList, int afterTeam, Dictionary<int, List<String>> afterTable, int  otherTeam, Dictionary<int, List<String>> otherTable, bool finalCheck) {
     if (beforeTeam < 1 || beforeTeam > 2 || beforeSquad < 0 || beforeSquad >= SQUAD_NAMES.Length) return;
-    List<String> inBeforeNotAfter = new List<String>();
     Dictionary<String,int> endedUpIn = new Dictionary<string,int>();
     String teamName = GetTeamName(beforeTeam);
     String squadName = SQUAD_NAMES[beforeSquad];
     String ts = teamName + "/" + squadName;
 
     // Find which squad each expected player ended up in
-    inBeforeNotAfter.AddRange(beforeSquadList);
     foreach (String x in beforeSquadList) {
+        // anyone leave?
+        if (finalCheck && !IsKnownPlayer(x)) {
+            ConsoleDump("Player must have left, since " + ts + " is missing ^b" + x); 
+            continue;
+        }
+        // where did player x end up?
         foreach (int afterSquad in afterTable.Keys) {
             if (afterTable[afterSquad].Contains(x)) {
                 endedUpIn[x] = (1000 * afterTeam) + afterSquad; // remember combined team+squad this name ended up
-                inBeforeNotAfter.Remove(x); // we want this to be empty when we are done
             }
         }
-        if (!finalCheck && otherTable != null) foreach (int otherSquad in otherTable.Keys) {
+        foreach (int otherSquad in otherTable.Keys) {
             if (otherTable[otherSquad].Contains(x)) {
-                // after team 
                 endedUpIn[x] = (1000 * otherTeam) + otherSquad; // remember combined team+squad this name ended up
             }
         }
-    }
-    // anyone leave?
-    if (finalCheck && inBeforeNotAfter.Count > 0) {
-        String msg = ": ";
-        foreach (String left in inBeforeNotAfter) {
-            msg = msg + left + ", ";
-        }
-        msg = msg + "end.";
-        ConsoleDump("Players must have left, since " + ts + " is missing" + msg); 
     }
 
     // build a table of where every player actually ended up (invert endedUpIn table)
@@ -2641,7 +2631,7 @@ private void AnalyzeSquadLists(int beforeTeam, int beforeSquad, List<String> bef
             ConsoleDump("^8UNEXPECTED: " + ts + " was split!" + split);
         }
     } else if (differentSquad != -1) {
-        ConsoleDump(ts + " is intact and ended up in a different squad: " + SQUAD_NAMES[differentSquad]);
+        ConsoleDump(ts + " is intact and is now in a different squad: " + SQUAD_NAMES[differentSquad]);
     }
     // Dump nothing if everything is as expected
 }
