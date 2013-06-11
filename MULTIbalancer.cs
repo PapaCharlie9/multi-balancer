@@ -5402,7 +5402,6 @@ private void ScramblerLoop () {
             double delay = 0;
             DateTime since = DateTime.MinValue;
             bool logOnly = false;
-            int oldLevel = DebugLevel;
 
             lock (fScramblerLock) {
                 while (fScramblerLock.MaxDelay == 0) {
@@ -5412,8 +5411,6 @@ private void ScramblerLoop () {
                 if (fScramblerLock.MaxDelay == -1) {
                     fScramblerLock.MaxDelay = 0;
                     logOnly = true;
-                    oldLevel = DebugLevel;
-                    DebugLevel = 6;
                 }
                 delay = fScramblerLock.MaxDelay;
                 since = fScramblerLock.LastUpdate;
@@ -5457,7 +5454,7 @@ private void ScramblerLoop () {
                 if (KeepClanTagsInSameSquad) kctiss = ", KeepClansTagsInSameSquad";
                 DebugScrambler("Starting scramble of " + this.TotalPlayerCount + " players, winner was " + GetTeamName(fWinner));
                 DebugScrambler("Using (" + ScrambleBy + kst + kctiss + ", DivideBy = " + DivideBy + extra + ")");
-                last = DateTime.Now;
+                if (!logOnly) last = DateTime.Now;
 
                 // Build a filtered list
                 List<String> toScramble = new List<String>();
@@ -6003,8 +6000,22 @@ private void ScramblerLoop () {
 
                 // Now run through each cloned list and move any players that need moving
                 DebugScrambler("STARTING SCRAMBLE MOVES");
-                ScrambleTeams(usScrambled, ruScrambled, logOnly);
+                ScrambleStatus check = ScrambleTeams(usScrambled, ruScrambled, logOnly);
                 DebugScrambler("FINISHED SCRAMBLE MOVES");
+                switch (check) {
+                    case ScrambleStatus.CompletelyFull:
+                        DebugScrambler("SERVER IS COMPLETELY FULL! No scrambling is possible.");
+                        break;
+                    case ScrambleStatus.Failure:
+                        DebugScrambler("UNABLE TO SCRAMBLE, no room to move!");
+                        break;
+                    case ScrambleStatus.PartialSuccess:
+                        DebugScrambler("SCRAMBLE ABORTED! Some moves completed, some failed!");
+                        break;
+                    case ScrambleStatus.Success:
+                    default:
+                        break;
+                }
 
                 ScheduleListPlayers(1); // refresh
 
@@ -6110,7 +6121,7 @@ private ScrambleStatus ScrambleTeams(List<PlayerModel> usOrig, List<PlayerModel>
 
         // Pick next list to pull from, using the one that represents moving to the lowest live count
         int nextList = 0;
-        if (usCount < maxTeam && usClone.Count > 0 && usCount < ruCount) {
+        if (usCount < maxTeam && usClone.Count > 0 && usCount <= ruCount) {
             nextList = 1;
         } else if (ruCount < maxTeam && ruClone.Count > 0 && ruCount < usCount) {
             nextList = 2;
@@ -6124,17 +6135,23 @@ private ScrambleStatus ScrambleTeams(List<PlayerModel> usOrig, List<PlayerModel>
         List<PlayerModel> pullFrom = (nextList == 1) ? usClone : ruClone;
         PlayerModel clone = pullFrom[0];
         pullFrom.Remove(clone);
+        PlayerModel actual = GetPlayer(clone.Name);
+        int actualTeam = (actual != null) ? actual.Team : 0;
         first = false;
         try {
             ScrambleMove(clone, nextList, logOnly);
         } catch (Exception e) { ConsoleException(e); }
-        if (nextList == 1) {
-            ++usCount;
-            --ruCount;
-        } else {
-            ++ruCount;
-            --usCount;
-        }
+
+        // Moving to a new team?
+        if (actualTeam != clone.Team) {
+            if (nextList == 1) {
+                ++usCount;
+                --ruCount;
+            } else {
+                ++ruCount;
+                --usCount;
+            }
+        } // otherwise moved to same time, so no change in team counts
     }
     return ScrambleStatus.Success;
 }
