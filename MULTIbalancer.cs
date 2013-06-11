@@ -5971,13 +5971,13 @@ private void ScramblerLoop () {
                 // Using live PlayerModels, move players into squad 0 of their unscrambled teams 
                 // to avoid movement order overflows of squad size
                 List<String> unsquaded = new List<String>();
-                UnsquadMove(usSquads, ruSquads, logOnly, unsquaded);
+                UnsquadMove(usSquads, ruSquads, logOnly, unsquaded); // uses live players, not clones!
 
                 // Pause 1 second to let game server catch up
                 DebugScrambler("Pause 1 second to let game server catch up");
                 Thread.Sleep(1*1000);
                 
-                // Assert that no squad has more than 4 players
+                // Assert that no squad has more than 4 players, also clone as unsquaded
                 Dictionary<int,int> playerCount = new Dictionary<int,int>();
                 foreach (PlayerModel clone in usScrambled) {
                     int num = 0;
@@ -5985,6 +5985,7 @@ private void ScramblerLoop () {
                         ConsoleDebug("After unsquading " + GetTeamName(1) + ", ^b" + clone.FullName + "^n has invalid ScrambledSquad = " + clone.ScrambledSquad);
                         continue;
                     }
+                    clone.Squad = 0; // unsquad
                     if (playerCount.TryGetValue(clone.ScrambledSquad, out num)) {
                         num = num + 1;
                     }
@@ -6002,6 +6003,7 @@ private void ScramblerLoop () {
                         ConsoleDebug("After unsquading " + GetTeamName(2) + ", ^b" + clone.FullName + "^n has invalid ScrambledSquad = " + clone.ScrambledSquad);
                         continue;
                     }
+                    clone.Squad = 0; // unsquad
                     if (playerCount.TryGetValue(clone.ScrambledSquad, out num)) {
                         num = num + 1;
                     }
@@ -6009,7 +6011,7 @@ private void ScramblerLoop () {
                 }
                 foreach (int squadId in playerCount.Keys) {
                     if (playerCount[squadId] > 4) {
-                        ConsoleDebug("ERROR: " + GetTeamName(1) + "/" + SQUAD_NAMES[squadId] + " has > 4 players! = " + playerCount[squadId]);
+                        ConsoleDebug("ERROR: " + GetTeamName(2) + "/" + SQUAD_NAMES[squadId] + " has > 4 players! = " + playerCount[squadId]);
                     }
                 }
                 playerCount.Clear();
@@ -6475,11 +6477,11 @@ private void UnsquadMove(Dictionary<int,SquadRoster> usSquads, Dictionary<int,Sq
 private void SquadMove(PlayerModel clone, int toTeam, int toSquad, bool logOnly) {
     // Do the move
     if (!EnableLoggingOnlyMode && !logOnly) {
-        DebugScrambler("^1^bMOVE^n^0 ^b" + clone.FullName + "^n to " + GetTeamName(toTeam) + " team, SQUAD MOVE(" + SQUAD_NAMES[toSquad] + ")");
+        DebugScrambler("^1^bMOVE SQUAD^n^0 ^b" + clone.FullName + "^n to " + GetTeamName(toTeam) + " team, " + SQUAD_NAMES[toSquad] + " squad");
         ServerCommand("admin.movePlayer", clone.Name, toTeam.ToString(), toSquad.ToString(), "false");
         Thread.Sleep(60);
     } else {
-        DebugScrambler("^9(SIMULATED) ^1^bMOVE^n^0 ^b" + clone.FullName + "^n to " + GetTeamName(toTeam) + " team, SQUAD MOVE(" + SQUAD_NAMES[toSquad] + ")");
+        DebugScrambler("^9(SIMULATED) ^1^bMOVE SQUAD^n^0 ^b" + clone.FullName + "^n to " + GetTeamName(toTeam) + " team,  " + SQUAD_NAMES[toSquad] + " squad");
     }
     // force squad to new squad id
     clone.Squad = toSquad;
