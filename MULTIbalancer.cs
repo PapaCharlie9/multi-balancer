@@ -2565,6 +2565,7 @@ private void CompareSquads(int beforeTeam, int afterTeam, List<PlayerModel> befo
 }
 
 private void AnalyzeSquadLists(int beforeTeam, int beforeSquad, List<String> beforeSquadList, int afterTeam, Dictionary<int, List<String>> afterTable, int  otherTeam, Dictionary<int, List<String>> otherTable, bool finalCheck) {
+    // Analyze the disposition of one squad (beforeSquad)
     if (beforeTeam < 1 || beforeTeam > 2 || beforeSquad < 0 || beforeSquad >= SQUAD_NAMES.Length) return;
     Dictionary<String,int> endedUpIn = new Dictionary<string,int>();
     String teamName = GetTeamName(beforeTeam);
@@ -2593,14 +2594,14 @@ private void AnalyzeSquadLists(int beforeTeam, int beforeSquad, List<String> bef
 
     // build a table of where every player actually ended up (invert endedUpIn table)
     String split = " ";
-    int differentSquad = -1;
+    int different = -1;
     Dictionary<int, List<String>> movedSquadTable = new Dictionary<int,List<string>>(); // key is combined team + squad
 
     foreach (String name in endedUpIn.Keys) {
         int eui = endedUpIn[name];
         int endedUpInTeam = eui / 1000;
         int endedUpInSquad = eui - (1000 * endedUpInTeam);
-        if (endedUpInSquad != beforeSquad) differentSquad = endedUpInSquad;
+        if (endedUpInSquad != beforeSquad) different = eui; // only remember the latest
         List<String> endedUpInSquadList = null;
         if (movedSquadTable.TryGetValue(eui, out endedUpInSquadList) && endedUpInSquadList != null) {
             endedUpInSquadList.Add(name);
@@ -2623,6 +2624,7 @@ private void AnalyzeSquadLists(int beforeTeam, int beforeSquad, List<String> bef
             }
         }
         // every list except max
+        String notice = (finalCheck) ? "^8UNEXPECTED: " + ts + " did player(s) switch themselves, or was squad split?" : "^8ADJUSTED: player(s) removed from " + ts + " to balance teams:";
         foreach (int si in movedSquadTable.Keys) {
             if (si == big) continue;
             int siTeam = si / 1000;
@@ -2631,10 +2633,15 @@ private void AnalyzeSquadLists(int beforeTeam, int beforeSquad, List<String> bef
                 split = split + "^b" + outlier + "^n to " + SQUAD_NAMES[siSquad] + ", ";
             }
             split = split + "end.";
-            ConsoleDump("^8UNEXPECTED: " + ts + " was split!" + split);
+            ConsoleDump(notice + split);
+            split = " ";
         }
-    } else if (differentSquad != -1) {
-        ConsoleDump(ts + " is intact and is now in a different squad: " + SQUAD_NAMES[differentSquad]);
+    } else if (different != -1) {
+        int differentTeam = different / 1000;
+        if (differentTeam < 1 || differentTeam > 2) differentTeam = 0;
+        int differentSquad = different - (1000 * differentTeam);
+        if (differentSquad < 0 || differentSquad >= SQUAD_NAMES.Length) differentSquad = 0;
+        ConsoleDump(ts + " is intact and is now a different squad: " + GetTeamName(differentTeam) + "/" + SQUAD_NAMES[differentSquad]);
     }
     // Dump nothing if everything is as expected
 }
@@ -2665,7 +2672,6 @@ public void OnPluginLoaded(String strHostName, String strPort, String strPRoConV
     this.RegisterEvents(this.GetType().Name, 
         "OnVersion",
         "OnServerInfo",
-        //"OnResponseError",
         "OnListPlayers",
         //"OnPlayerJoin",
         "OnPlayerLeft",
@@ -3202,8 +3208,6 @@ public override void OnServerInfo(CServerInfo serverInfo) {
 }
 
 
-//public override void OnResponseError(List<String> requestWords, String error) { }
-
 //public override void OnGlobalChat(String speaker, String message) { }
 
 //public override void OnTeamChat(String speaker, String message, int teamId) { }
@@ -3341,9 +3345,13 @@ public override void OnRunNextLevel() {
 
 public override void OnResponseError(List<string> lstRequestWords, string strError) {
     if (!fIsEnabled) return;
+    if (lstRequestWords == null || lstRequestWords.Count == 0) return;
     String msg = "Request(" + String.Join(", ", lstRequestWords.ToArray()) + "): ERROR = " + strError;
 
-    DebugWrite("^9^bGot OnResponseError, " + msg, 7);
+    int level = 7;
+    if (lstRequestWords[0] == "player.ping") level = 8;
+
+    DebugWrite("^9^bGot OnResponseError, " + msg, level);
 
     if (lstRequestWords.Count > 2 && lstRequestWords[0] == "admin.movePlayer") {
         DebugWrite("^1Move of ^b" + lstRequestWords[1] + "^n failed with error: " + strError, 4); 
@@ -8866,7 +8874,9 @@ private void ListSideBySide(List<PlayerModel> us, List<PlayerModel> ru, bool use
         }
         ConsoleDump(String.Format("{0,-40} - {1,40}", u, r));
     }
-    ConsoleDump(String.Format("{0,-40} - {1,40}", 
+    String divider = "----------------------------------------";
+    ConsoleDump(String.Format("{0,-40} - {1,40}", divider, divider));
+    if (usAvg != 0 && ruAvg != 0) ConsoleDump(String.Format("{0,-40} - {1,40}", 
         "US AVG " + kstat + ":" + usAvg.ToString("F2"),
         "RU AVG " + kstat + ":" + ruAvg.ToString("F2")
     ));
