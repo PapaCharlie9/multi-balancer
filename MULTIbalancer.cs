@@ -729,6 +729,9 @@ private List<String> fRushMap5Stages = null;
 private int[] fGroupAssignments = null; // index is group number, value is team id
 private List<String>[] fDispersalGroups;
 private bool fNeedPlayerListUpdate = false;
+private bool fWhileScrambling = false;
+private DelayedRequest fExtrasLock;
+private List<String> fExtraNames = null;
 
 // Data model
 private List<String> fAllPlayers = null;
@@ -1015,6 +1018,9 @@ public MULTIbalancer() {
     fNeedPlayerListUpdate = false;
     fFriends = new Dictionary<int, List<String>>();
     fAllFriends = new List<String>();
+    fWhileScrambling = false;
+    fExtrasLock = new DelayedRequest();
+    fExtraNames = new List<String>();
     
     /* Settings */
 
@@ -2624,7 +2630,7 @@ private void AnalyzeSquadLists(int beforeTeam, int beforeSquad, List<String> bef
             }
         }
         // every list except max
-        String notice = (finalCheck) ? "^8UNEXPECTED: " + ts + " did player(s) switch themselves, or was squad split?" : "^8ADJUSTED: player(s) removed from " + ts + " to balance teams:";
+        String notice = (finalCheck) ? "^4UNEXPECTED: " + ts + " did player(s) switch themselves, or was squad split?" : "^4ADJUSTED: player(s) removed from " + ts + " to balance teams:";
         foreach (int si in movedSquadTable.Keys) {
             if (si == big) continue;
             int siTeam = si / 1000;
@@ -2812,7 +2818,7 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
             int diff = 0;
             bool mustMove = false; // don't have a player model yet, can't determine if must move
             int reassignTo = ToTeam(soldierName, teamId, true, out diff, ref mustMove);
-            if (reassignTo == 0 || reassignTo == teamId) {
+            if ((reassignTo == 0 || reassignTo == teamId) && !fWhileScrambling) {
                 // New player was going to the right team anyway
                 IncrementTotal(); // no matching stat, reflects non-reassigment joins
                 AddNewPlayer(soldierName, teamId);
@@ -4832,14 +4838,25 @@ public void MoveLoop() {
 
 
 private void Reassign(String name, int fromTeam, int toTeam, int diff) {
+    if (toTeam == 0) toTeam = fromTeam;
     // This is not a known player yet, so not PlayerModel to use
     // Just do a raw move as quickly as possible, not messages, just logging
     String doing = (EnableLoggingOnlyMode) ? "^9(SIMULATING) ^b^4REASSIGNING^0^n new player ^b" : "^b^4REASSIGNING^0^n new player ^b";
-    DebugWrite(doing + name + "^n from " + GetTeamName(fromTeam) + " team to " + GetTeamName(toTeam) + " team because difference is " + diff, 3);
+    String because = (diff > 0) ? ", because difference is " + diff : String.Empty;
+    if (!fWhileScrambling) {
+        DebugWrite(doing + name + "^n from " + GetTeamName(fromTeam) + " team to " + GetTeamName(toTeam) + " team" + because, 3);
+    } else {
+        DebugWrite(doing + name + "^n to " + GetTeamName(toTeam) + " team" + because, 3);
+    }
     int toSquad = ToSquad(name, toTeam);
     if (!EnableLoggingOnlyMode) {
         fReassigned.Add(name);
         ServerCommand("admin.movePlayer", name, toTeam.ToString(), toSquad.ToString(), "false");
+        if (fWhileScrambling) {
+            lock (fExtrasLock) {
+                if (!fExtraNames.Contains(name)) fExtraNames.Add(name);
+            }
+        }
         ScheduleListPlayers(1);
     } else {
         // Simulate reassignment
@@ -5435,6 +5452,11 @@ private void ScramblerLoop () {
             DateTime since = DateTime.MinValue;
             bool logOnly = false;
 
+            fWhileScrambling = false;
+            lock (fExtrasLock) {
+                fExtraNames.Clear();
+            }
+
             lock (fScramblerLock) {
                 while (fScramblerLock.MaxDelay == 0) {
                     Monitor.Wait(fScramblerLock);
@@ -5456,6 +5478,8 @@ private void ScramblerLoop () {
                 DebugScrambler("^0Last scramble was less than 5 minutes ago, skipping!");
                 continue;
             }
+
+            if (!logOnly) fWhileScrambling = true;
 
             try {
 
@@ -5833,8 +5857,8 @@ private void ScramblerLoop () {
                 // Make sure player counts aren't too out of balance
                 if (usScrambled.Count <= teamMax && ruScrambled.Count <= teamMax && Math.Abs(usScrambled.Count - ruScrambled.Count) > 1) {
                     int needed = Math.Abs(usScrambled.Count - ruScrambled.Count)/2;
-                    int targetDispersalGroup = 0;
                     int toTeamId = 0;
+                    int targetDispersalGroup = 0;
                     List<PlayerModel> opposingCopy = new List<PlayerModel>();
                     List<PlayerModel> tmpCopy = new List<PlayerModel>();
                     List<PlayerModel> oppHaveNoSquad = null;
@@ -5864,6 +5888,39 @@ private void ScramblerLoop () {
 
                     DebugScrambler("Adjusting team sizes, US(" + usScrambled.Count + "/" + fTeam1.Count + ") vs RU(" + ruScrambled.Count + "/" + fTeam2.Count + ") " + debugMsg);
 
+                    // See if we have some new players that joined after we started scrambling
+                    List<String> extras = null;
+                    lock (fExtrasLock) {
+                        if (fExtraNames.Count > 0) {
+                            extras = new List<String>();
+                            extras.AddRange(fExtraNames);
+                            fExtraNames.Clear();
+                        }
+                    }
+                    if (extras != null) {
+                        foreach (String ename in extras) {
+                            try {
+                                PlayerModel xtra = GetPlayer(ename);
+                                if (xtra == null) continue;
+                                SquadRoster sr = null;
+                                if (targetSquadTable.TryGetValue(xtra.Squad, out sr)) {
+                                    if (sr.Roster.Count >= 4) continue;
+                                    sr.Roster.Add(xtra);
+                                } else {
+                                    sr = new SquadRoster(xtra.Squad);
+                                    sr.Roster.Add(xtra);
+                                    targetSquadTable[xtra.Squad] = sr;
+                                }
+                                DebugScrambler("Adding new joining player ^b" + xtra.FullName + "^n to " + TEAM_NAMES[toTeamId] + " team");
+                                target.Add(xtra);
+                                --needed;
+                                if (needed == 0) break;
+                            } catch (Exception e) {
+                                ConsoleException(e);
+                            }
+                        }
+                    }
+                    
                     // Rearrange opposing team scrambled list so that squad-of-one and have-no-squad players come first
                     tmpCopy.AddRange(opposing);
                     foreach (SquadRoster monoSquad in oppSquadOfOne) {
@@ -5890,7 +5947,6 @@ private void ScramblerLoop () {
                         // Loop through the rearranged copy of opposing team to find a filler player to move to the target team
                         // We use a copy since the original list has to be modified
                         foreach (PlayerModel f in opposingCopy) {
-                            filler = f;
                             if (filler == null) break;
 
                             // Check to make sure Dispersal isn't violated
@@ -5933,6 +5989,7 @@ private void ScramblerLoop () {
                             } catch (Exception e) {
                                 ConsoleException(e);
                             }
+
                             // That's one down, how may more to go? Check in the outer while loop
                             break;
                         }
@@ -6064,9 +6121,11 @@ private void ScramblerLoop () {
     } catch (Exception e) {
         ConsoleException(e);
     } finally {
+        fWhileScrambling = false;
         ConsoleWrite("^bScramblerLoop^n thread stopped");
     }
 }
+
 
 private void AssignSquadToTeam(SquadRoster squad, Dictionary<int,SquadRoster> squadTable, List<PlayerModel> usScrambled, List<PlayerModel> ruScrambled, List<PlayerModel> target) {
         /*
@@ -7249,6 +7308,10 @@ private void Reset() {
         fMoveStash.Clear();
     }
 
+    lock (fExtrasLock) {
+        fExtraNames.Clear();
+    }
+
     fReassigned.Clear();
     fPendingTeamChange.Clear();
     fUnassigned.Clear();
@@ -7271,6 +7334,7 @@ private void Reset() {
     fRoundsEnabled = 0;
     fGrandTotalQuits = 0;
     fGrandRageQuits = 0;
+    fWhileScrambling = false;
 
     fDebugScramblerBefore[0].Clear();
     fDebugScramblerBefore[1].Clear();
@@ -7868,12 +7932,14 @@ private int ToSquad(String name, int team) {
         int squad = 0;
         int best = 0;
         int atZero = 0;
+        int highOccupied = 0; // for scrambling time
         for (int squadNum = 1; squadNum < squads.Length; ++squadNum) {
             int n = squads[squadNum];
             if (n == 0) {
                 if (atZero == 0) atZero = squadNum;
                 continue;
             }
+            highOccupied = squadNum;
             if (n >= 4) continue;
             if (n > best) {
                 squad = squadNum;
@@ -7887,6 +7953,17 @@ private int ToSquad(String name, int team) {
             // otherwise return the best squad
             ret = squad;
         }
+        // While scrambling, find the highest empty squad by three
+        if (fWhileScrambling && highOccupied > 0) {
+            i = highOccupied + 3;
+            while (i < squads.Length && squads[i] != 0) i = i + 1;
+            if (i < squads.Length) {
+                ret = i;
+            } else {
+                // Use the existing selected empty squad
+                ret = atZero;
+            }
+        } 
         if (DebugLevel >= 6) {
             String ss = "selected " + ret + " out of ";
             for (int k = 1; k < squads.Length; ++k) {
@@ -7894,7 +7971,11 @@ private int ToSquad(String name, int team) {
                 ss = ss + k + ":" + squads[k] + "/";
             }
             ss = ss + "-";
-            ConsoleDebug("ToSquad ^b" + name + "^n: " + ss);
+            if (!fWhileScrambling) {
+                ConsoleDebug("ToSquad ^b" + name + "^n: " + ss);
+            } else {
+                ConsoleWrite("While scrambling, ToSquad ^b" + name + "^n: " + ss);
+            }
         }
     } catch (Exception e) {
         ConsoleException(e);
