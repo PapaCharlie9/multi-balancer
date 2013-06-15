@@ -2288,7 +2288,7 @@ private void CommandToLog(string cmd) {
         
         if (Regex.Match(cmd, @"^refresh", RegexOptions.IgnoreCase).Success) {
             fRefreshCommand = true;
-            ConsoleDump("Player model will be revalidated on next listPlayers event");
+            ConsoleDump("Player models will be revalidated on next listPlayers event");
             return;
         }
         
@@ -2439,6 +2439,11 @@ private void CommandToLog(string cmd) {
             }
             return;
         }
+        
+        if (Regex.Match(cmd, @"^status", RegexOptions.IgnoreCase).Success) {
+            LogStatus(false, 7);
+            return;
+        }
 
         if (Regex.Match(cmd, @"^tags?", RegexOptions.IgnoreCase).Success) {
             Dictionary<String,List<PlayerModel>> byTag = new Dictionary<String,List<PlayerModel>>();
@@ -2511,6 +2516,7 @@ private void CommandToLog(string cmd) {
             ConsoleDump("^1^bscrambled^n^0: Examine list of players before and after last successful scramble");
             ConsoleDump("^1^bsizes^n^0: Examine the sizes of various data structures");
             ConsoleDump("^1^bsort^n ^iteam^n ^itype^n^0: Examine sorted ^iteam^n (1-4) by ^itype^n (one of: score, spm, kills, kdr, rank, kpm, bspm, bkdr, bkpm)");
+            ConsoleDump("^1^bstatus^n^0: Examine full status log, as if Debug Level were 7");
             ConsoleDump("^1^btags^n^0: Examine list of players sorted by clan tags");
             return;
         }
@@ -3056,7 +3062,7 @@ public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subs
  
         UpdateTeams();
 
-        LogStatus(false);
+        LogStatus(false, DebugLevel);
     
         /* Special handling for JustEnabled state */
         if (fPluginState == PluginState.JustEnabled) {
@@ -3101,7 +3107,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
                     if (ts.TeamID >= fTickets.Length) break;
                     fTickets[ts.TeamID] = (ts.Score == 1) ? 0 : ts.Score; // fix rounding
                 }
-                LogStatus(true);
+                LogStatus(true, DebugLevel);
                 DebugWrite("+------------------------------------------------+", 2);
             } catch (Exception) {}
             fFinalStatus = null;
@@ -9811,10 +9817,10 @@ private uint VersionToNumeric(String ver) {
 }
 
 
-private void LogStatus(bool isFinal) {
+private void LogStatus(bool isFinal, int level) {
   try {
     // If server is empty, log status only every 60 minutes
-    if (!isFinal && DebugLevel < 9 && this.TotalPlayerCount == 0) {
+    if (!isFinal && level < 9 && this.TotalPlayerCount == 0) {
         if (fRoundStartTimestamp != DateTime.MinValue && DateTime.Now.Subtract(fRoundStartTimestamp).TotalMinutes <= 60) {
             return;
         } else {
@@ -9822,7 +9828,7 @@ private void LogStatus(bool isFinal) {
         }
     }
 
-    if (!isFinal && (DebugLevel == 4)) ConsoleWrite("+------------------------------------------------+");
+    if (!isFinal && (level == 4)) ConsoleWrite("+------------------------------------------------+");
 
     Speed balanceSpeed = Speed.Adaptive;
 
@@ -9853,14 +9859,14 @@ private void LogStatus(bool isFinal) {
     String logOnly = (EnableLoggingOnlyMode) ? ", Logging Only Mode Enabled" : String.Empty;
     String weakOnly = (perMode.OnlyMoveWeakPlayers) ? ", Only Move Weak Players" : String.Empty;
 
-    DebugWrite("^bStatus^n: Plugin state = " + fPluginState + ", game state = " + fGameState + weakOnly + metroAdj + unstackDisabled + logOnly, 6);
+    if (level >= 6) DebugWrite("^bStatus^n: Plugin state = " + fPluginState + ", game state = " + fGameState + weakOnly + metroAdj + unstackDisabled + logOnly, 0);
     int useLevel = (isFinal) ? 2 : 4;
     if (IsRush()) {
-        DebugWrite("^bStatus^n: Map = " + this.FriendlyMap + ", mode = " + this.FriendlyMode + ", stage = " + fRushStage + ", time in round = " + rt + ", tickets = " + tm, useLevel);
+        if (level >= useLevel) DebugWrite("^bStatus^n: Map = " + this.FriendlyMap + ", mode = " + this.FriendlyMode + ", stage = " + fRushStage + ", time in round = " + rt + ", tickets = " + tm, 0);
     } else if (IsCTF()) {
-        DebugWrite("^bStatus^n: Map = " + this.FriendlyMap + ", mode = " + this.FriendlyMode + ", time in round = " + rt + ", points = " + tm, useLevel);
+        if (level >= useLevel) DebugWrite("^bStatus^n: Map = " + this.FriendlyMap + ", mode = " + this.FriendlyMode + ", time in round = " + rt + ", points = " + tm, 0);
     } else {
-        DebugWrite("^bStatus^n: Map = " + this.FriendlyMap + ", mode = " + this.FriendlyMode + ", time in round = " + rt + ", tickets = " + tm, useLevel);
+        if (level >= useLevel) DebugWrite("^bStatus^n: Map = " + this.FriendlyMap + ", mode = " + this.FriendlyMode + ", time in round = " + rt + ", tickets = " + tm, 0);
     }
     if (fPluginState == PluginState.Active) {
         double secs = DateTime.Now.Subtract(fLastBalancedTimestamp).TotalSeconds;
@@ -9875,23 +9881,23 @@ private void LogStatus(bool isFinal) {
             balanceSpeed = GetBalanceSpeed(perMode);
             double unstackRatio = GetUnstackTicketRatio(perMode);
             String activeTime = (secs > 0) ? "^1active (" + secs.ToString("F0") + " secs)^0" : "not active";
-            DebugWrite("^bStatus^n: Autobalance is " + activeTime + ", phase = " + GetPhase(perMode, false) + ", population = " + GetPopulation(perMode, false) + ", speed = " + balanceSpeed + ", unstack when ticket ratio >= " + (unstackRatio * 100).ToString("F0") + "%", 4);
+            if (level >= 4) DebugWrite("^bStatus^n: Autobalance is " + activeTime + ", phase = " + GetPhase(perMode, false) + ", population = " + GetPopulation(perMode, false) + ", speed = " + balanceSpeed + ", unstack when ticket ratio >= " + (unstackRatio * 100).ToString("F0") + "%", 0);
         }
     }
     if (!IsModelInSync()) {
         double toj = (fTimeOutOfJoint == 0) ? 0 : GetTimeInRoundMinutes() - fTimeOutOfJoint;
-        DebugWrite("^bStatus^n: Model not in sync for " + toj.ToString("F1") + " mins: fMoving = " + fMoving.Count + ", fReassigned = " + fReassigned.Count, 6);
+        if (level >= 6) DebugWrite("^bStatus^n: Model not in sync for " + toj.ToString("F1") + " mins: fMoving = " + fMoving.Count + ", fReassigned = " + fReassigned.Count, 0);
     }
 
     String raged = fRageQuits.ToString() + "/" + fTotalQuits + " raged, ";
     useLevel = (isFinal) ? 2 : 5;
-    DebugWrite("^bStatus^n: " + raged + fReassignedRound + " reassigned, " + fBalancedRound + " balanced, " + fUnstackedRound + " unstacked, " + fUnswitchedRound + " unswitched, " + fExcludedRound + " excluded, " + fExemptRound + " exempted, " + fFailedRound + " failed; of " + fTotalRound + " TOTAL", useLevel);
+    if (level >= useLevel) DebugWrite("^bStatus^n: " + raged + fReassignedRound + " reassigned, " + fBalancedRound + " balanced, " + fUnstackedRound + " unstacked, " + fUnswitchedRound + " unswitched, " + fExcludedRound + " excluded, " + fExemptRound + " exempted, " + fFailedRound + " failed; of " + fTotalRound + " TOTAL", 0);
     
     useLevel = (isFinal) ? 2 : 4;
     if (IsSQDM()) {
-        DebugWrite("^bStatus^n: Team counts [" + this.TotalPlayerCount + "] = " + fTeam1.Count + "(A) vs " + fTeam2.Count + "(B) vs " + fTeam3.Count + "(C) vs " + fTeam4.Count + "(D), with " + fUnassigned.Count + " unassigned", useLevel);
+        if (level >= useLevel) DebugWrite("^bStatus^n: Team counts [" + this.TotalPlayerCount + "] = " + fTeam1.Count + "(A) vs " + fTeam2.Count + "(B) vs " + fTeam3.Count + "(C) vs " + fTeam4.Count + "(D), with " + fUnassigned.Count + " unassigned", 0);
     } else {
-        DebugWrite("^bStatus^n: Team counts [" + this.TotalPlayerCount + "] = " + fTeam1.Count + "(US) vs " + fTeam2.Count + "(RU), with " + fUnassigned.Count + " unassigned", useLevel);
+        if (level >= useLevel) DebugWrite("^bStatus^n: Team counts [" + this.TotalPlayerCount + "] = " + fTeam1.Count + "(US) vs " + fTeam2.Count + "(RU), with " + fUnassigned.Count + " unassigned", 0);
     }
     
     List<int> counts = new List<int>();
@@ -9906,7 +9912,7 @@ private void LogStatus(bool isFinal) {
     int diff = Math.Abs(counts[0] - counts[counts.Count-1]);
     String next = (this.TotalPlayerCount >= 6 && diff > MaxDiff() && fGameState == GameState.Playing && balanceSpeed != Speed.Stop && !fBalanceIsActive) ? "^n^0 ... autobalance will activate as soon as possible!" : "^n";
     
-    DebugWrite("^bStatus^n: Team difference = " + ((diff > MaxDiff()) ? "^8^b" : "^b") + diff + next, 4);
+    if (level >= 4) DebugWrite("^bStatus^n: Team difference = " + ((diff > MaxDiff()) ? "^8^b" : "^b") + diff + next, 0);
 
   } catch (Exception e) {
     ConsoleException(e);
