@@ -4856,11 +4856,18 @@ private void Reassign(String name, int fromTeam, int toTeam, int diff) {
     }
     int toSquad = ToSquad(name, toTeam);
     if (!EnableLoggingOnlyMode) {
-        fReassigned.Add(name);
+        if (fromTeam != toTeam) fReassigned.Add(name);
         ServerCommand("admin.movePlayer", name, toTeam.ToString(), toSquad.ToString(), "false");
         if (fWhileScrambling) {
             lock (fExtrasLock) {
                 if (!fExtraNames.Contains(name)) fExtraNames.Add(name);
+            }
+            // Can't use reassigning logic if player is already in the right team
+            if (fromTeam == toTeam) {
+                IncrementTotal(); // no matching stat, reflects non-reassigment joins
+                AddNewPlayer(name, toTeam);
+                UpdateTeams();
+                DebugWrite("^4New player^0: ^b" + name + "^n, assigned to " + GetTeamName(toTeam) + " team during scrambling", 4);
             }
         }
         ScheduleListPlayers(1);
@@ -7960,14 +7967,19 @@ private int ToSquad(String name, int team) {
             ret = squad;
         }
         // While scrambling, find the highest empty squad by three
-        if (fWhileScrambling && highOccupied > 0) {
-            i = highOccupied + 3;
-            while (i < squads.Length && squads[i] != 0) i = i + 1;
-            if (i < squads.Length) {
-                ret = i;
+        if (fWhileScrambling) {
+            if (highOccupied > 0) {
+                i = highOccupied + 3;
+                while (i < squads.Length && squads[i] != 0) i = i + 1;
+                if (i < squads.Length) {
+                    ret = i;
+                } else {
+                    // Use the existing selected empty squad
+                    ret = atZero;
+                }
             } else {
-                // Use the existing selected empty squad
-                ret = atZero;
+                // We just moved all the players out of squads!
+                ret = 0;
             }
         } 
         if (DebugLevel >= 6) {
