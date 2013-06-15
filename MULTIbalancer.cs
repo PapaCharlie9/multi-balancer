@@ -732,6 +732,7 @@ private bool fNeedPlayerListUpdate = false;
 private bool fWhileScrambling = false;
 private DelayedRequest fExtrasLock;
 private List<String> fExtraNames = null;
+private bool fGotLogin = false;
 
 // Data model
 private List<String> fAllPlayers = null;
@@ -1021,6 +1022,7 @@ public MULTIbalancer() {
     fWhileScrambling = false;
     fExtrasLock = new DelayedRequest();
     fExtraNames = new List<String>();
+    fGotLogin = false;
     
     /* Settings */
 
@@ -2289,6 +2291,7 @@ private void CommandToLog(string cmd) {
         if (Regex.Match(cmd, @"^refresh", RegexOptions.IgnoreCase).Success) {
             fRefreshCommand = true;
             ConsoleDump("Player models will be revalidated on next listPlayers event");
+            ScheduleListPlayers(1);
             return;
         }
         
@@ -2704,7 +2707,8 @@ public void OnPluginLoaded(String strHostName, String strPort, String strPRoConV
         "OnReservedSlotsList",
         "OnEndRound",
         "OnRunNextLevel",
-        "OnResponseError"
+        "OnResponseError",
+        "OnLogin"
     );
 }
 
@@ -2765,8 +2769,18 @@ public override void OnVersion(String type, String ver) {
     if (!fIsEnabled) return;
     
     DebugWrite("Got ^bOnVersion^n: " + type + " " + ver, 7);
+}
+
+public override void OnLogin()
+{
+    if (!fIsEnabled) return;
+
+    DebugWrite("Got ^bOnLogin^n", 8);
     try {
-        fRefreshCommand = true;
+        if (fPluginState != PluginState.Active) return;
+        DebugWrite("^1^bRECONNECTING ...^n", 3);
+        fGotLogin = true;
+        ScheduleListPlayers(1);
     } catch (Exception e) {
         ConsoleException(e);
     }
@@ -3035,16 +3049,18 @@ public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subs
         don't do a full reset
         */
         if (fServerCrashed 
+        || fGotLogin
         || fRefreshCommand 
-        || (this.TotalPlayerCount >= 16 
+        || (fServerCrashed = (this.TotalPlayerCount >= 16 
             && this.TotalPlayerCount > players.Count 
-            && (this.TotalPlayerCount - players.Count) >= Math.Min(CRASH_COUNT_HEURISTIC, this.TotalPlayerCount)) 
+            && (this.TotalPlayerCount - players.Count) >= Math.Min(CRASH_COUNT_HEURISTIC, this.TotalPlayerCount))) 
         || this.TotalPlayerCount > MaximumServerSize
         || (fTimeOutOfJoint > 0 && GetTimeInRoundMinutes() - fTimeOutOfJoint > 3.0))  {
+            ValidateModel(players);
             fServerCrashed = false;
+            fGotLogin = false;
             fRefreshCommand = false;
             fTimeOutOfJoint = 0;
-            ValidateModel(players);
         } else {
             fUnassigned.Clear();
     
@@ -3120,6 +3136,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
         // Check for server crash
         if (fServerUptime > 0 && fServerUptime > serverInfo.ServerUptime + 2) { // +2 secs for rounding error in server!
             fServerCrashed = true;
+            DebugWrite("^1^bDETECTED GAME SERVER CRASH^n (recorded uptime longer than latest serverInfo uptime)", 3);
         }
         fServerInfo = serverInfo;
         fServerUptime = serverInfo.ServerUptime;
@@ -4267,20 +4284,25 @@ private void UpdatePlayerTeam(String name, int team) {
 }
 
 private void ValidateModel(List<CPlayerInfo> players) {
+    DebugWrite("Revalidating all players and teams", 3);
+
     // forget the active list, might be incorrect
     lock (fAllPlayers) {
         fAllPlayers.Clear();
     }
     fUnassigned.Clear();
 
+    if (fGotLogin || fServerCrashed || (fTimeOutOfJoint > 0 && GetTimeInRoundMinutes() - fTimeOutOfJoint > 3.0)) {
+        fMoving.Clear();
+        fReassigned.Clear();
+    }
+
     if (players.Count == 0) {
         // no players, so waiting state
         fGameState = GameState.Warmup;
     } else {
-        // cancel moves
-        // rebuild the data model
         fPluginState = PluginState.Reconnected;
-        DebugWrite("ValidateModel: ^b^3State = " + fPluginState, 6);  
+        // rebuild the data model and cancel any pending moves
         foreach (CPlayerInfo p in players) {
             try {
                 UpdatePlayerModel(p.SoldierName, p.TeamID, p.SquadID, p.GUID, p.Score, p.Kills, p.Deaths, p.Rank);
@@ -4289,16 +4311,14 @@ private void ValidateModel(List<CPlayerInfo> players) {
                 ConsoleException(e);
             }
         }
-        fMoving.Clear();
-        fReassigned.Clear();
         /* Special handling for Reconnected state */
         fGameState = (this.TotalPlayerCount < 4) ? GameState.Warmup : GameState.Unknown;
-        fRoundStartTimestamp = DateTime.Now;
         UpdateTeams();
     }
+    if (fServerCrashed) fRoundStartTimestamp = DateTime.Now;
     fPluginState = PluginState.Active;
-    DebugWrite("ValidateModel: ^b^3State = " + fPluginState, 6);  
-    DebugWrite("ValidateModel: ^b^3Game state = " + fGameState, 6);
+    DebugWrite("^9ValidateModel: ^b^3State = " + fPluginState, 6);  
+    DebugWrite("^9ValidateModel: ^b^3Game state = " + fGameState, 6);
 }
 
 
