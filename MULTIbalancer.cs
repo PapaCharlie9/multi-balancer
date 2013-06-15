@@ -5278,6 +5278,7 @@ private void SetStats(PlayerModel player, Hashtable stats) {
     propValues["rsKills"] = -1;
     propValues["rsScore"] = -1;
     propValues["rsTimePlayed"] = -1;
+    propValues["deaths"] = -1;
     
     foreach (DictionaryEntry entry in stats) {
         try {
@@ -5289,14 +5290,23 @@ private void SetStats(PlayerModel player, Hashtable stats) {
             String entryValue = (String)(entry.Value.ToString());
 
             double dValue = -1;
-            Double.TryParse(entryValue, out dValue);
+            if (entryValue != null) Double.TryParse(entryValue, out dValue);
             propValues[entryKey] = (Double.IsNaN(dValue)) ? -1 : dValue;
         } catch (Exception) {}
     }
 
     // Now set the player values, starting with AllTime
     double allTimeMinutes = Math.Max(1, propValues["timePlayed"] / 60);
-    player.KDR = propValues["kdRatio"];
+    double kills = propValues["kills"];
+    kills = (kills < 1) ? 0 : kills;
+    double deaths = propValues["deaths"];
+    deaths = (deaths < 1) ? 1 : deaths;
+    double kdr = propValues["kdRatio"];
+    if (kdr < 0) {
+        kdr = kills / deaths;
+    }
+
+    player.KDR = kdr;
     player.SPM = propValues["scorePerMinute"];
     player.KPM = propValues["kills"] / allTimeMinutes;
 
