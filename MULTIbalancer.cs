@@ -1377,7 +1377,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.3.3";
+    return "1.0.3.4";
 }
 
 public String GetPluginAuthor() {
@@ -4263,7 +4263,7 @@ private void UpdatePlayerTeam(String name, int team) {
             return;
         }
         lock (fAllPlayers) {
-            fAllPlayers.Add(name);
+            if (!fAllPlayers.Contains(name)) fAllPlayers.Add(name);
         }
     }
     
@@ -4866,7 +4866,7 @@ public void MoveLoop() {
 private void Reassign(String name, int fromTeam, int toTeam, int diff) {
     if (toTeam == 0) toTeam = fromTeam;
     // This is not a known player yet, so not PlayerModel to use
-    // Just do a raw move as quickly as possible, not messages, just logging
+    // Just do a raw move as quickly as possible, no messages, just logging
     String doing = (EnableLoggingOnlyMode) ? "^9(SIMULATING) ^b^4REASSIGNING^0^n new player ^b" : "^b^4REASSIGNING^0^n new player ^b";
     String because = (diff > 0) ? ", because difference is " + diff : String.Empty;
     if (!fWhileScrambling) {
@@ -5350,6 +5350,18 @@ private void SetStats(PlayerModel player, Hashtable stats) {
 
 
 private void Scrambler(List<TeamScore> teamScores) {
+    // Clear the debug lists
+    try {
+        fDebugScramblerBefore[0].Clear();
+        fDebugScramblerBefore[1].Clear();
+        fDebugScramblerAfter[0].Clear();
+        fDebugScramblerAfter[1].Clear();
+        fDebugScramblerStartRound[0].Clear();
+        fDebugScramblerStartRound[1].Clear();
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+
     // Check all the reasons not to scramble
     if (fServerInfo == null) {
         ConsoleDebug("Scrambler: fServerInfo is null!");
@@ -5434,17 +5446,6 @@ private void Scrambler(List<TeamScore> teamScores) {
 
     DebugScrambler("Scrambling teams by " + ScrambleBy + " in " + DelaySeconds.ToString("F0") + " seconds");
 
-    try {
-        fDebugScramblerBefore[0].Clear();
-        fDebugScramblerBefore[1].Clear();
-        fDebugScramblerAfter[0].Clear();
-        fDebugScramblerAfter[1].Clear();
-        fDebugScramblerStartRound[0].Clear();
-        fDebugScramblerStartRound[1].Clear();
-    } catch (Exception e) {
-        ConsoleException(e);
-    }
-
     // Activate the scrambler thread
     lock (fScramblerLock) {
         fScramblerLock.MaxDelay = DelaySeconds;
@@ -5522,8 +5523,6 @@ private void ScramblerLoop () {
                 continue;
             }
 
-            if (!logOnly) fWhileScrambling = true;
-
             try {
 
                 PerModeSettings perMode = GetPerModeSettings();
@@ -5567,7 +5566,7 @@ private void ScramblerLoop () {
                             if (player == null) continue;
 
                             // For debugging
-                            if (IsKnownPlayer(player.Name) && player.Team > 0 && player.Team <= 2) {
+                            if (player.Team > 0 && player.Team <= 2) {
                                 fDebugScramblerBefore[player.Team-1].Add(player.ClonePlayer());
                             } else continue; // skip joining players
 
@@ -5577,6 +5576,9 @@ private void ScramblerLoop () {
                             if (DebugLevel >= 8) ConsoleException(e);
                         }
                     }
+
+                    // Now that we have captured our master list, handle new joins with care
+                    if (toScramble.Count > 0 && !logOnly) fWhileScrambling = true;
                 }
 
                 if (toScramble.Count == 0) continue;
@@ -6503,7 +6505,7 @@ private void RememberTeams() {
                 if (player == null) continue;
 
                 // For debugging
-                if (IsKnownPlayer(player.Name) && player.Team > 0 && player.Team <= 2) {
+                if (player.Team > 0 && player.Team <= 2) {
                     fDebugScramblerStartRound[player.Team-1].Add(player.ClonePlayer());
                 } else continue; // skip joining players
             } catch (Exception e) {
