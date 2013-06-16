@@ -5939,7 +5939,6 @@ private void ScramblerLoop () {
                         if (fExtraNames.Count > 0) {
                             extras = new List<String>();
                             extras.AddRange(fExtraNames);
-                            fExtraNames.Clear();
                         }
                     }
                     if (extras != null) {
@@ -5958,6 +5957,9 @@ private void ScramblerLoop () {
                                 }
                                 DebugScrambler("Adding new joining player ^b" + xtra.FullName + "^n to " + TEAM_NAMES[toTeamId] + " team");
                                 target.Add(xtra);
+                                lock (fExtrasLock) {
+                                    if (fExtraNames.Contains(ename)) fExtraNames.Remove(ename);
+                                }
                                 --needed;
                                 if (needed == 0) break;
                             } catch (Exception e) {
@@ -6575,6 +6577,10 @@ private void UnsquadMove(Dictionary<int,SquadRoster> usSquads, Dictionary<int,Sq
     }
     foreach (String name in liveNames) {
         try {
+            // Skip new joiners on the extras list, they are alredy out of the way.
+            lock (fExtrasLock) {
+                if (fExtraNames.Contains(name)) continue;
+            }
             PlayerModel livePlayerModel = GetPlayer(name); // Using live player model
             SquadMove(livePlayerModel, livePlayerModel.Team, 0, logOnly);
             unsquaded.Add(livePlayerModel.Name);
