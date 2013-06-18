@@ -733,6 +733,7 @@ private bool fWhileScrambling = false;
 private DelayedRequest fExtrasLock;
 private List<String> fExtraNames = null;
 private bool fGotLogin = false;
+private Dictionary<String,String> fDebugScramblerSuspects = null;
 
 // Data model
 private List<String> fAllPlayers = null;
@@ -1023,6 +1024,7 @@ public MULTIbalancer() {
     fExtrasLock = new DelayedRequest();
     fExtraNames = new List<String>();
     fGotLogin = false;
+    fDebugScramblerSuspects = new Dictionary<String,String>();
     
     /* Settings */
 
@@ -1377,7 +1379,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.3.4";
+    return "1.0.3.5";
 }
 
 public String GetPluginAuthor() {
@@ -2639,17 +2641,38 @@ private void AnalyzeSquadLists(int beforeTeam, int beforeSquad, List<String> bef
             }
         }
         // every list except max
-        String notice = (finalCheck) ? "^4UNEXPECTED: " + ts + " did player(s) switch themselves, or was squad split?" : "^4ADJUSTED: player(s) removed from " + ts + " to balance teams:";
+        String notice = "^4ADJUSTED: player(s) removed from " + ts + " to balance teams:";
         foreach (int si in movedSquadTable.Keys) {
             if (si == big) continue;
             int siTeam = si / 1000;
             int siSquad = si - (1000 * siTeam);
-            foreach (String outlier in movedSquadTable[si]) {
-                split = split + "^b" + outlier + "^n to " + SQUAD_NAMES[siSquad] + ", ";
+            if (!finalCheck) {
+                foreach (String outlier in movedSquadTable[si]) {
+                    split = split + "^b" + outlier + "^n to " + SQUAD_NAMES[siSquad] + ", ";
+                }
+                split = split + "end.";
+                ConsoleDump(notice + split);
+                split = " ";
+            } else {
+                String fm = null;
+                foreach (String finalOutlier in movedSquadTable[si]) {
+                    try {
+                        lock (fExtrasLock) {
+                            fDebugScramblerSuspects.TryGetValue(finalOutlier, out fm);
+                        }
+                        if (fm == null) {
+                            fm = "^4UNEXPECTED: split of " + ts + " due to player ^b{0}^n being found in " + SQUAD_NAMES[siSquad];
+                        } else {
+                            fm = "NOTE: " + fm;
+                        }
+                        PlayerModel outp = GetPlayer(finalOutlier);
+                        String fullName = (outp == null) ? finalOutlier : outp.FullName;
+                        ConsoleDump(String.Format(fm, fullName));
+                    } catch (Exception e) {
+                        ConsoleException(e);
+                    }
+                }
             }
-            split = split + "end.";
-            ConsoleDump(notice + split);
-            split = " ";
         }
     } else if (different != -1) {
         int differentTeam = different / 1000;
@@ -2812,6 +2835,24 @@ public override void OnPlayerSquadChange(String soldierName, int teamId, int squ
     if (fGameState == GameState.Playing && squadId == 0) return;
     
     DebugWrite("^9^bGot OnPlayerSquadChange^n: " + soldierName + " " + teamId + " " + squadId, 7);
+
+    try {
+        if (fNeedPlayerListUpdate) {
+            PerModeSettings perMode = GetPerModeSettings();
+            if (perMode != null && perMode.EnableScrambler && (KeepSquadsTogether || KeepClanTagsInSameSquad)) {
+                PlayerModel player = GetPlayer(soldierName);
+                if (player != null) {
+                    String msg = "player ^b{0}^n did a squad change to " + GetTeamName(teamId) + "/" + SQUAD_NAMES[squadId] + " after the scrambler finished";
+                    DebugScrambler(String.Format(msg, player.FullName));
+                    lock (fExtrasLock) {
+                        fDebugScramblerSuspects[player.Name] = msg;
+                    }
+                }
+            }
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
 }
 
 
@@ -3375,15 +3416,28 @@ public override void OnRunNextLevel() {
 public override void OnResponseError(List<string> lstRequestWords, string strError) {
     if (!fIsEnabled) return;
     if (lstRequestWords == null || lstRequestWords.Count == 0) return;
-    String msg = "Request(" + String.Join(", ", lstRequestWords.ToArray()) + "): ERROR = " + strError;
+    try {
+        String msg = "Request(" + String.Join(", ", lstRequestWords.ToArray()) + "): ERROR = " + strError;
 
-    int level = 7;
-    if (lstRequestWords[0] == "player.ping") level = 8;
+        int level = 7;
+        if (lstRequestWords[0] == "player.ping") level = 8;
 
-    DebugWrite("^9^bGot OnResponseError, " + msg, level);
+        DebugWrite("^9^bGot OnResponseError, " + msg, level);
 
-    if (lstRequestWords.Count > 2 && lstRequestWords[0] == "admin.movePlayer") {
-        DebugWrite("^1Move of ^b" + lstRequestWords[1] + "^n failed with error: " + strError, 4); 
+        bool isMove = false;
+        if (lstRequestWords.Count > 2 && lstRequestWords[0] == "admin.movePlayer") {
+            DebugWrite("^1Move of ^b" + lstRequestWords[1] + "^n failed with error: " + strError, 4); 
+            isMove = true;
+        }
+
+        // Record problems during a scramble
+        if (fWhileScrambling) {
+            lock (fExtrasLock) {
+                fDebugScramblerSuspects[lstRequestWords[1]] = "move of ^b{0}^n during scramble got an error: " + strError;
+            }
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
     }
 }
 
@@ -4881,6 +4935,7 @@ private void Reassign(String name, int fromTeam, int toTeam, int diff) {
         if (fWhileScrambling) {
             lock (fExtrasLock) {
                 if (!fExtraNames.Contains(name)) fExtraNames.Add(name);
+                fDebugScramblerSuspects[name] = "new player ^b{0}^n joined " + GetTeamName(toTeam) + "/" + SQUAD_NAMES[toSquad];
             }
             // Can't use reassigning logic if player is already in the right team
             if (fromTeam == toTeam) {
@@ -5358,6 +5413,9 @@ private void Scrambler(List<TeamScore> teamScores) {
         fDebugScramblerAfter[1].Clear();
         fDebugScramblerStartRound[0].Clear();
         fDebugScramblerStartRound[1].Clear();
+        lock (fExtrasLock) {
+            fDebugScramblerSuspects.Clear();
+        }
     } catch (Exception e) {
         ConsoleException(e);
     }
@@ -5462,6 +5520,9 @@ private void ScrambleByCommand(bool logOnly) {
         fDebugScramblerAfter[1].Clear();
         fDebugScramblerStartRound[0].Clear();
         fDebugScramblerStartRound[1].Clear();
+        lock (fExtrasLock) {
+            fDebugScramblerSuspects.Clear();
+        }
     } catch (Exception e) {
         ConsoleException(e);
     }
@@ -6577,7 +6638,7 @@ private void UnsquadMove(Dictionary<int,SquadRoster> usSquads, Dictionary<int,Sq
     }
     foreach (String name in liveNames) {
         try {
-            // Skip new joiners on the extras list, they are alredy out of the way.
+            // Skip new joiners on the extras list, they are already out of the way.
             lock (fExtrasLock) {
                 if (fExtraNames.Contains(name)) continue;
             }
@@ -7361,6 +7422,7 @@ private void Reset() {
 
     lock (fExtrasLock) {
         fExtraNames.Clear();
+        fDebugScramblerSuspects.Clear();
     }
 
     fReassigned.Clear();
