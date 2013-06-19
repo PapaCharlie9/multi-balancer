@@ -2641,7 +2641,7 @@ private void AnalyzeSquadLists(int beforeTeam, int beforeSquad, List<String> bef
             }
         }
         // every list except max
-        String notice = "^4ADJUSTED: player(s) removed from " + ts + " to balance teams:";
+        String notice = "Player(s) removed from " + ts + " to balance teams:";
         foreach (int si in movedSquadTable.Keys) {
             if (si == big) continue;
             int siTeam = si / 1000;
@@ -2654,16 +2654,14 @@ private void AnalyzeSquadLists(int beforeTeam, int beforeSquad, List<String> bef
                 ConsoleDump(notice + split);
                 split = " ";
             } else {
-                String fm = null;
                 foreach (String finalOutlier in movedSquadTable[si]) {
+                    String fm = null;
                     try {
                         lock (fExtrasLock) {
                             fDebugScramblerSuspects.TryGetValue(finalOutlier, out fm);
                         }
                         if (fm == null) {
                             fm = "^4UNEXPECTED: split of " + ts + " due to player ^b{0}^n being found in " + SQUAD_NAMES[siSquad];
-                        } else {
-                            fm = "NOTE: " + fm;
                         }
                         PlayerModel outp = GetPlayer(finalOutlier);
                         String fullName = (outp == null) ? finalOutlier : outp.FullName;
@@ -2842,7 +2840,7 @@ public override void OnPlayerSquadChange(String soldierName, int teamId, int squ
             if (perMode != null && perMode.EnableScrambler && (KeepSquadsTogether || KeepClanTagsInSameSquad)) {
                 PlayerModel player = GetPlayer(soldierName);
                 if (player != null) {
-                    String msg = "player ^b{0}^n did a squad change to " + GetTeamName(teamId) + "/" + SQUAD_NAMES[squadId] + " after the scrambler finished";
+                    String msg = "Player ^b{0}^n did a squad change to " + GetTeamName(teamId) + "/" + SQUAD_NAMES[squadId] + " after the scrambler finished";
                     DebugScrambler(String.Format(msg, player.FullName));
                     lock (fExtrasLock) {
                         fDebugScramblerSuspects[player.Name] = msg;
@@ -3431,9 +3429,9 @@ public override void OnResponseError(List<string> lstRequestWords, string strErr
         }
 
         // Record problems during a scramble
-        if (fWhileScrambling) {
+        if (fGameState == GameState.RoundEnding || fGameState == GameState.RoundStarting) {
             lock (fExtrasLock) {
-                fDebugScramblerSuspects[lstRequestWords[1]] = "move of ^b{0}^n during scramble got an error: " + strError;
+                fDebugScramblerSuspects[lstRequestWords[1]] = "Move of ^b{0}^n during scramble got an error: " + strError;
             }
         }
     } catch (Exception e) {
@@ -4935,7 +4933,7 @@ private void Reassign(String name, int fromTeam, int toTeam, int diff) {
         if (fWhileScrambling) {
             lock (fExtrasLock) {
                 if (!fExtraNames.Contains(name)) fExtraNames.Add(name);
-                fDebugScramblerSuspects[name] = "new player ^b{0}^n joined " + GetTeamName(toTeam) + "/" + SQUAD_NAMES[toSquad];
+                fDebugScramblerSuspects[name] = "New player ^b{0}^n joined " + GetTeamName(toTeam) + "/" + SQUAD_NAMES[toSquad];
             }
             // Can't use reassigning logic if player is already in the right team
             if (fromTeam == toTeam) {
@@ -9821,7 +9819,9 @@ public void CheckForPluginUpdate() { // runs in one-shot thread
         Dictionary<String,int> versions = new Dictionary<String,int>();
 		foreach (XmlNode tr in rows) {
             XmlNode ver = tr.SelectSingleNode("version");
-            XmlNode count = tr.SelectSingleNode("sum_in_use");
+            //XmlNode count = tr.SelectSingleNode("sum_in_use");
+            XmlNode count = tr.SelectSingleNode("max_in_use");
+            if (DebugLevel >= 7) ConsoleDebug("CheckForPluginUpdate: using max_in_use");
             if (ver != null && count != null) {
                 int test = 0;
                 XmlNode major = ver.SelectSingleNode("major");
