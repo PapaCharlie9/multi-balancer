@@ -6411,11 +6411,12 @@ private void RestoreSquads(List<PlayerModel> allCopy, Dictionary<int,int> alloca
     // Try to restore to original squad
     foreach (PlayerModel clone in allCopy) {
         try {
+            // Check to make sure original team and squad are available
             if (clone.Team < 1 || clone.Team > 2 || clone.OriginalSquad < 1 || clone.OriginalSquad >= SQUAD_NAMES.Length) continue;
             int toSquad = clone.OriginalSquad;
             if (allocated != null) {
                 int key = (1000 * clone.Team) + toSquad;
-                while (allocated[key] >= 4) {
+                while (allocated.ContainsKey(key) && allocated[key] >= 4) {
                     ++toSquad;
                     if (toSquad >= SQUAD_NAMES.Length) {
                         break;
