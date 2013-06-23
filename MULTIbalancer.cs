@@ -853,7 +853,7 @@ public bool OnlyOnNewMaps; // false means scramble every round
 public double OnlyOnFinalTicketPercentage; // 0 means scramble regardless of final score
 public DefineStrong ScrambleBy;
 public bool KeepSquadsTogether;
-public bool KeepClanTagsInSameSquad;
+public bool KeepClanTagsInSameTeam;
 public DivideByChoices DivideBy;
 public String ClanTagToDivideBy;
 public double DelaySeconds;
@@ -1096,7 +1096,7 @@ public MULTIbalancer() {
     OnlyOnFinalTicketPercentage = 120; // 0 means scramble regardless of final score
     ScrambleBy = DefineStrong.RoundScore;
     KeepSquadsTogether = true;
-    KeepClanTagsInSameSquad = true;
+    KeepClanTagsInSameTeam = true;
     DivideBy = DivideByChoices.None;
     ClanTagToDivideBy = String.Empty;
     DelaySeconds = 30;
@@ -1379,7 +1379,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.3.5";
+    return "1.0.3.6";
 }
 
 public String GetPluginAuthor() {
@@ -1562,7 +1562,7 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         lstReturn.Add(new CPluginVariable("4 - Scrambler|Keep Squads Together", KeepSquadsTogether.GetType(), KeepSquadsTogether));
 
         if (!KeepSquadsTogether) {
-            lstReturn.Add(new CPluginVariable("4 - Scrambler|Keep Clan Tags In Same Squad", KeepClanTagsInSameSquad.GetType(), KeepClanTagsInSameSquad));
+            lstReturn.Add(new CPluginVariable("4 - Scrambler|Keep Clan Tags In Same Team", KeepClanTagsInSameTeam.GetType(), KeepClanTagsInSameTeam));
         }
 
         var_name = "4 - Scrambler|Divide By";
@@ -2131,7 +2131,7 @@ private void ResetSettings() {
     OnlyOnNewMaps = rhs.OnlyOnNewMaps;
     OnlyOnFinalTicketPercentage = rhs.OnlyOnFinalTicketPercentage;
     ScrambleBy = rhs.ScrambleBy;
-    KeepClanTagsInSameSquad = rhs.KeepClanTagsInSameSquad;
+    KeepClanTagsInSameTeam = rhs.KeepClanTagsInSameTeam;
     DivideBy = rhs.DivideBy;
     ClanTagToDivideBy = rhs.ClanTagToDivideBy;
     DelaySeconds = rhs.DelaySeconds;
@@ -2312,10 +2312,10 @@ private void CommandToLog(string cmd) {
                 return;
             }
             ConsoleDump("===== BEFORE =====");
-            ListSideBySide(fDebugScramblerBefore[0], fDebugScramblerBefore[1], (KeepSquadsTogether || KeepClanTagsInSameSquad));
+            ListSideBySide(fDebugScramblerBefore[0], fDebugScramblerBefore[1], (KeepSquadsTogether || KeepClanTagsInSameTeam));
             ConsoleDump("===== AFTER =====");
-            ListSideBySide(fDebugScramblerAfter[0], fDebugScramblerAfter[1], (KeepSquadsTogether || KeepClanTagsInSameSquad));
-            if (KeepSquadsTogether || KeepClanTagsInSameSquad) {
+            ListSideBySide(fDebugScramblerAfter[0], fDebugScramblerAfter[1], (KeepSquadsTogether || KeepClanTagsInSameTeam));
+            if (KeepSquadsTogether || KeepClanTagsInSameTeam) {
                 ConsoleDump(" ");
                 // After scramble, compare squads: use both after teams to account for cross-team moves
                 CompareSquads(1, 1, fDebugScramblerBefore[0], fDebugScramblerAfter[0], 2, fDebugScramblerAfter[1], false);
@@ -2323,8 +2323,8 @@ private void CommandToLog(string cmd) {
             }
             if (fDebugScramblerStartRound[0].Count > 0 && fDebugScramblerStartRound[1].Count > 0) {
                 ConsoleDump("===== START OF ROUND =====");
-                ListSideBySide(fDebugScramblerStartRound[0], fDebugScramblerStartRound[1], (KeepSquadsTogether || KeepClanTagsInSameSquad));
-                if (KeepSquadsTogether || KeepClanTagsInSameSquad) {
+                ListSideBySide(fDebugScramblerStartRound[0], fDebugScramblerStartRound[1], (KeepSquadsTogether || KeepClanTagsInSameTeam));
+                if (KeepSquadsTogether || KeepClanTagsInSameTeam) {
                     ConsoleDump(" ");
                     // After team swaps, compare squads
                     CompareSquads(2, 1, fDebugScramblerAfter[1], fDebugScramblerStartRound[0], 2, fDebugScramblerStartRound[1], true);
@@ -2837,7 +2837,7 @@ public override void OnPlayerSquadChange(String soldierName, int teamId, int squ
     try {
         if (fNeedPlayerListUpdate) {
             PerModeSettings perMode = GetPerModeSettings();
-            if (perMode != null && perMode.EnableScrambler && (KeepSquadsTogether || KeepClanTagsInSameSquad)) {
+            if (perMode != null && perMode.EnableScrambler && (KeepSquadsTogether || KeepClanTagsInSameTeam)) {
                 PlayerModel player = GetPlayer(soldierName);
                 if (player != null) {
                     String msg = "Player ^b{0}^n did a squad change to " + GetTeamName(teamId) + "/" + SQUAD_NAMES[squadId] + " after the scrambler finished";
@@ -3429,7 +3429,7 @@ public override void OnResponseError(List<string> lstRequestWords, string strErr
         }
 
         // Record problems during a scramble
-        if (fGameState == GameState.RoundEnding || fGameState == GameState.RoundStarting) {
+        if (isMove && (fGameState == GameState.RoundEnding || fGameState == GameState.RoundStarting)) {
             lock (fExtrasLock) {
                 fDebugScramblerSuspects[lstRequestWords[1]] = "Move of ^b{0}^n during scramble got an error: " + strError;
             }
@@ -5608,7 +5608,7 @@ private void ScramblerLoop () {
                 String kst = String.Empty;
                 if (KeepSquadsTogether) kst = ", KeepSquadsTogether";
                 String kctiss = String.Empty;
-                if (KeepClanTagsInSameSquad) kctiss = ", KeepClansTagsInSameSquad";
+                if (KeepClanTagsInSameTeam) kctiss = ", KeepClansTagsInSameTeam";
                 DebugScrambler("Starting scramble of " + this.TotalPlayerCount + " players, winner was " + GetTeamName(fWinner));
                 DebugScrambler("Using (" + ScrambleBy + kst + kctiss + ", DivideBy = " + DivideBy + extra + ")");
                 if (!logOnly) last = DateTime.Now;
@@ -5642,7 +5642,7 @@ private void ScramblerLoop () {
 
                 if (toScramble.Count == 0) continue;
 
-                // Build squad table and overall list
+                // Build squad tables, clan tables and overall list
                 List<SquadRoster> all = new List<SquadRoster>();
                 List<PlayerModel> usHaveNoSquad = new List<PlayerModel>();
                 List<PlayerModel> ruHaveNoSquad = new List<PlayerModel>();
@@ -5678,22 +5678,25 @@ private void ScramblerLoop () {
                                 DebugScrambler("Keeping ^b" + clone.FullName + "^n together with squad, using key " + key);
                             }
                             AddPlayerToSquadRoster(squads, clone, key, squadId, true);
-                        } else if (KeepClanTagsInSameSquad) {
-                            int nt = CountMatchingTags(clone, Scope.SameSquad);
+                        } else if (KeepClanTagsInSameTeam) {
                             String tt = ExtractTag(clone);
                             if (tt == null) tt = String.Empty;
-                            if (nt >= 2) {
+                            int numInSquad = CountMatchingTags(clone, Scope.SameSquad);
+                            // Keep players with same clan tag in the same squad
+                            //if (numInSquad >= 2) {
                                 key = (Math.Max(0, clone.Team) * 1000) + Math.Max(0, clone.Squad); // 0 is okay, makes lone-wolf pool
-                                if (key < 1000) {
+                                if (String.IsNullOrEmpty(tt) || key < 1000) {
                                     loneWolves.Add(clone);
                                     continue;
-                                } else {
-                                    DebugScrambler("Keeping ^b" + clone.Name + "^n together with " + nt + " tags [" + tt + "] with squad, using key " + key);
+                                } else if (numInSquad >= 2) {
+                                    DebugScrambler("Keeping ^b" + clone.Name + "^n together with " + numInSquad + " tags [" + tt + "] with squad, using key " + key);
                                 }
+                            /*
                             } else {
                                 loneWolves.Add(clone);
                                 continue;
-                            }
+                            */
+                            //}
                             AddPlayerToSquadRoster(squads, clone, key, squadId, true);
                         } else {
                             loneWolves.Add(clone);
@@ -5719,7 +5722,6 @@ private void ScramblerLoop () {
                                 key = (wolf.Team * 1000) + emptyId;
                             }
                             filling = true;
-                            DebugScrambler("For both teams, using empty squad " + emptyId);
                         }
                         if (emptyId > (SQUAD_NAMES.Length - 1)) break;
                         if (filling) {
@@ -6072,7 +6074,7 @@ private void ScramblerLoop () {
                             // Make sure squad filler is coming from doesn't have clan tags to keep together
                             int cmt = 0;
                             SquadRoster fillerSquad = null;
-                            if ((KeepClanTagsInSameSquad || KeepSquadsTogether) && filler.Squad > 0 && opposingSquadTable.TryGetValue(filler.Squad, out fillerSquad) && fillerSquad != null) {
+                            if ((KeepClanTagsInSameTeam || KeepSquadsTogether) && filler.Squad > 0 && opposingSquadTable.TryGetValue(filler.Squad, out fillerSquad) && fillerSquad != null) {
                                 foreach (PlayerModel mate in fillerSquad.Roster) {
                                     if (ft == ExtractTag(mate)) ++cmt;
                                 }
@@ -6147,8 +6149,13 @@ private void ScramblerLoop () {
                 // Pause 1 second to let game server catch up
                 DebugScrambler("Pause 1 second to let game server catch up");
                 Thread.Sleep(1*1000);
+
+                // Swap players if they have the same clan tag
+                if (KeepClanTagsInSameTeam) {
+                    SwapSameClanTags(usScrambled, ruScrambled);
+                }
                 
-                // Assert that no squad has more than 4 players, also clone as unsquaded
+                // Assert that no squad has more than 4 players
                 Dictionary<int,int> playerCount = new Dictionary<int,int>();
                 foreach (PlayerModel clone in usScrambled) {
                     int num = 0;
@@ -6267,6 +6274,245 @@ private void AssignSquadToTeam(SquadRoster squad, Dictionary<int,SquadRoster> sq
                 target.Add(clone);
             }
         }
+}
+
+
+
+private void SwapSameClanTags(List<PlayerModel> usScrambled, List<PlayerModel> ruScrambled) {
+    /*
+    Since all players have been moved to squad 0 at this point, only need to swap PlayerModel items
+    between the two scramble lists. No actual moving is required.
+    */
+    DebugScrambler(" ");
+    DebugScrambler("Keeping clan tags to same team");
+    try {
+        PerModeSettings perMode = GetPerModeSettings();
+        String usName = GetTeamName(1);
+        String ruName = GetTeamName(2);
+
+        Dictionary<String,int[]> clanTagDistribution = new Dictionary<String,int[]>();
+
+        // Calculate tag distribution between the two teams
+        foreach (PlayerModel clone in usScrambled) {
+            String tag = ExtractTag(clone);
+            if (String.IsNullOrEmpty(tag)) continue;
+            int[] teamCounts = null;
+            if (clanTagDistribution.TryGetValue(tag, out teamCounts) && teamCounts != null) {
+                teamCounts[1] = teamCounts[1] + 1;
+            } else {
+                teamCounts = new int[3]{0,0,0};
+                teamCounts[1] = teamCounts[1] + 1;
+                clanTagDistribution[tag] = teamCounts;
+            }
+        }
+        foreach (PlayerModel clone in ruScrambled) {
+            String tag = ExtractTag(clone);
+            if (String.IsNullOrEmpty(tag)) continue;
+            int[] teamCounts = null;
+            if (clanTagDistribution.TryGetValue(tag, out teamCounts) && teamCounts != null) {
+                teamCounts[2] = teamCounts[2] + 1;
+            } else {
+                teamCounts = new int[3]{0,0,0};
+                teamCounts[2] = teamCounts[2] + 1;
+                clanTagDistribution[tag] = teamCounts;
+            }
+        }
+
+        // Find split tag counts
+        List<String> splitTags = new List<String>();
+        foreach (String key in clanTagDistribution.Keys) {
+            if (clanTagDistribution[key][1] == 0) continue;
+            if (clanTagDistribution[key][2] == 0) continue;
+            // Split!
+            DebugScrambler("Clan tag [" + key + "] is split: " + clanTagDistribution[key][1] + "/" + usName + " vs " + clanTagDistribution[key][2] + "/" + ruName);
+            splitTags.Add(key);
+        }
+        if (splitTags.Count == 0) {
+            DebugScrambler("No clan tags were split");
+            return;
+        }
+
+        // Build squad table
+        Dictionary<int,SquadRoster> squads = new Dictionary<int,SquadRoster>();
+        foreach (PlayerModel us in usScrambled) {
+            int key = (1 * 1000) + us.ScrambledSquad;
+            AddPlayerToSquadRoster(squads, us, key, us.ScrambledSquad, false);
+        }
+        foreach (PlayerModel ru in ruScrambled) {
+            int key = (2 * 1000) + ru.ScrambledSquad;
+            AddPlayerToSquadRoster(squads, ru, key, ru.ScrambledSquad, false);
+        }
+
+        // Swap to maintain squad sizes and team sizes
+        int target = 0;
+        int opposing = 0;
+        List<PlayerModel> origTarget = new List<PlayerModel>();
+        List<PlayerModel> origOpposing = new List<PlayerModel>();
+        List<PlayerModel> targetList = null;
+        List<PlayerModel> opposingList = null;
+        foreach (String tagKey in splitTags) {
+            try {
+                DebugScrambler("Working on clan tag [^b" + tagKey + "^n]");
+                // Target team is the one with the majority
+                if (clanTagDistribution[tagKey][1] > clanTagDistribution[tagKey][2]) {
+                    target = 1;
+                    opposing = 2;
+                    targetList = usScrambled;
+                    opposingList = ruScrambled;
+                } else {
+                    target = 2;
+                    opposing = 1;
+                    targetList = ruScrambled;
+                    opposingList = usScrambled;
+                }
+                origTarget.AddRange(targetList);
+                origOpposing.AddRange(opposingList);
+                // List all squads that have this clan tag
+                List<int> clan = GetSquadsWithClanTag(tagKey, squads);
+                // List players that need to move
+                List<PlayerModel> minority = new List<PlayerModel>();
+                List<PlayerModel> replacements = new List<PlayerModel>();
+                foreach (int key in clan) {
+                    if ((key / 1000) != target) { // squad containing minority clan member from opposing team
+                        foreach (PlayerModel mate in squads[key].Roster) {
+                            String mTag = ExtractTag(mate);
+                            if (mTag == tagKey && !minority.Contains(mate)) minority.Add(mate);
+                        }
+                    }
+                }
+                if (minority.Count == 0) {
+                    DebugScrambler("ASSERT: No minority clan members for [" + tagKey + "]");
+                    return;
+                }
+                // Need a list of replacments from the target team to swap, try non-clan members from target squads first
+                foreach (int key in clan) {
+                    if ((key / 1000) == target) { // squad containing majority clan member from target team
+                        foreach (PlayerModel mate in squads[key].Roster) {
+                            String mTag = ExtractTag(mate);
+                            if (mTag != tagKey && !replacements.Contains(mate)) replacements.Add(mate);
+                            if (replacements.Count == minority.Count) break;
+                        }
+                    }
+                }
+                // Might not be any room in target squads, so pick non-tagged extras
+                if (replacements.Count < minority.Count) {
+                    foreach (PlayerModel extra in targetList) {
+                        if (replacements.Count == minority.Count) break;
+                        String mTag = ExtractTag(extra);
+                        if (String.IsNullOrEmpty(mTag) && !replacements.Contains(extra)) {
+                            replacements.Add(extra);
+                        }
+                    }
+                }
+                // If not enough replacements, abandon minority players until equal
+                while (replacements.Count < minority.Count) {
+                    if (minority.Count == 0) break;
+                    // Not enough replacements
+                    PlayerModel mate = minority[0];
+                    DebugScrambler("ASSERT: Not enough replacements " + minority.Count + " vs " + replacements.Count + " abandoning " + mate.Name);
+                    minority.Remove(mate);
+                }
+                if (minority.Count == 0 || replacements.Count == 0 || (replacements.Count != minority.Count)) {
+                    DebugScrambler("Unable to swap clan members to the target team");
+                    return;
+                }
+                // Purge the minority movers from the squad table and opposing list
+                foreach (PlayerModel mate in minority) {
+                    RemovePlayerFromSquadRoster(squads, mate.Name);
+                    opposingList = RemovePlayerFromList(opposingList, mate.Name);
+                }
+                // Purge the replacements from the squad table and target list
+                foreach (PlayerModel mate in replacements) {
+                    RemovePlayerFromSquadRoster(squads, mate.Name);
+                    targetList = RemovePlayerFromList(targetList, mate.Name);
+                }
+                // Swap the minority movers with the replacements
+                int i = 0;
+                foreach (PlayerModel mate in minority) {
+                    try {
+                        PlayerModel extra = replacements[i];
+                        DebugScrambler("SWAP: ^b" + mate.FullName + "^n/" + mate.Team + "/" + mate.ScrambledSquad + " with ^b" + extra.FullName + "^n/" + extra.Team + "/" + extra.ScrambledSquad);
+                        int tmpTeam = extra.Team;
+                        int tmpSquad = extra.ScrambledSquad;
+                        extra.Team = mate.Team;
+                        extra.ScrambledSquad = mate.ScrambledSquad;
+                        mate.Team = tmpTeam;
+                        mate.ScrambledSquad = tmpSquad;
+
+                        targetList.Add(mate);
+                        int mateKey = (1000 * mate.Team) + mate.ScrambledSquad;
+                        AddPlayerToSquadRoster(squads, mate, mateKey, mate.ScrambledSquad, false);
+                        opposingList.Add(extra);
+                        int extraKey = (1000 * extra.Team) + extra.ScrambledSquad;
+                        AddPlayerToSquadRoster(squads, extra, extraKey, extra.ScrambledSquad, false);
+                    } catch (Exception e) {
+                        ConsoleException(e);
+                    }
+                    ++i;
+                }
+                // Validate
+                int maxTeam = perMode.MaxPlayers/2;
+                if (targetList.Count > maxTeam) {
+                    DebugScrambler("ASSERT: too many players on team " + GetTeamName(target));
+                }
+                if (opposingList.Count > maxTeam) {
+                    DebugScrambler("ASSERT: too many players on team " + GetTeamName(opposing));
+                }
+                foreach (PlayerModel extra in opposingList) {
+                    String testTag = ExtractTag(extra);
+                    if (testTag == tagKey) {
+                        DebugScrambler("ASSERT: minority clan member not swapped ^b" + extra.FullName + "^n");
+                    }
+                }
+            } catch (Exception e) {
+                ConsoleException(e);
+            }
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
+    } finally {
+        DebugScrambler(" ");
+    }
+}
+
+
+private List<int> GetSquadsWithClanTag(String tagKey, Dictionary<int,SquadRoster> squads) {
+    List<int> ret = new List<int>(); // list of keys into squad table
+    foreach (int key in squads.Keys) {
+        // anyone in this squad have the matching tagKey?
+        foreach (PlayerModel mate in squads[key].Roster) {
+            String tag = ExtractTag(mate);
+            if (tag == tagKey) {
+                ret.Add(key); // add this squad to the list
+                break;
+            }
+        }
+    }
+    return ret;
+}
+
+
+private void RemovePlayerFromSquadRoster(Dictionary<int, SquadRoster> squads, String name) {
+    foreach (int key in squads.Keys) {
+        SquadRoster squad = squads[key];
+        List<PlayerModel> copy = new List<PlayerModel>();
+        copy.AddRange(squad.Roster);
+        foreach (PlayerModel mate in copy) {
+            if (mate.Name == name) {
+                squad.Roster.Remove(mate);
+                return;
+            }
+        }
+    }
+}
+
+private List<PlayerModel> RemovePlayerFromList(List<PlayerModel> aList, String name) {
+    List<PlayerModel> ret = new List<PlayerModel>();
+    foreach (PlayerModel mate in aList) {
+        if (mate.Name == name) continue;
+        ret.Add(mate);
+    }
+    return ret;
 }
 
 
@@ -6414,6 +6660,7 @@ private void RestoreSquads(List<PlayerModel> allCopy, Dictionary<int,int> alloca
             // Check to make sure original team and squad are available
             if (clone.Team < 1 || clone.Team > 2 || clone.OriginalSquad < 1 || clone.OriginalSquad >= SQUAD_NAMES.Length) continue;
             int toSquad = clone.OriginalSquad;
+            // If the original squad is full, pick one that isn't
             if (allocated != null) {
                 int key = (1000 * clone.Team) + toSquad;
                 while (allocated.ContainsKey(key) && allocated[key] >= 4) {
@@ -10403,7 +10650,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Keep Squads Together</b>: True or False, default True. If True, during scrambling, an attempt is made to keep players in a squad together so that they are moved as a squad. This is not always possible and sometimes squads may be split up even when this setting is True. The squad ID may change, e.g., if the players were originally in Alpha, they may end up in Echo on the other team.</p>
 
-<p><b>Keep Clan Tags In Same Squad</b>: True or False, default True. Only visible if <b>Keep Squads Together</b> is set to False. If True, players in a squad with other players with the same clan tag will be kept together, if possible. Players in the same squad that do not have the same tag may get moved to another squad. The squad ID may change, e.g., if the players were originally in Hotel, they may end up in Charlie on the other team.</p>
+<p><b>Keep Clan Tags In Same Team</b>: True or False, default True. Only visible if <b>Keep Squads Together</b> is set to False. If True, players with the same clan tags will be scrambled to the same team. Players in a squad with other players with the same clan tag will be kept together, if possible. Players in the same squad that do not have the same tag may get moved to another squad. The squad ID may change, e.g., if the players were originally in Hotel, they may end up in Charlie on the other team.</p>
 
 <p><b>Divide By</b>: None, ClanTag, or DispersalGroup. Specifies how players should be divided into teams during scrambling. ClanTag divides all players evenly between the two teams if they have the clan tag specified in <b>Clan Tag To Divide By</b>. Only one tag may be specified. DispersalGroup divides players to their assigned dispersal group, if they are in one of the two groups defined in the <b>Disperse Evenly List</b>, if any.
 
