@@ -854,6 +854,7 @@ public double OnlyOnFinalTicketPercentage; // 0 means scramble regardless of fin
 public DefineStrong ScrambleBy;
 public bool KeepSquadsTogether;
 public bool KeepClanTagsInSameTeam;
+public bool KeepFriendsInSameTeam;
 public DivideByChoices DivideBy;
 public String ClanTagToDivideBy;
 public double DelaySeconds;
@@ -1097,6 +1098,7 @@ public MULTIbalancer() {
     ScrambleBy = DefineStrong.RoundScore;
     KeepSquadsTogether = true;
     KeepClanTagsInSameTeam = true;
+    KeepFriendsInSameTeam = false;
     DivideBy = DivideByChoices.None;
     ClanTagToDivideBy = String.Empty;
     DelaySeconds = 30;
@@ -1563,6 +1565,10 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
         if (!KeepSquadsTogether) {
             lstReturn.Add(new CPluginVariable("4 - Scrambler|Keep Clan Tags In Same Team", KeepClanTagsInSameTeam.GetType(), KeepClanTagsInSameTeam));
+        }
+
+        if (!KeepSquadsTogether && KeepClanTagsInSameTeam) {
+            lstReturn.Add(new CPluginVariable("4 - Scrambler|Keep Friends In Same Team", KeepFriendsInSameTeam.GetType(), KeepFriendsInSameTeam));
         }
 
         var_name = "4 - Scrambler|Divide By";
@@ -2132,6 +2138,7 @@ private void ResetSettings() {
     OnlyOnFinalTicketPercentage = rhs.OnlyOnFinalTicketPercentage;
     ScrambleBy = rhs.ScrambleBy;
     KeepClanTagsInSameTeam = rhs.KeepClanTagsInSameTeam;
+    KeepFriendsInSameTeam = rhs.KeepFriendsInSameTeam;
     DivideBy = rhs.DivideBy;
     ClanTagToDivideBy = rhs.ClanTagToDivideBy;
     DelaySeconds = rhs.DelaySeconds;
@@ -2312,9 +2319,9 @@ private void CommandToLog(string cmd) {
                 return;
             }
             ConsoleDump("===== BEFORE =====");
-            ListSideBySide(fDebugScramblerBefore[0], fDebugScramblerBefore[1], (KeepSquadsTogether || KeepClanTagsInSameTeam));
+            ListSideBySide(fDebugScramblerBefore[0], fDebugScramblerBefore[1], false, (KeepSquadsTogether || KeepClanTagsInSameTeam));
             ConsoleDump("===== AFTER =====");
-            ListSideBySide(fDebugScramblerAfter[0], fDebugScramblerAfter[1], (KeepSquadsTogether || KeepClanTagsInSameTeam));
+            ListSideBySide(fDebugScramblerAfter[0], fDebugScramblerAfter[1], false, (KeepSquadsTogether || KeepClanTagsInSameTeam));
             if (KeepSquadsTogether) {
                 ConsoleDump(" ");
                 // After scramble, compare squads: use both after teams to account for cross-team moves
@@ -2323,7 +2330,7 @@ private void CommandToLog(string cmd) {
             }
             if (fDebugScramblerStartRound[0].Count > 0 && fDebugScramblerStartRound[1].Count > 0) {
                 ConsoleDump("===== START OF ROUND =====");
-                ListSideBySide(fDebugScramblerStartRound[0], fDebugScramblerStartRound[1], (KeepSquadsTogether || KeepClanTagsInSameTeam));
+                ListSideBySide(fDebugScramblerStartRound[0], fDebugScramblerStartRound[1], false, (KeepSquadsTogether || KeepClanTagsInSameTeam));
                 if (KeepSquadsTogether) {
                     ConsoleDump(" ");
                     // After team swaps, compare squads
@@ -5608,7 +5615,10 @@ private void ScramblerLoop () {
                 String kst = String.Empty;
                 if (KeepSquadsTogether) kst = ", KeepSquadsTogether";
                 String kctiss = String.Empty;
-                if (KeepClanTagsInSameTeam) kctiss = ", KeepClansTagsInSameTeam";
+                if (KeepClanTagsInSameTeam) {
+                    kctiss = ", KeepClansTagsInSameTeam";
+                    if (KeepFriendsInSameTeam) kctiss = kctiss + ", KeepFriendsInSameTeam";
+                }
                 DebugScrambler("Starting scramble of " + this.TotalPlayerCount + " players, winner was " + GetTeamName(fWinner));
                 DebugScrambler("Using (" + ScrambleBy + kst + kctiss + ", DivideBy = " + DivideBy + extra + ")");
                 if (!logOnly) last = DateTime.Now;
@@ -6085,6 +6095,8 @@ private void ScramblerLoop () {
                                     filler = null;
                                     continue;
                                 }
+
+                                // TBD same check for friends if KeepFriendsInSameTeam is true
                             }
 
                             // Otherwise, our candidate filler player is the one to go
@@ -6148,13 +6160,23 @@ private void ScramblerLoop () {
                 List<String> unsquaded = new List<String>();
                 UnsquadMove(usSquads, ruSquads, logOnly, unsquaded); // uses live players, not clones!
 
-                // Pause 1 second to let game server catch up
-                DebugScrambler("Pause 1 second to let game server catch up");
-                Thread.Sleep(1*1000);
+                // Pause 2 seconds to let game server catch up
+                DebugScrambler("Pause 2 seconds to let game server catch up");
+                Thread.Sleep(2*1000);
 
                 // Swap players if they have the same clan tag
                 if (!KeepSquadsTogether && KeepClanTagsInSameTeam) {
-                    SwapSameClanTags(usScrambled, ruScrambled);
+                    if (DebugLevel >= 7) {
+                        DebugScrambler("BEFORE SWAPS");
+                        ListSideBySide(usScrambled, ruScrambled, true, true);
+                    }
+
+                    SwapSameClanTags(ref usScrambled, ref ruScrambled);
+
+                    if (DebugLevel >= 7) {
+                        DebugScrambler("AFTER SWAPS");
+                        ListSideBySide(usScrambled, ruScrambled, true, true);
+                    }
                 }
                 
                 // Assert that no squad has more than 4 players
@@ -6162,7 +6184,7 @@ private void ScramblerLoop () {
                 foreach (PlayerModel clone in usScrambled) {
                     int num = 0;
                     if (clone.ScrambledSquad < 1 || clone.ScrambledSquad >= SQUAD_NAMES.Length) {
-                        ConsoleDebug("After unsquading " + GetTeamName(1) + ", ^b" + clone.FullName + "^n has invalid ScrambledSquad = " + clone.ScrambledSquad);
+                        ConsoleDebug("ASSERT: After unsquading " + GetTeamName(1) + ", ^b" + clone.FullName + "^n has invalid ScrambledSquad = " + clone.ScrambledSquad);
                         continue;
                     }
                     clone.Squad = 0; // unsquad
@@ -6173,14 +6195,14 @@ private void ScramblerLoop () {
                 }
                 foreach (int squadId in playerCount.Keys) {
                     if (playerCount[squadId] > 4) {
-                        ConsoleDebug("ERROR: " + GetTeamName(1) + "/" + SQUAD_NAMES[squadId] + " has > 4 players! = " + playerCount[squadId]);
+                        ConsoleDebug("ASSERT: " + GetTeamName(1) + "/" + SQUAD_NAMES[squadId] + " has > 4 players! = " + playerCount[squadId]);
                     }
                 }
                 playerCount.Clear();
                 foreach (PlayerModel clone in ruScrambled) {
                     int num = 0;
                     if (clone.ScrambledSquad < 1 || clone.ScrambledSquad >= SQUAD_NAMES.Length) {
-                        ConsoleDebug("After unsquading " + GetTeamName(2) + ", ^b" + clone.FullName + "^n has invalid ScrambledSquad = " + clone.ScrambledSquad);
+                        ConsoleDebug("ASSERT: After unsquading " + GetTeamName(2) + ", ^b" + clone.FullName + "^n has invalid ScrambledSquad = " + clone.ScrambledSquad);
                         continue;
                     }
                     clone.Squad = 0; // unsquad
@@ -6191,7 +6213,7 @@ private void ScramblerLoop () {
                 }
                 foreach (int squadId in playerCount.Keys) {
                     if (playerCount[squadId] > 4) {
-                        ConsoleDebug("ERROR: " + GetTeamName(2) + "/" + SQUAD_NAMES[squadId] + " has > 4 players! = " + playerCount[squadId]);
+                        ConsoleDebug("ASSERT: " + GetTeamName(2) + "/" + SQUAD_NAMES[squadId] + " has > 4 players! = " + playerCount[squadId]);
                     }
                 }
                 playerCount.Clear();
@@ -6280,7 +6302,7 @@ private void AssignSquadToTeam(SquadRoster squad, Dictionary<int,SquadRoster> sq
 
 
 
-private void SwapSameClanTags(List<PlayerModel> usScrambled, List<PlayerModel> ruScrambled) {
+private void SwapSameClanTags(ref List<PlayerModel> usScrambled, ref List<PlayerModel> ruScrambled) {
     /*
     Since all players have been moved to squad 0 at this point, only need to swap PlayerModel items
     between the two scramble lists. No actual moving is required.
@@ -6348,10 +6370,10 @@ private void SwapSameClanTags(List<PlayerModel> usScrambled, List<PlayerModel> r
         // Swap to maintain squad sizes and team sizes
         int target = 0;
         int opposing = 0;
-        List<PlayerModel> origTarget = new List<PlayerModel>();
-        List<PlayerModel> origOpposing = new List<PlayerModel>();
         List<PlayerModel> targetList = null;
         List<PlayerModel> opposingList = null;
+        bool allOk = true;
+
         foreach (String tagKey in splitTags) {
             try {
                 DebugScrambler("Working on clan tag [^b" + tagKey + "^n]");
@@ -6367,8 +6389,7 @@ private void SwapSameClanTags(List<PlayerModel> usScrambled, List<PlayerModel> r
                     targetList = ruScrambled;
                     opposingList = usScrambled;
                 }
-                origTarget.AddRange(targetList);
-                origOpposing.AddRange(opposingList);
+                DebugScrambler("Target team is " + GetTeamName(target) + " with " + clanTagDistribution[tagKey][target] + ", opposing team is " + GetTeamName(opposing) + " with " + clanTagDistribution[tagKey][opposing]);
                 // List all squads that have this clan tag
                 List<int> clan = GetSquadsWithClanTag(tagKey, squads);
                 // List players that need to move
@@ -6388,20 +6409,22 @@ private void SwapSameClanTags(List<PlayerModel> usScrambled, List<PlayerModel> r
                 }
                 // Need a list of replacements from the target team to swap, try non-clan members from target squads first
                 foreach (int key in clan) {
-                    if ((key / 1000) == target) { // squad containing majority clan member from target team
-                        foreach (PlayerModel mate in squads[key].Roster) {
-                            String mTag = ExtractTag(mate);
-                            if (mTag != tagKey && !replacements.Contains(mate)) replacements.Add(mate);
+                    if ((key / 1000) == target) { // squad containing majority clan members from target team
+                        foreach (PlayerModel rep in squads[key].Roster) {
+                            String rTag = ExtractTag(rep);
+                            if (String.IsNullOrEmpty(rTag) && !replacements.Contains(rep)) replacements.Add(rep);
                             if (replacements.Count == minority.Count) break;
                         }
                     }
                 }
-                // Might not be any room in target squads, so pick non-tagged extras
-                if (replacements.Count < minority.Count) {
-                    foreach (PlayerModel extra in targetList) {
+                // Might not be any room in target squads, so pick non-tagged extras from end of sorted list
+                if (replacements.Count < minority.Count && targetList.Count > 0) {
+                    // start at the bottom of the sorted list and go up in metric
+                    for (int x = (targetList.Count-1); x >= 0; --x) {
                         if (replacements.Count == minority.Count) break;
-                        String mTag = ExtractTag(extra);
-                        if (String.IsNullOrEmpty(mTag) && !replacements.Contains(extra)) {
+                        PlayerModel extra = targetList[x];
+                        String xTag = ExtractTag(extra);
+                        if (String.IsNullOrEmpty(xTag) && !replacements.Contains(extra)) {
                             replacements.Add(extra);
                         }
                     }
@@ -6424,16 +6447,16 @@ private void SwapSameClanTags(List<PlayerModel> usScrambled, List<PlayerModel> r
                     opposingList = RemovePlayerFromList(opposingList, mate.Name);
                 }
                 // Purge the replacements from the squad table and target list
-                foreach (PlayerModel mate in replacements) {
-                    RemovePlayerFromSquadRoster(squads, mate.Name);
-                    targetList = RemovePlayerFromList(targetList, mate.Name);
+                foreach (PlayerModel rep in replacements) {
+                    RemovePlayerFromSquadRoster(squads, rep.Name);
+                    targetList = RemovePlayerFromList(targetList, rep.Name);
                 }
                 // Swap the minority movers with the replacements
                 int i = 0;
                 foreach (PlayerModel mate in minority) {
                     try {
                         PlayerModel extra = replacements[i];
-                        DebugScrambler("SWAP: ^b" + mate.FullName + "^n/" + GetTeamName(mate.Team) + "/" + SQUAD_NAMES[mate.ScrambledSquad] + " with ^b" + extra.FullName + "^n/" + GetTeamName(extra.Team) + "/" + SQUAD_NAMES[extra.ScrambledSquad]);
+                        DebugScrambler("SWAP: ^b" + mate.FullName + "^n/" + GetTeamName(opposing) + "/" + SQUAD_NAMES[mate.ScrambledSquad] + " with ^b" + extra.FullName + "^n/" + GetTeamName(target) + "/" + SQUAD_NAMES[extra.ScrambledSquad]);
                         int tmpSquad = extra.ScrambledSquad;
                         extra.ScrambledSquad = mate.ScrambledSquad;
                         mate.ScrambledSquad = tmpSquad;
@@ -6446,6 +6469,8 @@ private void SwapSameClanTags(List<PlayerModel> usScrambled, List<PlayerModel> r
                         opposingList.Add(extra);
                         int extraKey = (1000 * extra.Team) + extra.ScrambledSquad;
                         AddPlayerToSquadRoster(squads, extra, extraKey, extra.ScrambledSquad, false);
+                        DebugScrambler("      Team " + GetTeamName(mate.Team) + " now has ^b" + mate.FullName + "^n in " + SQUAD_NAMES[mate.ScrambledSquad] + " squad");
+                        DebugScrambler("      Team " + GetTeamName(extra.Team) + " now has ^b" + extra.FullName + "^n in " + SQUAD_NAMES[extra.ScrambledSquad] + " squad");
                     } catch (Exception e) {
                         ConsoleException(e);
                     }
@@ -6453,20 +6478,35 @@ private void SwapSameClanTags(List<PlayerModel> usScrambled, List<PlayerModel> r
                 }
                 // Validate
                 int maxTeam = perMode.MaxPlayers/2;
+                allOk = true;
                 if (targetList.Count > maxTeam) {
-                    DebugScrambler("ASSERT: too many players on team " + GetTeamName(target));
+                    ConsoleDebug("ASSERT: too many players on team " + GetTeamName(target));
+                    allOk = false;
                 }
                 if (opposingList.Count > maxTeam) {
-                    DebugScrambler("ASSERT: too many players on team " + GetTeamName(opposing));
+                    ConsoleDebug("ASSERT: too many players on team " + GetTeamName(opposing));
+                    allOk = false;
                 }
                 foreach (PlayerModel extra in opposingList) {
                     String testTag = ExtractTag(extra);
                     if (testTag == tagKey) {
-                        DebugScrambler("ASSERT: minority clan member not swapped ^b" + extra.FullName + "^n");
+                        ConsoleDebug("ASSERT: minority clan member not swapped ^b" + extra.FullName + "^n");
+                        // this is tolerable, so leave allOk set to true
                     }
                 }
             } catch (Exception e) {
                 ConsoleException(e);
+            } finally {
+                // Must update the refs passed in
+                if (allOk) {
+                    if (target == 1) {
+                        if (targetList != null) usScrambled = targetList;
+                        if (opposingList != null) ruScrambled = opposingList;
+                    } else {
+                        if (opposingList != null) usScrambled = opposingList;
+                        if (targetList != null) ruScrambled = targetList;
+                    }
+                }
             }
         }
         DebugScrambler("Done keeping clan members on the same teams!");
@@ -6613,7 +6653,7 @@ private ScrambleStatus ScrambleTeams(List<PlayerModel> usOrig, List<PlayerModel>
                 ++ruCount;
                 --usCount;
             }
-        } // otherwise moved to same time, so no change in team counts
+        } // otherwise moved to same team, so no change in team counts
     }
     return ScrambleStatus.Success;
 }
@@ -9088,7 +9128,7 @@ private int CountMatchingTags(PlayerModel player, Scope scope) {
 }
 
 
-private void ListSideBySide(List<PlayerModel> us, List<PlayerModel> ru, bool useSquadSort) {
+private void ListSideBySide(List<PlayerModel> us, List<PlayerModel> ru, bool useScrambledSquad, bool useSquadSort) {
     int max = Math.Max(us.Count, ru.Count);
 
     // Sort lists by specified metric, which might have changed by now, oh well
@@ -9233,8 +9273,8 @@ private void ListSideBySide(List<PlayerModel> us, List<PlayerModel> ru, bool use
             if (lhs == null) return -1;
             if (rhs == null) return 1;
 
-            int l = lhs.Squad;
-            int r = rhs.Squad;
+            int l = (useScrambledSquad) ? lhs.ScrambledSquad : lhs.Squad;
+            int r = (useScrambledSquad) ? rhs.ScrambledSquad : rhs.Squad;
             if (l == 0 && r == 0) return 0;
             if (l == 0) l = 999; // 0 sorts to end
             if (r == 0) r = 999;
@@ -9246,9 +9286,9 @@ private void ListSideBySide(List<PlayerModel> us, List<PlayerModel> ru, bool use
             if (lhs == null && rhs == null) return 0;
             if (lhs == null) return -1;
             if (rhs == null) return 1;
-
-            int l = lhs.Squad;
-            int r = rhs.Squad;
+            
+            int l = (useScrambledSquad) ? lhs.ScrambledSquad : lhs.Squad;
+            int r = (useScrambledSquad) ? rhs.ScrambledSquad : rhs.Squad;
             if (l == 0 && r == 0) return 0;
             if (l == 0) l = 999; // 0 sorts to end
             if (r == 0) r = 999;
@@ -9301,7 +9341,7 @@ private void ListSideBySide(List<PlayerModel> us, List<PlayerModel> ru, bool use
                 } else {
                     xt = player.Name;
                 }
-                sq = Math.Max(0, Math.Min(player.Squad, SQUAD_NAMES.Length - 1));
+                sq = Math.Max(0, Math.Min(((useScrambledSquad) ? player.ScrambledSquad : player.Squad), SQUAD_NAMES.Length - 1));
             } catch (Exception e) { ConsoleException (e); }
             //u = xt + " (" + SQUAD_NAMES[sq] + ", " + kstat + ":#" + (allNames.IndexOf(player.Name)+1) + ")";
             u = "(" + SQUAD_NAMES[sq] + ", " + kstat + ":#" + (allNames.IndexOf(player.Name)+1) + ") " + xt;
@@ -9315,7 +9355,7 @@ private void ListSideBySide(List<PlayerModel> us, List<PlayerModel> ru, bool use
                 } else {
                     xt = player.Name;
                 }
-                sq = Math.Max(0, Math.Min(player.Squad, SQUAD_NAMES.Length - 1));
+                sq = Math.Max(0, Math.Min(((useScrambledSquad) ? player.ScrambledSquad : player.Squad), SQUAD_NAMES.Length - 1));
             } catch (Exception e) { ConsoleException(e); }
             r = xt + " (" + SQUAD_NAMES[sq] + ", " + kstat + ":#" + (allNames.IndexOf(player.Name)+1) + ")";
         }
@@ -10496,7 +10536,7 @@ static class MULTIbalancerUtils {
 <p>This style aims to retain players on your server. Players are left alone to do what they want, but aspects of team balance and team switching that cause players to leave, like too much autobalancing, team stacking, too many Colonel 100's on one team, too many players from one clan on one team, etc., are dealt with. Only things that are related to team balance are managed, however. This plugin doesn't do anything about, for example, base raping.</p>
 
 <h4>Keep friends together</h4>
-<p>This style recognizes that friends like to play together. To the extent that friends wear the same clan tag, the balancer and unstacker can be configured to keep players with the same tags together.</p>
+<p>This style recognizes that friends like to play together. To the extent that friends wear the same clan tag or are specified in a friend's list, the balancer and unstacker can be configured to keep friends together.</p>
 
 <h4>Split problem clans apart</h4>
 <p>This style recognizes that some &quot;pro&quot; clans can spoil everyone's fun if they play together, so the balancer and unstacker can be configured to split players with the same clan tag apart and spread them out evenly between teams.</p>
@@ -10584,7 +10624,7 @@ static class MULTIbalancerUtils {
   EA_20D5B089E734F589B1517C8069A37E28
 </pre></p>
 
-<p><b>Friends List</b>: List of player names (without clan tags), clan tags (by themselves), or EA GUIDs, <b>two or more per line</b> separated by spaces, in any combination. The first item may also specify a file to merge into the list, e.g., <i>&lt;friends.txt</i>. See <b>Merge Files</b> above. If <b>On&nbsp;Friends&nbsp;List</b> is enabled, a player is excluded if at least one other player in his squad is also on the same friends sub-list. A sub-list is a single line of the Friends List with two or more names, tags or guids. No literal item may be duplicated anywhere in the list, but a player's clan tag may be on one sub-list and his name on another and his guid on a third. Example of two separate friends sub-lists:
+<p><b>Friends List</b>: List of player names (without clan tags), clan tags (by themselves), or EA GUIDs, <b>two or more per line</b> separated by spaces, in any combination. The first item may also specify a file to merge into the list, e.g., <i>&lt;friends.txt</i>. See <b>Merge Files</b> above. Players that are friends with each other are specified by a friends sub-list. A sub-list is a single line of the Friends List with two or more names, tags or guids. No literal item may be duplicated anywhere in the list, but a player's clan tag may be on one sub-list and his name on another and his guid on a third. See <b>On&nbsp;Friends&nbsp;List</b> and <b>Keep&nbsp;Friends&nbsp;In&nbsp;Same&nbsp;Team</b>. Example of two separate friends sub-lists:
 <pre>
   PapaCharlie9 FTB C2C
   Tom Dick Harry EA_20D5B089E734F589B1517C8069A37E28 
@@ -10603,7 +10643,7 @@ static class MULTIbalancerUtils {
 
 <p><b>On Whitelist</b>: True or False, default True. If True, the <b>Whitelist</b> is used to exclude players. If False, the Whitelist is ignored.</p>
 
-<p><b>On Friends List</b>: True or False, default False. If True, the Friend List is used to exclude players. If False, the <b>Friends List</b> is ignored.</p>
+<p><b>On Friends List</b>: True or False, default False. If True, the Friend List is used to exclude players. If False, the <b>Friends&nbsp;List</b> is ignored.</p>
 
 <p><b>Top Scorers</b>: True or False, default True. If True, the top 1, 2, or 3 players (depending on server population and mode) on each team are excluded from moves for balancing or unstacking. This is to reduce the whining and QQing when a team loses their top players to autobalancing.</p>
 
@@ -10653,6 +10693,8 @@ For each phase, there are three unstacking settings for server population: Low, 
 <p><b>Keep Squads Together</b>: True or False, default True. If True, during scrambling, an attempt is made to keep players in a squad together so that they are moved as a squad. This is not always possible and sometimes squads may be split up even when this setting is True. The squad ID may change, e.g., if the players were originally in Alpha, they may end up in Echo on the other team.</p>
 
 <p><b>Keep Clan Tags In Same Team</b>: True or False, default True. Only visible if <b>Keep Squads Together</b> is set to False. If True, players with the same clan tags will be scrambled to the same team. Players in a squad with other players with the same clan tag will be kept together, if possible. Players in the same squad that do not have the same tag may get moved to another squad. The squad ID may change, e.g., if the players were originally in Hotel, they may end up in Charlie on the other team.</p>
+
+<p><b>Keep Friends In Same Team</b>: True or False, default True. Only visible if <b>Keep Squads Together</b> is set to False and if <b>Keep&nbsp;Clan&nbsp;Tags&nbsp;In&nbsp;Same&nbsp;Team</b> is set to True. If True, players in the same friends sub-list in the <b>Friends&nbsp;List</b> will be scrambled to the same team. Players in a squad with other friends will be kept together, if possible. Players in the same squad that are not friends may get moved to another squad. The squad ID may change, e.g., if the players were originally in Hotel, they may end up in Charlie on the other team.</p>
 
 <p><b>Divide By</b>: None, ClanTag, or DispersalGroup. Specifies how players should be divided into teams during scrambling. ClanTag divides all players evenly between the two teams if they have the clan tag specified in <b>Clan Tag To Divide By</b>. Only one tag may be specified. DispersalGroup divides players to their assigned dispersal group, if they are in one of the two groups defined in the <b>Disperse Evenly List</b>, if any.
 
