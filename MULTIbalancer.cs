@@ -6384,7 +6384,7 @@ private void SwapSameClanTags(List<PlayerModel> usScrambled, List<PlayerModel> r
                     DebugScrambler("ASSERT: No minority clan members for [" + tagKey + "]");
                     return;
                 }
-                // Need a list of replacments from the target team to swap, try non-clan members from target squads first
+                // Need a list of replacements from the target team to swap, try non-clan members from target squads first
                 foreach (int key in clan) {
                     if ((key / 1000) == target) { // squad containing majority clan member from target team
                         foreach (PlayerModel mate in squads[key].Roster) {
@@ -6468,6 +6468,7 @@ private void SwapSameClanTags(List<PlayerModel> usScrambled, List<PlayerModel> r
                 ConsoleException(e);
             }
         }
+        DebugScrambler("Done keeping clan members on the same teams!");
     } catch (Exception e) {
         ConsoleException(e);
     } finally {
