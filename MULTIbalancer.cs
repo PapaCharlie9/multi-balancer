@@ -2315,7 +2315,7 @@ private void CommandToLog(string cmd) {
             ListSideBySide(fDebugScramblerBefore[0], fDebugScramblerBefore[1], (KeepSquadsTogether || KeepClanTagsInSameTeam));
             ConsoleDump("===== AFTER =====");
             ListSideBySide(fDebugScramblerAfter[0], fDebugScramblerAfter[1], (KeepSquadsTogether || KeepClanTagsInSameTeam));
-            if (KeepSquadsTogether || KeepClanTagsInSameTeam) {
+            if (KeepSquadsTogether) {
                 ConsoleDump(" ");
                 // After scramble, compare squads: use both after teams to account for cross-team moves
                 CompareSquads(1, 1, fDebugScramblerBefore[0], fDebugScramblerAfter[0], 2, fDebugScramblerAfter[1], false);
@@ -2324,7 +2324,7 @@ private void CommandToLog(string cmd) {
             if (fDebugScramblerStartRound[0].Count > 0 && fDebugScramblerStartRound[1].Count > 0) {
                 ConsoleDump("===== START OF ROUND =====");
                 ListSideBySide(fDebugScramblerStartRound[0], fDebugScramblerStartRound[1], (KeepSquadsTogether || KeepClanTagsInSameTeam));
-                if (KeepSquadsTogether || KeepClanTagsInSameTeam) {
+                if (KeepSquadsTogether) {
                     ConsoleDump(" ");
                     // After team swaps, compare squads
                     CompareSquads(2, 1, fDebugScramblerAfter[1], fDebugScramblerStartRound[0], 2, fDebugScramblerStartRound[1], true);
@@ -6079,7 +6079,9 @@ private void ScramblerLoop () {
                                     if (ft == ExtractTag(mate)) ++cmt;
                                 }
 
-                                if (cmt >= 2) {
+                                int required = (KeepClanTagsInSameTeam) ? 1 : 2;
+
+                                if (cmt >= required) {
                                     filler = null;
                                     continue;
                                 }
@@ -6151,7 +6153,7 @@ private void ScramblerLoop () {
                 Thread.Sleep(1*1000);
 
                 // Swap players if they have the same clan tag
-                if (KeepClanTagsInSameTeam) {
+                if (!KeepSquadsTogether && KeepClanTagsInSameTeam) {
                     SwapSameClanTags(usScrambled, ruScrambled);
                 }
                 
@@ -6431,13 +6433,12 @@ private void SwapSameClanTags(List<PlayerModel> usScrambled, List<PlayerModel> r
                 foreach (PlayerModel mate in minority) {
                     try {
                         PlayerModel extra = replacements[i];
-                        DebugScrambler("SWAP: ^b" + mate.FullName + "^n/" + mate.Team + "/" + mate.ScrambledSquad + " with ^b" + extra.FullName + "^n/" + extra.Team + "/" + extra.ScrambledSquad);
-                        int tmpTeam = extra.Team;
+                        DebugScrambler("SWAP: ^b" + mate.FullName + "^n/" + GetTeamName(mate.Team) + "/" + SQUAD_NAMES[mate.ScrambledSquad] + " with ^b" + extra.FullName + "^n/" + GetTeamName(extra.Team) + "/" + SQUAD_NAMES[extra.ScrambledSquad]);
                         int tmpSquad = extra.ScrambledSquad;
-                        extra.Team = mate.Team;
                         extra.ScrambledSquad = mate.ScrambledSquad;
-                        mate.Team = tmpTeam;
                         mate.ScrambledSquad = tmpSquad;
+                        extra.Team = opposing;
+                        mate.Team = target;
 
                         targetList.Add(mate);
                         int mateKey = (1000 * mate.Team) + mate.ScrambledSquad;
