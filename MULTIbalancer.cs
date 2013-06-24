@@ -6308,51 +6308,60 @@ private void SwapSameClanTags(ref List<PlayerModel> usScrambled, ref List<Player
     between the two scramble lists. No actual moving is required.
     */
     DebugScrambler(" ");
-    DebugScrambler("Keeping clan tags to same team");
+    if (KeepFriendsInSameTeam) {
+        DebugScrambler("Keeping clan tags and friends to same team");
+    } else {
+        DebugScrambler("Keeping clan tags to same team");
+    }
     try {
         PerModeSettings perMode = GetPerModeSettings();
         String usName = GetTeamName(1);
         String ruName = GetTeamName(2);
 
-        Dictionary<String,int[]> clanTagDistribution = new Dictionary<String,int[]>();
+        Dictionary<String,int[]> matesDistribution = new Dictionary<String,int[]>();
 
-        // Calculate tag distribution between the two teams
+        // Calculate distribution between the two teams
         foreach (PlayerModel clone in usScrambled) {
-            String tag = ExtractTag(clone);
-            if (String.IsNullOrEmpty(tag)) continue;
+            String tagOrFriendex = ExtractTagOrFriendex(clone);
+            if (String.IsNullOrEmpty(tagOrFriendex)) {
+            }
             int[] teamCounts = null;
-            if (clanTagDistribution.TryGetValue(tag, out teamCounts) && teamCounts != null) {
+            if (matesDistribution.TryGetValue(tagOrFriendex, out teamCounts) && teamCounts != null) {
                 teamCounts[1] = teamCounts[1] + 1;
             } else {
                 teamCounts = new int[3]{0,0,0};
                 teamCounts[1] = teamCounts[1] + 1;
-                clanTagDistribution[tag] = teamCounts;
+                matesDistribution[tagOrFriendex] = teamCounts;
             }
         }
         foreach (PlayerModel clone in ruScrambled) {
-            String tag = ExtractTag(clone);
-            if (String.IsNullOrEmpty(tag)) continue;
+            String tagOrFriendex = ExtractTagOrFriendex(clone);
+            if (String.IsNullOrEmpty(tagOrFriendex)) continue;
             int[] teamCounts = null;
-            if (clanTagDistribution.TryGetValue(tag, out teamCounts) && teamCounts != null) {
+            if (matesDistribution.TryGetValue(tagOrFriendex, out teamCounts) && teamCounts != null) {
                 teamCounts[2] = teamCounts[2] + 1;
             } else {
                 teamCounts = new int[3]{0,0,0};
                 teamCounts[2] = teamCounts[2] + 1;
-                clanTagDistribution[tag] = teamCounts;
+                matesDistribution[tagOrFriendex] = teamCounts;
             }
         }
 
         // Find split tag counts
-        List<String> splitTags = new List<String>();
-        foreach (String key in clanTagDistribution.Keys) {
-            if (clanTagDistribution[key][1] == 0) continue;
-            if (clanTagDistribution[key][2] == 0) continue;
+        List<String> splitTagsOrFriends = new List<String>();
+        foreach (String id in matesDistribution.Keys) {
+            if (matesDistribution[id][1] == 0) continue;
+            if (matesDistribution[id][2] == 0) continue;
             // Split!
-            DebugScrambler("Clan tag [" + key + "] is split: " + clanTagDistribution[key][1] + "/" + usName + " vs " + clanTagDistribution[key][2] + "/" + ruName);
-            splitTags.Add(key);
+            DebugScrambler("Identifier ^b[" + id + "]^n is split: " + matesDistribution[id][1] + "/" + usName + " vs " + matesDistribution[id][2] + "/" + ruName);
+            splitTagsOrFriends.Add(id);
         }
-        if (splitTags.Count == 0) {
-            DebugScrambler("No clan tags were split");
+        if (splitTagsOrFriends.Count == 0) {
+            if (KeepFriendsInSameTeam) {
+                DebugScrambler("No clan tags or friends were split");
+            } else {
+                DebugScrambler("No clan tags were split");
+            }
             return;
         }
 
@@ -6374,11 +6383,11 @@ private void SwapSameClanTags(ref List<PlayerModel> usScrambled, ref List<Player
         List<PlayerModel> opposingList = null;
         bool allOk = true;
 
-        foreach (String tagKey in splitTags) {
+        foreach (String splitId in splitTagsOrFriends) {
             try {
-                DebugScrambler("Working on clan tag [^b" + tagKey + "^n]");
+                DebugScrambler("Working on identifier [^b" + splitId + "^n]");
                 // Target team is the one with the majority
-                if (clanTagDistribution[tagKey][1] > clanTagDistribution[tagKey][2]) {
+                if (matesDistribution[splitId][1] > matesDistribution[splitId][2]) {
                     target = 1;
                     opposing = 2;
                     targetList = usScrambled;
@@ -6389,30 +6398,32 @@ private void SwapSameClanTags(ref List<PlayerModel> usScrambled, ref List<Player
                     targetList = ruScrambled;
                     opposingList = usScrambled;
                 }
-                DebugScrambler("Target team is " + GetTeamName(target) + " with " + clanTagDistribution[tagKey][target] + ", opposing team is " + GetTeamName(opposing) + " with " + clanTagDistribution[tagKey][opposing]);
-                // List all squads that have this clan tag
-                List<int> clan = GetSquadsWithClanTag(tagKey, squads);
+                DebugScrambler("Target team is " + GetTeamName(target) + " with " + matesDistribution[splitId][target] + ", opposing team is " + GetTeamName(opposing) + " with " + matesDistribution[splitId][opposing]);
+                // List all squads that have this clan tag or friendex
+                List<int> clan = GetSquadsWithClanTagOrFriendex(splitId, squads);
                 // List players that need to move
                 List<PlayerModel> minority = new List<PlayerModel>();
                 List<PlayerModel> replacements = new List<PlayerModel>();
                 foreach (int key in clan) {
                     if ((key / 1000) != target) { // squad containing minority clan member from opposing team
                         foreach (PlayerModel mate in squads[key].Roster) {
-                            String mTag = ExtractTag(mate);
-                            if (mTag == tagKey && !minority.Contains(mate)) minority.Add(mate);
+                            String mId = ExtractTagOrFriendex(mate);
+                            if (mId == splitId && !minority.Contains(mate)) minority.Add(mate);
                         }
                     }
                 }
                 if (minority.Count == 0) {
-                    DebugScrambler("ASSERT: No minority clan members for [" + tagKey + "]");
+                    DebugScrambler("ASSERT: No minority clan members for [" + splitId + "]");
                     return;
                 }
                 // Need a list of replacements from the target team to swap, try non-clan members from target squads first
                 foreach (int key in clan) {
                     if ((key / 1000) == target) { // squad containing majority clan members from target team
                         foreach (PlayerModel rep in squads[key].Roster) {
-                            String rTag = ExtractTag(rep);
-                            if (String.IsNullOrEmpty(rTag) && !replacements.Contains(rep)) replacements.Add(rep);
+                            String rId = ExtractTagOrFriendex(rep);
+                            if (String.IsNullOrEmpty(rId) && !replacements.Contains(rep)) {
+                                replacements.Add(rep);
+                            }
                             if (replacements.Count == minority.Count) break;
                         }
                     }
@@ -6423,8 +6434,8 @@ private void SwapSameClanTags(ref List<PlayerModel> usScrambled, ref List<Player
                     for (int x = (targetList.Count-1); x >= 0; --x) {
                         if (replacements.Count == minority.Count) break;
                         PlayerModel extra = targetList[x];
-                        String xTag = ExtractTag(extra);
-                        if (String.IsNullOrEmpty(xTag) && !replacements.Contains(extra)) {
+                        String xId = ExtractTagOrFriendex(extra);
+                        if (String.IsNullOrEmpty(xId) && !replacements.Contains(extra)) {
                             replacements.Add(extra);
                         }
                     }
@@ -6438,7 +6449,11 @@ private void SwapSameClanTags(ref List<PlayerModel> usScrambled, ref List<Player
                     minority.Remove(mate);
                 }
                 if (minority.Count == 0 || replacements.Count == 0 || (replacements.Count != minority.Count)) {
-                    DebugScrambler("Unable to swap clan members to the target team");
+                    if (KeepFriendsInSameTeam) {
+                        DebugScrambler("Unable to swap clan members or friends to the target team");
+                    } else {
+                        DebugScrambler("Unable to swap clan members to the target team");
+                    }
                     return;
                 }
                 // Purge the minority movers from the squad table and opposing list
@@ -6456,7 +6471,11 @@ private void SwapSameClanTags(ref List<PlayerModel> usScrambled, ref List<Player
                 foreach (PlayerModel mate in minority) {
                     try {
                         PlayerModel extra = replacements[i];
-                        DebugScrambler("SWAP: ^b" + mate.FullName + "^n/" + GetTeamName(opposing) + "/" + SQUAD_NAMES[mate.ScrambledSquad] + " with ^b" + extra.FullName + "^n/" + GetTeamName(target) + "/" + SQUAD_NAMES[extra.ScrambledSquad]);
+                        String mId = ExtractTagOrFriendex(mate);
+                        String xId = ExtractTagOrFriendex(extra);
+                        String mateName = (KeepFriendsInSameTeam && !String.IsNullOrEmpty(mId)) ? ("[" + mId + "]" + mate.Name) : (mate.FullName);
+                        String extraName = (KeepFriendsInSameTeam && !String.IsNullOrEmpty(xId)) ? ("[" + xId + "]" + extra.Name) : (extra.FullName);
+                        DebugScrambler("SWAP: ^b" + mateName + "^n/" + GetTeamName(opposing) + "/" + SQUAD_NAMES[mate.ScrambledSquad] + " with ^b" + extraName + "^n/" + GetTeamName(target) + "/" + SQUAD_NAMES[extra.ScrambledSquad]);
                         int tmpSquad = extra.ScrambledSquad;
                         extra.ScrambledSquad = mate.ScrambledSquad;
                         mate.ScrambledSquad = tmpSquad;
@@ -6469,8 +6488,8 @@ private void SwapSameClanTags(ref List<PlayerModel> usScrambled, ref List<Player
                         opposingList.Add(extra);
                         int extraKey = (1000 * extra.Team) + extra.ScrambledSquad;
                         AddPlayerToSquadRoster(squads, extra, extraKey, extra.ScrambledSquad, false);
-                        DebugScrambler("      Team " + GetTeamName(mate.Team) + " now has ^b" + mate.FullName + "^n in " + SQUAD_NAMES[mate.ScrambledSquad] + " squad");
-                        DebugScrambler("      Team " + GetTeamName(extra.Team) + " now has ^b" + extra.FullName + "^n in " + SQUAD_NAMES[extra.ScrambledSquad] + " squad");
+                        DebugScrambler("      Team " + GetTeamName(mate.Team) + " now has ^b" + mateName + "^n in " + SQUAD_NAMES[mate.ScrambledSquad] + " squad");
+                        DebugScrambler("      Team " + GetTeamName(extra.Team) + " now has ^b" + extraName + "^n in " + SQUAD_NAMES[extra.ScrambledSquad] + " squad");
                     } catch (Exception e) {
                         ConsoleException(e);
                     }
@@ -6488,9 +6507,13 @@ private void SwapSameClanTags(ref List<PlayerModel> usScrambled, ref List<Player
                     allOk = false;
                 }
                 foreach (PlayerModel extra in opposingList) {
-                    String testTag = ExtractTag(extra);
-                    if (testTag == tagKey) {
-                        ConsoleDebug("ASSERT: minority clan member not swapped ^b" + extra.FullName + "^n");
+                    String testTag = ExtractTagOrFriendex(extra);
+                    if (testTag == splitId) {
+                        if (KeepFriendsInSameTeam) {
+                            ConsoleDebug("ASSERT: minority clan member or friend not swapped ^b" + extra.FullName + "^n");
+                        } else {
+                            ConsoleDebug("ASSERT: minority clan member not swapped ^b" + extra.FullName + "^n");
+                        }
                         // this is tolerable, so leave allOk set to true
                     }
                 }
@@ -6518,13 +6541,13 @@ private void SwapSameClanTags(ref List<PlayerModel> usScrambled, ref List<Player
 }
 
 
-private List<int> GetSquadsWithClanTag(String tagKey, Dictionary<int,SquadRoster> squads) {
+private List<int> GetSquadsWithClanTagOrFriendex(String id, Dictionary<int,SquadRoster> squads) {
     List<int> ret = new List<int>(); // list of keys into squad table
     foreach (int key in squads.Keys) {
         // anyone in this squad have the matching tagKey?
         foreach (PlayerModel mate in squads[key].Roster) {
-            String tag = ExtractTag(mate);
-            if (tag == tagKey) {
+            String tagex = ExtractTagOrFriendex(mate);
+            if (tagex == id) {
                 ret.Add(key); // add this squad to the list
                 break;
             }
@@ -6555,6 +6578,22 @@ private List<PlayerModel> RemovePlayerFromList(List<PlayerModel> aList, String n
         ret.Add(mate);
     }
     return ret;
+}
+
+private String ExtractTagOrFriendex(PlayerModel m) {
+    /*
+    For the swapper code, it is convenient to treat the Friend Index (Friendex) like a tag.
+    The value of the index is formatted into a string "[x]", which should be impossible for real tags
+    */
+    if (m == null) return String.Empty;
+
+    String tagOrFriendex = ExtractTag(m);
+    if (KeepSquadsTogether || !KeepClanTagsInSameTeam) return tagOrFriendex;
+    if (KeepFriendsInSameTeam && String.IsNullOrEmpty(tagOrFriendex) && m.Friendex != -1) {
+        tagOrFriendex = String.Format("[{0}]", m.Friendex);
+        //DebugScrambler("Using friendex ^b" + tagOrFriendex + "^n for ^b" + m.FullName);
+    }
+    return tagOrFriendex;
 }
 
 
