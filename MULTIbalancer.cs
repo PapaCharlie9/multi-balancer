@@ -93,6 +93,8 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     public enum ScrambleStatus {Success, Failure, PartialSuccess, CompletelyFull};
 
+    public enum ChatScope {Global, Team, Squad, Player};
+
     /* Constants & Statics */
 
     public const double SWAP_TIMEOUT = 600; // in seconds
@@ -3283,11 +3285,41 @@ public override void OnServerInfo(CServerInfo serverInfo) {
 }
 
 
-//public override void OnGlobalChat(String speaker, String message) { }
+public override void OnGlobalChat(String speaker, String message) {
+    if (!fIsEnabled) return;
 
-//public override void OnTeamChat(String speaker, String message, int teamId) { }
+    try {
+        if (Regex.Match(message, @"^\s*[!@#]mb", RegexOptions.IgnoreCase).Success) {
+            InGameCommand(message, ChatScope.Global, 0, 0, speaker);
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+}
 
-//public override void OnSquadChat(String speaker, String message, int teamId, int squadId) { }
+public override void OnTeamChat(String speaker, String message, int teamId) {
+    if (!fIsEnabled) return;
+
+    try {
+        if (Regex.Match(message, @"^\s*[!@#]mb", RegexOptions.IgnoreCase).Success) {
+            InGameCommand(message, ChatScope.Team, teamId, 0, speaker);
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+}
+
+public override void OnSquadChat(String speaker, String message, int teamId, int squadId) {
+    if (!fIsEnabled) return;
+
+    try {
+        if (Regex.Match(message, @"^\s*[!@#]mb", RegexOptions.IgnoreCase).Success) {
+            InGameCommand(message, ChatScope.Squad, teamId, squadId, speaker);
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+}
 
 public override void OnRoundOverPlayers(List<CPlayerInfo> players) {
     if (!fIsEnabled) return;
@@ -10065,6 +10097,69 @@ private int CountMatchingFriends(PlayerModel player) {
     if (DebugLevel >= 6 && same > 1) DebugBalance("Count of matching friends for player ^b" + player.Name + "^n in " + sname + ", found " + same + " matching friends (friendex = " + player.Friendex + ")");
 
     return same;
+}
+
+private void InGameCommand(String msg, ChatScope scope, int team, int squad, String name) {
+    Match mbCmd = Regex.Match(msg, @"^\s*[@!#]mb\s+([\w]+)\s+([\w]+)\s+(.*)$", RegexOptions.IgnoreCase);
+    Match mbHelp = Regex.Match(msg, @"^\s*[@!#]mb\s+help\s*$", RegexOptions.IgnoreCase);
+    Match mbHelpCmd = Regex.Match(msg, @"^\s*[@!#]mb\s+help\s+(add|del|list|new|sub|unsub)", RegexOptions.IgnoreCase);
+    List<String> lines = null;
+
+    if (mbHelp.Success) {
+        lines = new List<String>();
+        lines.Add("Type '@mb help' and one of the following:");
+        lines.Add("add, delete, list, new, subscribe, unsubscribe");
+        SayLines(lines, name);
+        return;
+    }
+
+    if (mbHelpCmd.Success) {
+        lines = new List<String>();
+        String which = mbHelpCmd.Groups[1].Value;
+        switch (which.ToLower()) {
+            case "add":
+                lines.Add("Add player names to the Dispersal or Friends list");
+                break;
+            case "del":
+                lines.Add("Delete player names from the Dispersal or Friends list");
+                break;
+            case "list":
+                lines.Add("List the Dispersal or Friends list");
+                break;
+            case "new":
+                lines.Add("Create a new entry in the Dispersal or Friends list");
+                break;
+            case "sub":
+                lines.Add("Subscribe to autobalancer activity stream");
+                break;
+            case "unsub":
+                lines.Add("Unsubscribe from autobalancer activity stream");
+                break;
+            default:
+                break;
+        }
+        SayLines(lines, name);
+    }
+
+    if (mbCmd.Success) {
+        // TBD
+    }
+}
+
+private List<String> Chunker(String msg, int maxLen) {
+    List<String> ret = new List<String>();
+    // TBD
+    return ret;
+}
+
+private void SayLines(List<String> lines, String name) {
+    foreach (String line in lines) {
+        if (String.IsNullOrEmpty(name)) {
+            ServerCommand("admin.say", line);
+        } else {
+            ServerCommand("admin.say", line, "player", name);
+        }
+    }
 }
 
 /* === NEW_NEW_NEW === */
