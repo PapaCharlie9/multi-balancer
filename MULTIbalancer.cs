@@ -1383,7 +1383,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.3.6";
+    return "1.0.3.7";
 }
 
 public String GetPluginAuthor() {
@@ -2284,10 +2284,19 @@ private void CommandToLog(string cmd) {
 
         if (Regex.Match(cmd, @"^moved", RegexOptions.IgnoreCase).Success) {
             lock (fKnownPlayers) {
+                ConsoleDump("^bMoved by " + GetPluginName() + ":");
                 foreach (String name in fKnownPlayers.Keys) {
                     PlayerModel p = fKnownPlayers[name];
                     if (p.MovedByMBTimestamp != DateTime.MinValue) {
                         ConsoleDump("^b" + p.FullName + "^n was moved " + p.MovesByMBRound + " times this round, " + (p.MovesByMBTotal + p.MovesByMBRound) + " total, the last was " + DateTime.Now.Subtract(p.MovedByMBTimestamp).TotalMinutes.ToString("F0") + " minutes ago");
+                    }
+                }
+                ConsoleDump(" ");
+                ConsoleDump("^bMoved by someone or something else:");
+                foreach (String name in fKnownPlayers.Keys) {
+                    PlayerModel p = fKnownPlayers[name];
+                    if (p.MovesRound > 0) {
+                        ConsoleDump("^b" + p.FullName + "^n was moved " + p.MovesRound + " times this round, " + (p.MovesTotal + p.MovesRound) + " total");
                     }
                 }
             }
@@ -2913,6 +2922,7 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
                 DebugWrite("Moved by admin: ^b" + soldierName + "^n to team " + teamId, 6);
                 if (!wasPluginMove) {
                     // Some other admin.movePlayer, so update to account for it
+                    DebugWrite("^4^bADMIN^n moved player ^b" + soldierName + "^n, " + GetPluginName() + " will respect this move", 2);
                     ConditionalIncrementMoves(soldierName);
                     UpdatePlayerTeam(soldierName, teamId);
                     UpdateTeams();
@@ -2971,16 +2981,26 @@ public override void OnPlayerMovedByAdmin(string soldierName, int destinationTea
     try {
         if (fPluginState == PluginState.Active && fGameState == GameState.Playing) {
             if (fPendingTeamChange.ContainsKey(soldierName)) {
-                // this is an admin move in reversed order, clear from pending table and ignore the move
+                // this is an admin move in reversed order, clear from pending table
                 fPendingTeamChange.Remove(soldierName);
                 DebugWrite("(REVERSED) Moved by admin: ^b" + soldierName + "^n to team " + destinationTeamId, 6);
-                // Already handled updates in preceding team change event
-                /*
-                ConditionalIncrementMoves(soldierName);
-                // Some other admin.movePlayer, so update to account for it
-                UpdatePlayerTeam(soldierName, destinationTeamId);
-                UpdateTeams();
-                */
+                // If the move was not done by MB, update and count the move
+                PlayerModel player = GetPlayer(soldierName);
+                if (player == null // haven't seen this player before
+                || GetMoves(player) == 0 // never been moved before (MB FinishMove would have incremented this)
+                || player.Team != destinationTeamId // no update for teams has been done yet (MB FinishMove would have done this)
+                || player.LastMoveFrom != 0) { // interrupted MB move, special case
+                    // Do updates as needed
+                    bool interruptedMBMove = (player != null && player.LastMoveFrom != 0);
+                    if (!interruptedMBMove) {
+                        DebugWrite("^4^bADMIN^n moved player (REVERSED) ^b" + soldierName + "^n, " + GetPluginName() + " will respect this move", 2);
+                    } else {
+                        ConsoleDebug("Interrupted move (REVERSED) ^b" + soldierName + "^n, updating to correct");
+                    }
+                    UpdatePlayerTeam(soldierName, destinationTeamId);
+                    if (!interruptedMBMove) ConditionalIncrementMoves(soldierName);
+                    UpdateTeams();
+                }
             } else if (!fUnassigned.Contains(soldierName)) {
                 // this is an admin move in correct order, add to pending table and let OnPlayerTeamChange handle it
                 fPendingTeamChange[soldierName] = destinationTeamId;
@@ -6564,7 +6584,11 @@ private void SwapSameClanTags(ref List<PlayerModel> usScrambled, ref List<Player
                 }
             }
         }
-        DebugScrambler("Done keeping clan members on the same teams!");
+        if (KeepFriendsInSameTeam) {
+            DebugScrambler("Done keeping clan members or friends on the same teams!");
+        } else {
+            DebugScrambler("Done keeping clan members on the same teams!");
+        }
     } catch (Exception e) {
         ConsoleException(e);
     } finally {
@@ -7467,7 +7491,7 @@ private bool FetchWebPage(ref String result, String url) {
     try {
 
         WebClient client = new WebClient();
-        String ua = "Mozilla/5.0 (compatible; PRoCon 1; MULTIbalancer)";
+        String ua = "Mozilla/5.0 (compatible; PRoCon 1; " + GetPluginName() + ")";
         // XXX String ua = "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64; Trident/5.0; .NET CLR 3.5.30729)";
         if (DebugLevel >= 8) DebugFetch("Using user-agent: " + ua);
         client.Headers.Add("user-agent", ua);
@@ -9483,7 +9507,7 @@ private void LogExternal(String msg) {
     String entry = "[" + DateTime.Now.ToString("HH:mm:ss") + "] ";
     entry = entry + msg;
     entry = Regex.Replace(entry, @"\^[bni\d]", String.Empty);
-    entry = entry.Replace(" [MULTIbalancer]", String.Empty);
+    entry = entry.Replace(" [" + GetPluginName() + "]", String.Empty);
     String date = DateTime.Now.ToString("yyyyMMdd");
     String suffix = (String.IsNullOrEmpty(ExternalLogSuffix)) ? "_mb.log" : ExternalLogSuffix;
     String path = Path.Combine(Path.Combine("Logs", fHost + "_" + fPort), date + suffix);
