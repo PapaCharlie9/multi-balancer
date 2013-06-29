@@ -10,3 +10,5 @@ DOC changes
 * KeepClanTagsInSameSquad -> KeepClanTagsInSameTeam
 * Added: KeepFriendsInSameTeam
 * Added: status command
+* Added: subscribers command
+* Edited: Disperse Evenly List ("separated by spaces")

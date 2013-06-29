@@ -95,6 +95,8 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     public enum ChatScope {Global, Team, Squad, Player};
 
+    public enum IGCommand {None, Add, Delete, List, New};
+
     /* Constants & Statics */
 
     public const double SWAP_TIMEOUT = 600; // in seconds
@@ -379,6 +381,9 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         // Based on settings
         public int DispersalGroup;
         public int Friendex; // index (key) to friend list
+
+        // Commands
+        public bool Subscribed;
         
         public PlayerModel() {
             Name = null;
@@ -425,6 +430,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             StatsVerified = false;
             PersonaId = String.Empty;
             StatsFetchStatus = new FetchInfo();
+            Subscribed = false;
         }
         
         public PlayerModel(String name, int team) : this() {
@@ -506,6 +512,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             lhs.StatsVerified = this.StatsVerified;
             lhs.PersonaId = this.PersonaId;
             lhs.StatsFetchStatus = new FetchInfo(this.StatsFetchStatus);
+            lhs.Subscribed = this.Subscribed;
             return lhs;
         }
     } // end PlayerModel
@@ -1980,6 +1987,36 @@ public void SetPluginVariable(String strVariable, String strValue) {
 
 
 
+/*
+procon.protected.plugins.setVariable "MULTIbalancer" "1 - Settings|Whitelist" "Able B|Baker B U|Charlie B U S|None|Delta B U S R"
+procon.protected.plugins.setVariable "MULTIbalancer" "1 - Settings|Friends List" "AAA BBB CCC|XXX YYY ZZZ|Able Baker|Charlie Delta"
+procon.protected.plugins.setVariable "MULTIbalancer" "1 - Settings|Disperse Evenly List" "1 AAA BBB CCC|2 XXX YYY ZZZ|Able|Baker|Charlie|Delta"
+
+Command: 	procon.protected.plugins.setVariable <string: classname> <string: variablename> <string: value>
+Effect: 	Sets <classname> plugin’s <variablename> to <value>
+
+*/
+
+private void ForceSetPluginVariable(String strVariable, String[] values) {
+    try {
+        ForceSetPluginVariable(strVariable, String.Join("|", values));
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+}
+
+
+private void ForceSetPluginVariable(String strVariable, String strValue) {
+    try {
+        if (DebugLevel >= 7) ConsoleDebug("procon.protected.plugins.setVariable" + ", " + GetPluginName() + ", " + strVariable + ", " + strValue);
+        this.ExecuteCommand("procon.protected.plugins.setVariable", GetPluginName(), strVariable, strValue);
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+}
+
+
+
 private bool ValidateSettings(String strVariable, String strValue) {
     try {
                 
@@ -2299,6 +2336,7 @@ private void CommandToLog(string cmd) {
                         ConsoleDump("^b" + p.FullName + "^n was moved " + p.MovesRound + " times this round, " + (p.MovesTotal + p.MovesRound) + " total");
                     }
                 }
+                ConsoleDump(" ");
             }
             return;
         }
@@ -2468,6 +2506,18 @@ private void CommandToLog(string cmd) {
             return;
         }
 
+        if (Regex.Match(cmd, @"^subscribed", RegexOptions.IgnoreCase).Success) {
+            lock (fAllPlayers) {
+                foreach (String name in fAllPlayers) {
+                    PlayerModel p = GetPlayer(name);
+                    if (p != null && p.Subscribed) {
+                        ConsoleDump("^b" + p.FullName + "^n is subscribed to all balancer messages in chat");
+                    }
+                }
+            }
+            return;
+        }
+
         if (Regex.Match(cmd, @"^tags?", RegexOptions.IgnoreCase).Success) {
             Dictionary<String,List<PlayerModel>> byTag = new Dictionary<String,List<PlayerModel>>();
 
@@ -2540,6 +2590,7 @@ private void CommandToLog(string cmd) {
             ConsoleDump("^1^bsizes^n^0: Examine the sizes of various data structures");
             ConsoleDump("^1^bsort^n ^iteam^n ^itype^n^0: Examine sorted ^iteam^n (1-4) by ^itype^n (one of: score, spm, kills, kdr, rank, kpm, bspm, bkdr, bkpm)");
             ConsoleDump("^1^bstatus^n^0: Examine full status log, as if Debug Level were 7");
+            ConsoleDump("^1^bsubscribed^n^0: Examine all players who are subscribed to balancer chat messages");
             ConsoleDump("^1^btags^n^0: Examine list of players sorted by clan tags");
             return;
         }
@@ -2733,9 +2784,9 @@ public void OnPluginLoaded(String strHostName, String strPort, String strPRoConV
         "OnPlayerSpawned",
         "OnPlayerTeamChange",
         "OnPlayerSquadChange",
-        //"OnGlobalChat",
-        //"OnTeamChat",
-        //"OnSquadChat",
+        "OnGlobalChat",
+        "OnTeamChat",
+        "OnSquadChat",
         "OnRoundOverPlayers",
         "OnRoundOver",
         "OnRoundOverTeamScores",
@@ -5079,6 +5130,7 @@ private void Chat(String who, String what, bool quiet) {
         doing = (EnableLoggingOnlyMode) ? "^9(SIMULATING) ^b^1CHAT^0^n to all: " : "^b^1CHAT^0^n to all: ";
         DebugWrite(doing + what, 4);
     }
+    SendToAllSubscribers(what);
 }
 
 private void Yell(String who, String what) {
@@ -5092,12 +5144,34 @@ private void Yell(String who, String what) {
 
 private void ProconChat(String what) {
     if (EnableLoggingOnlyMode) what = "(SIMULATING) " + what;
-    if (LogChat) ExecuteCommand("procon.protected.chat.write", "MB > All: " + what);
+    if (LogChat) ExecuteCommand("procon.protected.chat.write", GetPluginName() + " > All: " + what);
 }
 
 private void ProconChatPlayer(String who, String what) {
     if (EnableLoggingOnlyMode) what = "(SIMULATING) " + what;
-    if (LogChat) ExecuteCommand("procon.protected.chat.write", "MB > " + who + ": " + what);
+    if (LogChat) ExecuteCommand("procon.protected.chat.write", GetPluginName() + " > " + who + ": " + what);
+}
+
+private void SendToAllSubscribers(String what) {
+    try {
+        List<String> subscribers = new List<String>();
+        lock (fAllPlayers) {
+            foreach (String name in fAllPlayers) {
+                PlayerModel p = GetPlayer(name);
+                if (p != null && p.Subscribed) {
+                    subscribers.Add(name);
+                }
+            }
+        }
+        foreach (String who in subscribers) {
+            if (!EnableLoggingOnlyMode) {
+                ServerCommand("admin.say", what, "player", who); // chat player only
+                if (DebugLevel >= 7) ConsoleDebug("Sent chat message to subscriber ^b" + who);
+            }
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
 }
 
 private void GarbageCollectKnownPlayers()
@@ -10124,10 +10198,27 @@ private int CountMatchingFriends(PlayerModel player) {
 }
 
 private void InGameCommand(String msg, ChatScope scope, int team, int squad, String name) {
-    Match mbCmd = Regex.Match(msg, @"^\s*[@!#]mb\s+([\w]+)\s+([\w]+)\s+(.*)$", RegexOptions.IgnoreCase);
+    if (EnableLoggingOnlyMode) {
+        ConsoleDebug("EnableLoggingOnlyMode enabled, commands disabled");
+        return;
+    }
+    CPrivileges p = this.GetAccountPrivileges(name);
+    if (p == null || !p.CanMovePlayers) {
+        List<String> m = new List<String>();
+        m.Add("You are not authorized to use @mb commands! Check your Procon account settings.");
+        SayLines(m, name);
+        return;
+    }
+
+    Match mbCmd = Regex.Match(msg, @"^\s*[@!#]mb\s+([\w]+)\s+(.*)$", RegexOptions.IgnoreCase);
+    Match mbSubCmd = Regex.Match(msg, @"^\s*[@!#]mb\s+(sub|unsub)", RegexOptions.IgnoreCase);
     Match mbHelp = Regex.Match(msg, @"^\s*[@!#]mb\s+help\s*$", RegexOptions.IgnoreCase);
     Match mbHelpCmd = Regex.Match(msg, @"^\s*[@!#]mb\s+help\s+(add|del|list|new|sub|unsub)", RegexOptions.IgnoreCase);
     List<String> lines = null;
+    PlayerModel player = null;
+    int dispersalGroup = 0;
+    String nameMatch = String.Empty;
+    List<String> list = null;
 
     if (mbHelp.Success) {
         lines = new List<String>();
@@ -10142,46 +10233,474 @@ private void InGameCommand(String msg, ChatScope scope, int team, int squad, Str
         String which = mbHelpCmd.Groups[1].Value;
         switch (which.ToLower()) {
             case "add":
-                lines.Add("Add player names to the Dispersal or Friends list");
+                lines.Add("Add names to a matching name in the disperse, friends, or white list");
+                lines.Add("Example: @mb add friends Match Adam");
                 break;
             case "del":
-                lines.Add("Delete player names from the Dispersal or Friends list");
+                lines.Add("Delete player names from the disperse, friends, or white list");
+                lines.Add("Example: @mb del friends Adam Eve");
                 break;
             case "list":
-                lines.Add("List the Dispersal or Friends list");
+                lines.Add("List the disperse, friends or white list");
+                lines.Add("Example: @mb list friends");
                 break;
             case "new":
-                lines.Add("Create a new entry in the Dispersal or Friends list");
+                lines.Add("Create a new entry in the disperse, friends, or white list");
+                lines.Add("Example: @mb new disperse 2 Name1 Name2 Name3");
                 break;
             case "sub":
-                lines.Add("Subscribe to autobalancer activity stream");
+                lines.Add("Subscribe to all balancer chat messages");
                 break;
             case "unsub":
-                lines.Add("Unsubscribe from autobalancer activity stream");
+                lines.Add("Unsubscribe from all balancer chat messages");
                 break;
             default:
                 break;
         }
         SayLines(lines, name);
+        return;
+    }
+
+    if (mbSubCmd.Success) {
+        lines = new List<String>();
+        String which = mbSubCmd.Groups[1].Value;
+        switch (which.ToLower()) {
+            case "sub":
+                player = GetPlayer(name);
+                if (player != null) {
+                    player.Subscribed = true;
+                    lines.Add("You will see all balancer chat messages");
+                }
+                break;
+            case "unsub":
+                player = GetPlayer(name);
+                if (player != null) {
+                    player.Subscribed = false;
+                    lines.Add("You will no longer see all balancer chat messages");
+                }
+                break;
+            default:
+                break;
+        }
+        SayLines(lines, name);
+        return;
     }
 
     if (mbCmd.Success) {
-        // TBD
+        lines = new List<String>();
+        String which = mbCmd.Groups[1].Value;
+        String tmp = mbCmd.Groups[2].Value;
+        IGCommand cmd = IGCommand.None;
+
+        if (Regex.Match(which, @"^add", RegexOptions.IgnoreCase).Success) {
+            cmd = IGCommand.Add;
+        } else if (Regex.Match(which, @"^del", RegexOptions.IgnoreCase).Success) {
+            cmd = IGCommand.Delete;
+        } else if (Regex.Match(which, @"^list", RegexOptions.IgnoreCase).Success) {
+            cmd = IGCommand.List;
+        } else if (Regex.Match(which, @"^new", RegexOptions.IgnoreCase).Success) {
+            cmd = IGCommand.New;
+        } else {
+            lines.Add("Unknown command: " + which + ", try @mb help");
+            SayLines(lines, name);
+            return;
+        }
+
+        String[] args = Regex.Split(tmp, @"\s+");
+
+        if (args.Length == 0) {
+            lines.Add("No list (disperse, friends) specified, try @mb help");
+            SayLines(lines, name);
+            return;
+        } else if (cmd != IGCommand.List && args.Length < 2) {
+            lines.Add("The command is incomplete: " + msg + ", try @mb help");
+            SayLines(lines, name);
+        }
+
+        // args[0] should be the name of the list
+        String listName = String.Empty;
+        if (Regex.Match(args[0], @"^di?s?p?e?r?s?e?", RegexOptions.IgnoreCase).Success) {
+            listName = "Dispersal";
+        } else if (Regex.Match(args[0], @"^fr?i?e?n?d?s?", RegexOptions.IgnoreCase).Success) {
+            listName = "Friends";
+        } else if (Regex.Match(args[0], @"^wh?i?t?e?l?i?s?t?", RegexOptions.IgnoreCase).Success) {
+            listName = "Whitelist";
+        } else {
+            lines.Add("Unknown list name: " + args[0] + ", try @mb help");
+            SayLines(lines, name);
+            return;
+        }
+
+        int i = 1;
+
+        if (listName == "Dispersal" && args.Length >= 3) {
+            // args[1] may be a dispersal group
+            if (args[1] == "1") {
+                dispersalGroup = 1;
+                ++i;
+            } else if (args[1] == "2") {
+                dispersalGroup = 2;
+                ++i;
+            }
+        }
+
+        // Next arg may be the match string for add
+        if (cmd == IGCommand.Add && listName == "Friends" && i < args.Length) {
+            nameMatch = args[i];
+            ++i;
+        }
+
+        // The rest of the args are the name operands
+        List<String> names = new List<String>();
+        while (i < args.Length) {
+            names.Add(args[i]);
+            ++i;
+        }
+
+        // Execute the command
+        switch (cmd) {
+            case IGCommand.Add:
+                if (listName == "Dispersal") {
+                    if (dispersalGroup != 0) {
+                        bool found = false;
+                        int groupId = 0;
+                        String[] copy = (String[])DisperseEvenlyList.Clone();
+                        list = new List<String>();
+                        list.AddRange(DisperseEvenlyList);
+                        for (int n = 0; n < copy.Length; ++n) {
+                            if (Regex.Match(copy[n], @"^[1234]\s+").Success) {
+                                // It's a group
+                                List<String> tokens = new List<String>(Regex.Split(copy[n], @"\s+"));
+                                if (tokens.Count > 0 && Int32.TryParse(tokens[0], out groupId) && groupId == dispersalGroup) {
+                                    found = true;
+                                    foreach (String nm in names) {
+                                        copy[n] = copy[n] + " " + nm;
+                                    }
+                                    break; 
+                                }
+                            }
+                        }
+                        if (found) {
+                            list.Clear();
+                            list.AddRange(copy);
+                            lines.Add("Added " + names.Count + " names to Dispersal Group " + groupId);
+                        } else {
+                            lines.Add("Can't find Dispersal Group " + groupId + ", add failed!");
+                            SayLines(lines, name);
+                            return;
+                        }
+                    } else {
+                        foreach (String nm in names) {
+                            player = GetPlayer(nm);
+                            if (player != null && IsDispersal(player)) {
+                                lines.Add("Duplicate name ^b" + nm + "^n, add failed!");
+                                SayLines(lines, name);
+                                return;
+                            }
+                            list.Add(nm);
+                        }
+                        lines.Add("Added " + names.Count + " names to Disperse Evenly List");
+                    }
+                    ForceSetPluginVariable("1 - Settings|Disperse Evenly List", list.ToArray());
+                } else if (listName == "Friends") {
+                    bool found = false;
+                    String[] copy = fSettingFriendsList.ToArray();
+                    list = new List<String>();
+                    list.AddRange(fSettingFriendsList);
+                    for (int n = 0; n < copy.Length; ++n) {
+                        // Find a line in the list that contains the nameMatch string
+                        List<String> tokens = new List<String>(Regex.Split(copy[n], @"\s+"));
+                        if (tokens.Contains(nameMatch)) {
+                            found = true;
+                            foreach (String nm in names) {
+                                copy[n] = copy[n] + " " + nm;
+                            }
+                            break;
+                        }
+                    }
+                    if (found) {
+                        list.Clear();
+                        list.AddRange(copy);
+                        lines.Add("Added " + names.Count + " names to Friends List");
+                    } else {
+                        lines.Add("Can't find friend " + nameMatch + " in Friends List, add failed!");
+                        SayLines(lines, name);
+                        return;
+                    }
+                    ForceSetPluginVariable("1 - Settings|Friends List", list.ToArray());
+                } else if (listName == "Whitelist") {
+                    list = new List<String>(Whitelist);
+                    foreach (String nm in names) {
+                        if (list.Contains(nm)) {
+                            lines.Add("Duplicate name ^b" + nm + "^n, add failed!");
+                            SayLines(lines, name);
+                            return;
+                        }
+                        list.Add(nm);
+                    }
+                    lines.Add("Added " + names.Count + " names to Whitelist");
+                    ForceSetPluginVariable("1 - Settings|Whitelist", list.ToArray());
+                }
+                break;
+            case IGCommand.Delete:
+                if (listName == "Dispersal") {
+                    if (dispersalGroup != 0) {
+                        bool found = false;
+                        String remove = String.Empty;
+                        int groupId = 0;
+                        String[] copy = (String[])DisperseEvenlyList.Clone();
+                        list = new List<String>();
+                        list.AddRange(DisperseEvenlyList);
+                        for (int n = 0; n < copy.Length; ++n) {
+                            if (Regex.Match(copy[n], @"^[1234]\s+").Success) {
+                                // It's a group
+                                List<String> tokens = new List<String>(Regex.Split(copy[n], @"\s+"));
+                                if (tokens.Count > 0 && Int32.TryParse(tokens[0], out groupId) && groupId == dispersalGroup) {
+                                    found = true;
+                                    foreach (String nm in names) {
+                                        if (tokens.Contains(nm)) {
+                                            tokens.Remove(nm);
+                                        }
+                                    }
+                                    if (tokens.Count > 1) {
+                                        copy[n] = String.Join(" ", tokens.ToArray());
+                                    } else {
+                                        // Remove the whole item
+                                        remove = copy[n];
+                                    }
+                                    break; 
+                                }
+                            }
+                        }
+                        if (found) {
+                            list.Clear();
+                            list.AddRange(copy);
+                            if (!String.IsNullOrEmpty(remove)) {
+                                list.Remove(remove);
+                            }
+                            lines.Add("Deleted " + names.Count + " names from Dispersal Group " + groupId);
+                        } else {
+                            lines.Add("Can't find Dispersal Group " + groupId + ", delete failed!");
+                            SayLines(lines, name);
+                            return;
+                        }
+                    } else {
+                        foreach (String nm in names) {
+                            player = GetPlayer(nm);
+                            if (player != null && !IsDispersal(player)) {
+                                lines.Add("Can't find name ^b" + nm + "^n, delete failed!");
+                                SayLines(lines, name);
+                                return;
+                            }
+                            list.Remove(nm);
+                        }
+                        lines.Add("Deleted " + names.Count + " names from Disperse Evenly List");
+                    }
+                    ForceSetPluginVariable("1 - Settings|Disperse Evenly List", list.ToArray());
+                } else if (listName == "Friends") {
+                    bool found = false;
+                    String remove = String.Empty;
+                    String[] copy = fSettingFriendsList.ToArray();
+                    list = new List<String>();
+                    list.AddRange(fSettingFriendsList);
+                    for (int n = 0; n < copy.Length; ++n) {
+                        // Find a token in the line that contains a match
+                        List<String> tokens = new List<String>(Regex.Split(copy[n], @"\s+"));
+                        foreach (String nm in names) {
+                            if (tokens.Contains(nm)) {
+                                found = true;
+                                tokens.Remove(nm);
+                            }
+                        }
+                        if (tokens.Count > 1) {
+                            copy[n] = String.Join(" ", tokens.ToArray());
+                        } else {
+                            // Remove the whole item
+                            remove = copy[n];
+                        }
+                    }
+                    if (found) {
+                        list.Clear();
+                        list.AddRange(copy);
+                        if (!String.IsNullOrEmpty(remove)) list.Remove(remove);
+                        lines.Add("Deleted " + names.Count + " names from Friends List");
+                    } else {
+                        lines.Add("Can't find any matching friends in Friends List, delete failed!");
+                        SayLines(lines, name);
+                        return;
+                    }
+                    ForceSetPluginVariable("1 - Settings|Friends List", list.ToArray());
+                } else if (listName == "Whitelist") {
+                    list = new List<String>(Whitelist);
+                    foreach (String nm in names) {
+                        if (list.Contains(nm)) {
+                            list.Remove(nm);
+                        }
+                    }
+                    lines.Add("Deleted " + names.Count + " names from Whitelist");
+                    ForceSetPluginVariable("1 - Settings|Whitelist", list.ToArray());
+                }
+                break;
+            case IGCommand.List:
+                String buffer = String.Empty;
+                bool first = true;
+                if (listName == "Dispersal") {
+                    for (int j = 1; j <= 4; ++j) {
+                        if (fDispersalGroups[j].Count > 0) {
+                            String dg = j.ToString() + " " + String.Join(" ", fDispersalGroups[j].ToArray());
+                            if (first) {
+                                buffer = dg;
+                                first = false;
+                            } else {
+                                buffer = buffer + "; " + dg;
+                            }
+                        }
+                    }
+                    foreach (String item in fSettingDisperseEvenlyList) {
+                        if (first) {
+                            buffer = item;
+                            first = false;
+                        } else {
+                            buffer = buffer + "; " + item;
+                        }
+                    }
+                    lines.Add(buffer);
+                } else if (listName == "Friends") {
+                    foreach (String item in fSettingFriendsList) {
+                        if (first) {
+                            buffer = item;
+                            first = false;
+                        } else {
+                            buffer = buffer + "; " + item;
+                        }
+                    }
+                    lines.Add(buffer);
+                } else if (listName == "Whitelist") {
+                    foreach (String item in Whitelist) {
+                        if (first) {
+                            buffer = item;
+                            first = false;
+                        } else {
+                            buffer = buffer + "; " + item;
+                        }
+                    }
+                    lines.Add(buffer);
+                }
+                break;
+            case IGCommand.New:
+                if (listName == "Dispersal") {
+                    if (dispersalGroup != 0) {
+                        int groupId = 0;
+                        String[] copy = (String[])DisperseEvenlyList.Clone();
+                        list = new List<String>();
+                        list.AddRange(DisperseEvenlyList);
+                        for (int n = 0; n < copy.Length; ++n) {
+                            if (Regex.Match(copy[n], @"^[1234]\s+").Success) {
+                                // It's a group
+                                List<String> tokens = new List<String>(Regex.Split(copy[n], @"\s+"));
+                                if (tokens.Count > 0 && Int32.TryParse(tokens[0], out groupId) && groupId == dispersalGroup) {
+                                    lines.Add("Dispersal Group " + groupId + " already exists, new failed!");
+                                    SayLines(lines, name);
+                                    return; 
+                                }
+                            }
+                        }
+                        list.Add(groupId + " " + String.Join(" ", names.ToArray()));
+                        lines.Add("Created Dispersal Group " + groupId + " with " + names.Count + " names in Disperse Evenly List");
+                    } else {
+                        foreach (String nm in names) {
+                            player = GetPlayer(nm);
+                            if (player != null && IsDispersal(player)) {
+                                lines.Add("Duplicate name ^b" + nm + "^n, new failed!");
+                                SayLines(lines, name);
+                                return;
+                            }
+                            list.Add(nm);
+                        }
+                        lines.Add("Created " + names.Count + " new names in Disperse Evenly List");
+                    }
+                    ForceSetPluginVariable("1 - Settings|Disperse Evenly List", list.ToArray());
+                } else if (listName == "Friends") {
+                    if (names.Count < 2) {
+                        lines.Add("New friends must have at least 2 names, new failed!");
+                        SayLines(lines, name);
+                        return;
+                    }
+                    bool found = false;
+                    String[] copy = fSettingFriendsList.ToArray();
+                    list = new List<String>();
+                    list.AddRange(fSettingFriendsList);
+                    for (int n = 0; n < copy.Length; ++n) {
+                        // Find a line in the list that contains the nameMatch string
+                        List<String> tokens = new List<String>(Regex.Split(copy[n], @"\s+"));
+                        foreach (String nm in names) {
+                            if (tokens.Contains(nm)) {
+                                found = true;
+                                break;
+                            }
+                        }
+                        if (found) break;
+                    }
+                    if (!found) {
+                        list.Add(String.Join(" ", names.ToArray()));
+                        lines.Add("Created " + names.Count + " new names in Friends List");
+                    } else {
+                        lines.Add("Duplicate names in Friends List, new failed!");
+                        SayLines(lines, name);
+                        return;
+                    }
+                    ForceSetPluginVariable("1 - Settings|Friends List", list.ToArray());
+                } else if (listName == "Whitelist") {
+                    list = new List<String>(Whitelist);
+                    foreach (String nm in names) {
+                        if (list.Contains(nm)) {
+                            lines.Add("Duplicate name ^b" + nm + "^n, new failed!");
+                            SayLines(lines, name);
+                            return;
+                        }
+                        list.Add(nm);
+                    }
+                    lines.Add("Created " + names.Count + " new names in Whitelist");
+                    ForceSetPluginVariable("1 - Settings|Whitelist", list.ToArray());
+                }
+                break;
+            default:
+                break;
+        }
+
+        // Send the results
+        SayLines(lines, name);
+        return;
     }
+
+    // Unknown command
+    lines = new List<String>();
+    lines.Add("Unknown command: " + msg);
+    SayLines(lines, name);
 }
 
 private List<String> Chunker(String msg, int maxLen) {
     List<String> ret = new List<String>();
-    // TBD
+    String sub = msg;
+    while (sub.Length > maxLen) {
+        ret.Add(sub.Substring(0, maxLen));
+        sub = "... " + sub.Substring(maxLen);
+    }
+    ret.Add(sub);
     return ret;
 }
 
 private void SayLines(List<String> lines, String name) {
     foreach (String line in lines) {
+        List<String> chunks = Chunker(line, 123);
         if (String.IsNullOrEmpty(name)) {
-            ServerCommand("admin.say", line);
+            foreach (String chunk in chunks) {
+                ServerCommand("admin.say", chunk);
+            }
         } else {
-            ServerCommand("admin.say", line, "player", name);
+            foreach (String chunk in chunks) {
+                ServerCommand("admin.say", chunk, "player", name);
+            }
         }
     }
 }
@@ -10788,7 +11307,7 @@ static class MULTIbalancerUtils {
   Tom Dick Harry EA_20D5B089E734F589B1517C8069A37E28 
 </pre></p>
 
-<p><b>Disperse Evenly List</b>: List of player names (without clan tags), clan tags (by themselves), or EA GUIDs, one per line (except for groups, see below), in any combination. Players found on this list will be split up and moved so that they are evenly dispersed across teams. The first item may also specify a file to merge into the list, e.g., <i>&lt;disperse.txt</i>. See <b>Merge Files</b> above. Groups of players, tags and guids may be specified to insure that they are always balanced to the opposite team from other specified groups. For example, if clan tag ABC is in group 1 and clan tag XYZ in is group 2, all players with clan tag ABC will eventually be balanced to one team and all players with clan tag XYZ will eventually be balanced to the other team. Groups 3 and 4 are used only for SQDM mode. A group is specified by starting an item in the list with a single digit, from 1 to 4, followed by a space, followed by a space separated list of names, tags or guids. Individual items and groups may be specified in any combination and any order in the list, though duplicating any item is an error. Here is an example list with individual players 'Joe' and 'Mary' and groups 1 and 2:
+<p><b>Disperse Evenly List</b>: List of player names (without clan tags), clan tags (by themselves), or EA GUIDs, one per line (except for groups, see below) separated by spaces, in any combination. Players found on this list will be split up and moved so that they are evenly dispersed across teams. The first item may also specify a file to merge into the list, e.g., <i>&lt;disperse.txt</i>. See <b>Merge Files</b> above. Groups of players, tags and guids may be specified to insure that they are always balanced to the opposite team from other specified groups. For example, if clan tag ABC is in group 1 and clan tag XYZ in is group 2, all players with clan tag ABC will eventually be balanced to one team and all players with clan tag XYZ will eventually be balanced to the other team. Groups 3 and 4 are used only for SQDM mode. A group is specified by starting an item in the list with a single digit, from 1 to 4, followed by a space, followed by a space separated list of names, tags or guids. Individual items and groups may be specified in any combination and any order in the list, though duplicating any item is an error. Here is an example list with individual players 'Joe' and 'Mary' and groups 1 and 2:
 <pre>
   1 ABC LGN PapaCharlie9
   Joe
