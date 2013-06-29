@@ -11,4 +11,5 @@ DOC changes
 * Added: KeepFriendsInSameTeam
 * Added: status command
 * Added: subscribers command
+* Added: whitelist command
 * Edited: Disperse Evenly List ("separated by spaces")

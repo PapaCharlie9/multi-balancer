@@ -126,6 +126,14 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     public const String DEFAULT_LIST_ITEM = "[-- name, tag, or EA_GUID --]";
 
+    public const uint WL_BALANCE    = 1<<0; // B option
+    public const uint WL_UNSTACK    = 1<<1; // U option
+    public const uint WL_SWITCH     = 1<<2; // S option
+    public const uint WL_DISPERSE   = 1<<3; // D option
+    public const uint WL_RANK       = 1<<4; // R option
+
+    public const uint WL_ALL = (WL_BALANCE | WL_UNSTACK | WL_SWITCH | WL_DISPERSE | WL_RANK);
+
     /* Classes */
 #region Classes
     public class PerModeSettings {
@@ -381,6 +389,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         // Based on settings
         public int DispersalGroup;
         public int Friendex; // index (key) to friend list
+        public uint Whitelist; // bitmask flags, see WL_ALL
 
         // Commands
         public bool Subscribed;
@@ -431,6 +440,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             PersonaId = String.Empty;
             StatsFetchStatus = new FetchInfo();
             Subscribed = false;
+            Whitelist = 0;
         }
         
         public PlayerModel(String name, int team) : this() {
@@ -513,6 +523,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             lhs.PersonaId = this.PersonaId;
             lhs.StatsFetchStatus = new FetchInfo(this.StatsFetchStatus);
             lhs.Subscribed = this.Subscribed;
+            lhs.Whitelist = this.Whitelist;
             return lhs;
         }
     } // end PlayerModel
@@ -1884,6 +1895,8 @@ public void SetPluginVariable(String strVariable, String strValue) {
                 field.SetValue(this, CPluginVariable.DecodeStringArray(strValue));
                 if (propertyName == "Whitelist") {
                     MergeWithFile(Whitelist, fSettingWhitelist);
+                    if (EnableWhitelistingOfReservedSlotsList) MergeWhitelistWithReservedSlots();
+                    UpdateAllFromWhitelist();
                     if (DebugLevel >= 8) {
                         String l = "Whitelist: ";
                         l = l + String.Join(", ", fSettingWhitelist.ToArray());
@@ -2569,6 +2582,81 @@ private void CommandToLog(string cmd) {
             ConsoleDump(" === END OF TAGS === ");
             return;
         }
+
+        if (Regex.Match(cmd, @"^whitelist", RegexOptions.IgnoreCase).Success) {
+            ConsoleDump("Whitelist:");
+            String bCodes = String.Empty;
+            String uCodes = String.Empty;
+            String sCodes = String.Empty;
+            String dCodes = String.Empty;
+            String rCodes = String.Empty;
+            String all =    String.Empty;
+
+            List<String> plist = null;
+            lock (fAllPlayers) {
+                plist = new List<String>(fAllPlayers);
+            }
+
+            foreach (String name in plist) {
+                try {
+                    PlayerModel player = GetPlayer(name);
+                    if (player == null) continue;
+                    if (CheckWhitelist(player, WL_ALL)) {
+                        if (String.IsNullOrEmpty(all)) {
+                            all = "    All: " + player.Name;
+                        } else {
+                            all = all + ", " + player.Name;
+                        }
+                        continue;
+                    }
+                    if (CheckWhitelist(player, WL_BALANCE)) {
+                        if (String.IsNullOrEmpty(bCodes)) {
+                            bCodes = "    Balance only: " + player.Name;
+                        } else {
+                            bCodes = bCodes + ", " + player.Name;
+                        }
+                    }
+                    if (CheckWhitelist(player, WL_UNSTACK)) {
+                        if (String.IsNullOrEmpty(uCodes)) {
+                            uCodes = "    Unstack only: " + player.Name;
+                        } else {
+                            uCodes = uCodes + ", " + player.Name;
+                        }
+                    }
+                    if (CheckWhitelist(player, WL_SWITCH)) {
+                        if (String.IsNullOrEmpty(sCodes)) {
+                            sCodes = "     Switch only: " + player.Name;
+                        } else {
+                            sCodes = sCodes + ", " + player.Name;
+                        }
+                    }
+                    if (CheckWhitelist(player, WL_DISPERSE)) {
+                        if (String.IsNullOrEmpty(dCodes)) {
+                            dCodes = "   Disperse only: " + player.Name;
+                        } else {
+                            dCodes = dCodes + ", " + player.Name;
+                        }
+                    }
+                    if (CheckWhitelist(player, WL_RANK)) {
+                        if (String.IsNullOrEmpty(rCodes)) {
+                            rCodes = "       Rank only: " + player.Name;
+                        } else {
+                            rCodes = rCodes + ", " + player.Name;
+                        }
+                    }
+                } catch (Exception e) {
+                    ConsoleException(e);
+                }
+            }
+
+            if (!String.IsNullOrEmpty(all)) ConsoleDump(all);
+            if (!String.IsNullOrEmpty(bCodes)) ConsoleDump(bCodes);
+            if (!String.IsNullOrEmpty(uCodes)) ConsoleDump(uCodes);
+            if (!String.IsNullOrEmpty(sCodes)) ConsoleDump(sCodes);
+            if (!String.IsNullOrEmpty(dCodes)) ConsoleDump(dCodes);
+            if (!String.IsNullOrEmpty(rCodes)) ConsoleDump(rCodes);
+            return;
+        }
         
         // Undocumented command: test scrambler
         if (Regex.Match(cmd, @"^test scrambler", RegexOptions.IgnoreCase).Success) {
@@ -2592,6 +2680,7 @@ private void CommandToLog(string cmd) {
             ConsoleDump("^1^bstatus^n^0: Examine full status log, as if Debug Level were 7");
             ConsoleDump("^1^bsubscribed^n^0: Examine all players who are subscribed to balancer chat messages");
             ConsoleDump("^1^btags^n^0: Examine list of players sorted by clan tags");
+            ConsoleDump("^1^bwhitelist^n^0: Examine whitelist combined with reserved slots, by option codes");
             return;
         }
 
@@ -3691,7 +3780,7 @@ private void BalanceAndUnstack(String name) {
             balanceSpeed = Speed.Fast;
         }
     }
-    String andSlow = (balanceSpeed == Speed.Slow) ? " and speed is Slow" : String.Empty;
+    String orSlow = (balanceSpeed == Speed.Slow) ? " or speed is Slow" : String.Empty;
 
     // Do not disperse mustMove players if speed is Stop or Phase is Late
     if (mustMove && balanceSpeed == Speed.Stop) {
@@ -3725,21 +3814,8 @@ private void BalanceAndUnstack(String name) {
 
     // Exclude if on Whitelist or Reserved Slots if enabled
     if (OnWhitelist || (needsBalancing && balanceSpeed == Speed.Slow)) {
-        List<String> vip = new List<String>(fSettingWhitelist);
-        if (EnableWhitelistingOfReservedSlotsList) vip.AddRange(fReservedSlots);
-        List <String> tmp = new List<String>();
-        // clean up the list
-        foreach (String v in vip) {
-            if (String.IsNullOrEmpty(v)) continue;
-            if (v == INVALID_NAME_TAG_GUID) continue;
-            tmp.Add(v);
-        }
-        vip = tmp;
-        String guid = (String.IsNullOrEmpty(player.EAGUID)) ? INVALID_NAME_TAG_GUID : player.EAGUID;
-        String xt = extractedTag;
-        if (String.IsNullOrEmpty(xt)) xt = INVALID_NAME_TAG_GUID;
-        if (vip.Contains(name) || vip.Contains(xt) || vip.Contains(guid)) {
-            DebugBalance("Excluding ^b" + player.FullName + "^n: whitelisted" + andSlow);
+        if (CheckWhitelist(player, WL_BALANCE)) {
+            DebugBalance("Excluding ^b" + player.FullName + "^n: whitelisted" + orSlow);
             fExcludedRound = fExcludedRound + 1;
             IncrementTotal();
             return;
@@ -4069,6 +4145,7 @@ private void BalanceAndUnstack(String name) {
 
     /* Unstack */
 
+    // Not enabled or not full round
     if (!EnableUnstacking) {
         if (DebugLevel >= 8) DebugBalance("Unstack is disabled, Enable Unstacking is set to False");
         IncrementTotal();
@@ -4079,12 +4156,14 @@ private void BalanceAndUnstack(String name) {
         return;
     }
 
+    // Sanity checks
     if (winningTeam <= 0 || winningTeam >= fTickets.Length || losingTeam <= 0 || losingTeam >= fTickets.Length || balanceSpeed == Speed.Stop) {
         if (DebugLevel >= 5) DebugBalance("Skipping unstack for player that was killed ^b" + name +"^n: winning = " + winningTeam + ", losingTeam = " + losingTeam + ", speed = " + balanceSpeed);
         IncrementTotal(); // no matching stat, reflect total deaths handled
         return;
     }
 
+    // Server is full, can't swap
     if (totalPlayerCount > (MaximumServerSize-2) || totalPlayerCount > (perMode.MaxPlayers-2)) {
         // TBD - kick idle players?
         if (DebugLevel >= 7) DebugBalance("No room to swap players for unstacking");
@@ -4092,6 +4171,7 @@ private void BalanceAndUnstack(String name) {
         return;
     }
 
+    // Disabled per-mode
     if (perMode.CheckTeamStackingAfterFirstMinutes == 0) {
         if (DebugLevel >= 5) DebugBalance("Unstacking has been disabled, Check Team Stacking After First Minutes set to zero");
         IncrementTotal(); // no matching stat, reflect total deaths handled
@@ -4100,6 +4180,7 @@ private void BalanceAndUnstack(String name) {
 
     double tirMins = GetTimeInRoundMinutes();
 
+    // Too soon to unstack
     if (tirMins < perMode.CheckTeamStackingAfterFirstMinutes) {
         DebugBalance("Too early to check for unstacking, skipping ^b" + name + "^n");
         fExemptRound = fExemptRound + 1;
@@ -4107,11 +4188,22 @@ private void BalanceAndUnstack(String name) {
         return;
     }
 
+    // Maximum swaps already done
     if ((fUnstackedRound/2) >= perMode.MaxUnstackingSwapsPerRound) {
         if (DebugLevel >= 6) DebugBalance("Maximum swaps have already occurred this round (" + (fUnstackedRound/2) + ")");
         fUnstackState = UnstackState.Off;
         IncrementTotal(); // no matching stat, reflect total deaths handled
         return;
+    }
+
+    // Whitelisted
+    if (OnWhitelist) {
+        if (CheckWhitelist(player, WL_UNSTACK)) {
+            DebugBalance("Excluding from unstacking due to being whitelisted, ^b" + name + "^n");
+            fExcludedRound = fExcludedRound + 1;
+            IncrementTotal();
+            return;
+        }
     }
 
     double ratio = 1;
@@ -4290,8 +4382,8 @@ private bool IsKnownPlayer(String name) {
 private bool AddNewPlayer(String name, int team) {
     bool known = false;
     bool needsFetch = false;
+    PlayerModel player = null;
     lock (fKnownPlayers) {
-        PlayerModel player = null;
         if (!fKnownPlayers.ContainsKey(name)) {
             player = new PlayerModel(name, team);
             fKnownPlayers[name] = player;
@@ -4310,6 +4402,7 @@ private bool AddNewPlayer(String name, int team) {
     if (needsFetch) {
         AddPlayerFetch(name);
     }
+    UpdateFromWhitelist(player);
     return known;
 }
 
@@ -4476,6 +4569,7 @@ private void ValidateModel(List<CPlayerInfo> players) {
         /* Special handling for Reconnected state */
         fGameState = (this.TotalPlayerCount < 4) ? GameState.Warmup : GameState.Unknown;
         UpdateTeams();
+        UpdateAllFromWhitelist();
     }
     if (fServerCrashed) fRoundStartTimestamp = DateTime.Now;
     fPluginState = PluginState.Active;
@@ -4537,20 +4631,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     
     // Whitelisted?
     if (OnWhitelist) {
-        List<String> vip = new List<String>(fSettingWhitelist);
-        if (EnableWhitelistingOfReservedSlotsList) vip.AddRange(fReservedSlots);
-        List <String> tmp = new List<String>();
-        // clean up the list
-        foreach (String v in vip) {
-            if (String.IsNullOrEmpty(v)) continue;
-            if (v == INVALID_NAME_TAG_GUID) continue;
-            tmp.Add(v);
-        }
-        vip = tmp;
-        String guid = (String.IsNullOrEmpty(player.EAGUID)) ? INVALID_NAME_TAG_GUID : player.EAGUID;
-        String xt = ExtractTag(player);
-        if (String.IsNullOrEmpty(xt)) xt = INVALID_NAME_TAG_GUID;
-        if (vip.Contains(name) || vip.Contains(xt) || vip.Contains(guid)) {
+        if (CheckWhitelist(player, WL_SWITCH)) {
             DebugUnswitch("ALLOWED: On whitelist: ^b" + name);
             SetSpawnMessages(name, String.Empty, String.Empty, false);
             CheckAbortMove(name);
@@ -8937,7 +9018,7 @@ private PlayerModel GetPlayer(String name) {
             p = null;
         }
     }
-    if (p == null) ConsoleDebug("GetPlayer unknown player ^b" + name);
+    if (p == null && DebugLevel >= 8) ConsoleDebug("GetPlayer unknown player ^b" + name);
     return p;
 }
 
@@ -9151,6 +9232,7 @@ private void CheckDeativateBalancer(String reason) {
 }
 
 private bool IsDispersal(PlayerModel player) {
+    if (player == null) return false;
     player.DispersalGroup = 0;
     PerModeSettings perMode = GetPerModeSettings();
     bool isDispersalByList = false;
@@ -9162,7 +9244,16 @@ private bool IsDispersal(PlayerModel player) {
         if (fSettingDisperseEvenlyList.Contains(player.Name) 
         || fSettingDisperseEvenlyList.Contains(guid) 
         || fSettingDisperseEvenlyList.Contains(extractedTag)) {
-            isDispersalByList = true;
+            // Special case for whitelist options: clan tag on dispersal list, but Whitelist option enabled
+            if (fSettingDisperseEvenlyList.Contains(extractedTag) 
+                && !fSettingDisperseEvenlyList.Contains(player.Name)
+                && !fSettingDisperseEvenlyList.Contains(guid)
+                && OnWhitelist
+                && (player.Whitelist & WL_DISPERSE) != 0) {
+                isDispersalByList = false;
+            } else {
+                isDispersalByList = true;
+            }
         }
     }
     for (int i = 1; i <= 4; ++i) {
@@ -9171,8 +9262,17 @@ private bool IsDispersal(PlayerModel player) {
             if (fDispersalGroups[i].Contains(player.Name) 
             || fDispersalGroups[i].Contains(guid) 
             || fDispersalGroups[i].Contains(extractedTag)) {
-                isDispersalByList = true;
-                player.DispersalGroup = i;
+                // Special case for whitelist options: clan tag on dispersal list, but Whitelist option enabled
+                if (fDispersalGroups[i].Contains(extractedTag) 
+                    && !fDispersalGroups[i].Contains(player.Name)
+                    && !fDispersalGroups[i].Contains(guid)
+                    && OnWhitelist
+                    && (player.Whitelist & WL_DISPERSE) != 0) {
+                    isDispersalByList = false;
+                } else {
+                    isDispersalByList = true;
+                    player.DispersalGroup = i;
+                }
                 break;
             }
         }
@@ -9181,12 +9281,14 @@ private bool IsDispersal(PlayerModel player) {
 }
 
 private bool IsRankDispersal(PlayerModel player) {
+    if (player == null) return false;
     PerModeSettings perMode = GetPerModeSettings();
     if (perMode.DisperseEvenlyByRank == 0) return false;
     if (SameClanTagsForRankDispersal && CountMatchingTags(player, Scope.SameTeam) >= 2) {
         if (player.Rank >= perMode.DisperseEvenlyByRank) DebugWrite("^9Exempting player from rank dispersal, due to SameClanTagsForRankDispersal: ^b" + "^b" + player.FullName + "^n", 6);
         return false;
     }
+    if (OnWhitelist && (player.Whitelist & WL_RANK) != 0) return false; // special case for whitelist options
     return (player.Rank >= perMode.DisperseEvenlyByRank);
 }
 
@@ -10732,6 +10834,116 @@ private void SayLines(List<String> lines, String name) {
             }
         }
     }
+}
+
+private void UpdateFromWhitelist(PlayerModel player) {
+    if (player == null) return;
+    foreach (String item in fSettingWhitelist) {
+        try {
+            // Example item: name B U S D R
+            List<String> tokens = new List<String>(Regex.Split(item, @"\s+"));
+            if (tokens.Count < 1) continue;
+            String guid = (String.IsNullOrEmpty(player.EAGUID)) ? INVALID_NAME_TAG_GUID : player.EAGUID;
+            String xt = ExtractTag(player);
+            if (String.IsNullOrEmpty(xt)) xt = INVALID_NAME_TAG_GUID;
+            // If nothing matches, keep looking
+            if (!(tokens[0] == player.Name || tokens[0] == xt || tokens[0] == guid)) continue;
+            // Reset
+            player.Whitelist = 0;
+            // Set new flags
+            if (tokens.Count == 1) { // no option codes means set all of them
+                player.Whitelist = WL_ALL;
+                DebugWrite("^9DEBUG: UpdateFromWhitelist(^b" + player.FullName + "^n) set ALL flags!", 7);
+            } else {
+                for (int i = 1; i < tokens.Count; ++i) {
+                    switch (tokens[i]) {
+                        case "B":
+                            player.Whitelist |= WL_BALANCE;
+                            DebugWrite("^9DEBUG: UpdateFromWhitelist(^b" + player.FullName + "^n) set WL_BALANCE flag!", 7);
+                            break;
+                        case "U":
+                            player.Whitelist |= WL_UNSTACK;
+                            DebugWrite("^9DEBUG: UpdateFromWhitelist(^b" + player.FullName + "^n) set WL_UNSTACK flag!", 7);
+                            break;
+                        case "S":
+                            player.Whitelist |= WL_SWITCH;
+                            DebugWrite("^9DEBUG: UpdateFromWhitelist(^b" + player.FullName + "^n) set WL_SWITCH flag!", 7);
+                            break;
+                        case "D":
+                            player.Whitelist |= WL_DISPERSE;
+                            DebugWrite("^9DEBUG: UpdateFromWhitelist(^b" + player.FullName + "^n) set WL_DISPERSE flag!", 7);
+                            break;
+                        case "R":
+                            player.Whitelist |= WL_RANK;
+                            DebugWrite("^9DEBUG: UpdateFromWhitelist(^b" + player.FullName + "^n) set WL_RANK flag!", 7);
+                            break;
+                        default:
+                            ConsoleWarn("Skipping unknown Whitelist code " + tokens[i] + ", in item: " + item);
+                            break;
+                    }
+                }
+            }
+            return;
+        } catch (Exception e) {
+            ConsoleException(e);
+        }
+    }
+}
+
+private void UpdateAllFromWhitelist() {
+    lock (fKnownPlayers) {
+        foreach (String name in fKnownPlayers.Keys) {
+            try {
+                PlayerModel player = fKnownPlayers[name];
+                if (player == null) continue;
+                UpdateFromWhitelist(player);
+            } catch (Exception e) {
+                ConsoleException(e);
+            }
+        }
+    }
+}
+
+private void MergeWhitelistWithReservedSlots() {
+    List<String> vip = new List<String>(fSettingWhitelist);
+    foreach (String reserved in fReservedSlots) {
+        bool dupe = false;
+        // Check for duplicates
+        foreach (String item in fSettingWhitelist) {
+            List<String> tokens = new List<String>(Regex.Split(item, @"\s+"));
+            if (tokens[0] == reserved) {
+                if (DebugLevel >= 6) ConsoleDebug("Reserved slots list duplicates Whitelist name ^b" + reserved);
+                dupe = true;
+                break;
+            }
+        }
+        if (dupe) continue;
+        // Otherwise, add it
+        vip.Add(reserved);
+    }
+    fSettingWhitelist.Clear();
+    // clean up the list
+    foreach (String v in vip) {
+        if (String.IsNullOrEmpty(v)) continue;
+        if (v == INVALID_NAME_TAG_GUID) continue;
+        if (v.Contains("[")) continue;
+        fSettingWhitelist.Add(v);
+    }
+}
+
+private bool CheckWhitelist(PlayerModel player, uint flags) {
+    if (player == null) return false;
+    String guid = (String.IsNullOrEmpty(player.EAGUID)) ? INVALID_NAME_TAG_GUID : player.EAGUID;
+    String xt = ExtractTag(player);
+    if (String.IsNullOrEmpty(xt)) xt = INVALID_NAME_TAG_GUID;
+    foreach (String item in fSettingWhitelist) {
+        List<String> tokens = new List<String>(Regex.Split(item, @"\s+"));
+        if (tokens.Count < 1) continue;
+        if (tokens[0] == player.Name || tokens[0] == xt || tokens[0] == guid) {
+            return ((player.Whitelist & flags) == flags);
+        }
+    }
+    return false;
 }
 
 /* === NEW_NEW_NEW === */
