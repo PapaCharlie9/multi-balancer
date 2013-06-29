@@ -10429,13 +10429,21 @@ private void InGameCommand(String msg, ChatScope scope, int team, int squad, Str
                     }
                     ForceSetPluginVariable("1 - Settings|Friends List", list.ToArray());
                 } else if (listName == "Whitelist") {
-                    list = new List<String>(Whitelist);
+                    String[] copy = fSettingWhitelist.ToArray();
+                    list = new List<String>();
+                    list.AddRange(fSettingWhitelist);
+                    // Check for duplication
                     foreach (String nm in names) {
-                        if (list.Contains(nm)) {
-                            lines.Add("Duplicate name ^b" + nm + "^n, add failed!");
-                            SayLines(lines, name);
-                            return;
+                        for (int n = 0; n < copy.Length; ++n) {
+                            // Find matches
+                            List<String> tokens = new List<String>(Regex.Split(copy[n], @"\s+"));
+                            if (tokens.Contains(nm)) {
+                                lines.Add("Duplicate name ^b" + nm + "^n, add failed!");
+                                SayLines(lines, name);
+                                return;
+                            }
                         }
+                        // ok to add
                         list.Add(nm);
                     }
                     lines.Add("Added " + names.Count + " names to Whitelist");
@@ -10531,13 +10539,26 @@ private void InGameCommand(String msg, ChatScope scope, int team, int squad, Str
                     }
                     ForceSetPluginVariable("1 - Settings|Friends List", list.ToArray());
                 } else if (listName == "Whitelist") {
-                    list = new List<String>(Whitelist);
+                    bool found = false;
+                    String[] copy = fSettingWhitelist.ToArray();
+                    list = new List<String>();
+                    list.AddRange(fSettingWhitelist);
+                    // Check for match
                     foreach (String nm in names) {
-                        if (list.Contains(nm)) {
-                            list.Remove(nm);
+                        for (int n = 0; n < copy.Length; ++n) {
+                            // Find matches
+                            List<String> tokens = new List<String>(Regex.Split(copy[n], @"\s+"));
+                            if (tokens.Contains(nm)) {
+                                list.Remove(copy[n]);
+                                found = true;
+                            }
                         }
                     }
-                    lines.Add("Deleted " + names.Count + " names from Whitelist");
+                    if (found) {
+                        lines.Add("Deleted " + names.Count + " names from Whitelist");
+                    } else {
+                        lines.Add("Can't find any matching names in Whitelist, delete failed!");
+                    }
                     ForceSetPluginVariable("1 - Settings|Whitelist", list.ToArray());
                 }
                 break;
@@ -10576,7 +10597,7 @@ private void InGameCommand(String msg, ChatScope scope, int team, int squad, Str
                     }
                     lines.Add(buffer);
                 } else if (listName == "Whitelist") {
-                    foreach (String item in Whitelist) {
+                    foreach (String item in fSettingWhitelist) {
                         if (first) {
                             buffer = item;
                             first = false;
@@ -10651,13 +10672,21 @@ private void InGameCommand(String msg, ChatScope scope, int team, int squad, Str
                     }
                     ForceSetPluginVariable("1 - Settings|Friends List", list.ToArray());
                 } else if (listName == "Whitelist") {
-                    list = new List<String>(Whitelist);
+                    String[] copy = fSettingWhitelist.ToArray();
+                    list = new List<String>();
+                    list.AddRange(fSettingWhitelist);
+                    // Check for duplication
                     foreach (String nm in names) {
-                        if (list.Contains(nm)) {
-                            lines.Add("Duplicate name ^b" + nm + "^n, new failed!");
-                            SayLines(lines, name);
-                            return;
+                        for (int n = 0; n < copy.Length; ++n) {
+                            // Find matches
+                            List<String> tokens = new List<String>(Regex.Split(copy[n], @"\s+"));
+                            if (tokens.Contains(nm)) {
+                                lines.Add("Duplicate name ^b" + nm + "^n, new failed!");
+                                SayLines(lines, name);
+                                return;
+                            }
                         }
+                        // ok to add
                         list.Add(nm);
                     }
                     lines.Add("Created " + names.Count + " new names in Whitelist");
