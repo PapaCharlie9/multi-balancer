@@ -144,6 +144,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             PercentOfTopOfTeamIsStrong = 50;
             DisperseEvenlyByRank = 0;
             EnableDisperseEvenlyList = false;
+            EnableStrictDispersal = true;
             EnableScrambler = false;
             OnlyMoveWeakPlayers = true;
             isDefault = false;
@@ -301,6 +302,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         public bool EnableMetroAdjustments = false;
         public int MetroAdjustedDefinitionOfLatePhase = 50;
         public bool OnlyMoveWeakPlayers = true;
+        public bool EnableStrictDispersal = true;
 
         // Rush only
         public double Stage1TicketPercentageToUnstackAdjustment = 0;
@@ -855,6 +857,7 @@ public bool OnFriendsList;
 public bool TopScorers;
 public bool SameClanTagsInSquad;
 public bool SameClanTagsForRankDispersal;
+public bool LenientRankDispersal;
 public double MinutesAfterJoining;
 public double MinutesAfterBeingMoved;
 public bool JoinedEarlyPhase; // disabled
@@ -1092,6 +1095,7 @@ public MULTIbalancer() {
     TopScorers = true;
     SameClanTagsInSquad = true;
     SameClanTagsForRankDispersal = false;
+    LenientRankDispersal = false;
     MinutesAfterJoining = 5;
     MinutesAfterBeingMoved = 90; // 1.5 hours
     JoinedEarlyPhase = true;
@@ -1192,6 +1196,7 @@ public MULTIbalancer(PresetItems preset) : this() {
             TopScorers = false;
             SameClanTagsInSquad = false;
             SameClanTagsForRankDispersal = false;
+            LenientRankDispersal = false;
             MinutesAfterJoining = 0;
             MinutesAfterBeingMoved = 0;
             JoinedEarlyPhase = false;
@@ -1226,6 +1231,7 @@ public MULTIbalancer(PresetItems preset) : this() {
             TopScorers = true;
             SameClanTagsInSquad = true;
             SameClanTagsForRankDispersal = true;
+            LenientRankDispersal = true;
             MinutesAfterJoining = 15;
             MinutesAfterBeingMoved = 12*60; // 12 hours
             JoinedEarlyPhase = true;
@@ -1260,6 +1266,7 @@ public MULTIbalancer(PresetItems preset) : this() {
             TopScorers = true;
             SameClanTagsInSquad = false;
             SameClanTagsForRankDispersal = false;
+            LenientRankDispersal = false;
             MinutesAfterJoining = 0;
             MinutesAfterBeingMoved = 0;
             JoinedEarlyPhase = false;
@@ -1294,6 +1301,7 @@ public MULTIbalancer(PresetItems preset) : this() {
             TopScorers = true;
             SameClanTagsInSquad = true;
             SameClanTagsForRankDispersal = true;
+            LenientRankDispersal = true;
             MinutesAfterJoining = 15;
             MinutesAfterBeingMoved = 2*60; // 2 hours
             JoinedEarlyPhase = true;
@@ -1327,6 +1335,7 @@ public MULTIbalancer(PresetItems preset) : this() {
             TopScorers = true;
             SameClanTagsInSquad = true;
             SameClanTagsForRankDispersal = true;
+            LenientRankDispersal = false;
             MinutesAfterJoining = 5;
             MinutesAfterBeingMoved = 90;
             JoinedEarlyPhase = true;
@@ -1360,6 +1369,7 @@ public MULTIbalancer(PresetItems preset) : this() {
             TopScorers = true;
             SameClanTagsInSquad = true;
             SameClanTagsForRankDispersal = true;
+            LenientRankDispersal = false;
             MinutesAfterJoining = 5;
             MinutesAfterBeingMoved = 90;
             JoinedEarlyPhase = true;
@@ -1539,6 +1549,8 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
         lstReturn.Add(new CPluginVariable("2 - Exclusions|Same Clan Tags For Rank Dispersal", SameClanTagsForRankDispersal.GetType(), SameClanTagsForRankDispersal)); 
 
+        lstReturn.Add(new CPluginVariable("2 - Exclusions|Lenient Rank Dispersal", LenientRankDispersal.GetType(), LenientRankDispersal)); 
+
         lstReturn.Add(new CPluginVariable("2 - Exclusions|Minutes After Joining", MinutesAfterJoining.GetType(), MinutesAfterJoining));
 
         lstReturn.Add(new CPluginVariable("2 - Exclusions|Minutes After Being Moved", MinutesAfterBeingMoved.GetType(), MinutesAfterBeingMoved));
@@ -1704,6 +1716,10 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Disperse Evenly By Rank >=", oneSet.DisperseEvenlyByRank.GetType(), oneSet.DisperseEvenlyByRank));
 
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Enable Disperse Evenly List", oneSet.EnableDisperseEvenlyList.GetType(), oneSet.EnableDisperseEvenlyList));
+
+            if (oneSet.EnableDisperseEvenlyList) {
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Enable Strict Dispersal", oneSet.EnableStrictDispersal.GetType(), oneSet.EnableStrictDispersal)); 
+            }
 
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of High Population For Players >=", oneSet.DefinitionOfHighPopulationForPlayers.GetType(), oneSet.DefinitionOfHighPopulationForPlayers));
 
@@ -2167,6 +2183,7 @@ private void ResetSettings() {
     TopScorers = rhs.TopScorers;
     SameClanTagsInSquad = rhs.SameClanTagsInSquad;
     SameClanTagsForRankDispersal = rhs.SameClanTagsForRankDispersal;
+    LenientRankDispersal = rhs.LenientRankDispersal;
     MinutesAfterJoining = rhs.MinutesAfterJoining;
     JoinedEarlyPhase = rhs.JoinedEarlyPhase;
     JoinedMidPhase = rhs.JoinedMidPhase;
@@ -3750,15 +3767,22 @@ private void BalanceAndUnstack(String name) {
     /* Check dispersals */
     
     bool mustMove = false;
+    bool lenient = false;
+    int maxDispersalMoves = 2;
     bool isDisperseByRank = IsRankDispersal(player);
-    bool isDisperseByList = IsDispersal(player);
-    if (isDisperseByRank) {
+    bool isDisperseByList = IsDispersal(player, false);
+    if (isDisperseByList) {
+        String dispersalMode = (lenient) ? "LENIENT MODE" : "STRICT MODE";
+        DebugBalance("ON MUST MOVE LIST ^b" + player.FullName + "^n T:" + player.Team + ", disperse evenly enabled, " + dispersalMode);
+        mustMove = true;
+        lenient = !perMode.EnableStrictDispersal; // the opposite of strict is lenient
+        maxDispersalMoves = (lenient) ? 1 : 2;
+    } else if (isDisperseByRank) {
         DebugBalance("ON MUST MOVE LIST ^b" + name + "^n T:" + player.Team + ", Rank " + player.Rank + " >= " + perMode.DisperseEvenlyByRank);
         mustMove = true;
-    } else if (isDisperseByList) {
-        DebugBalance("ON MUST MOVE LIST ^b" + player.FullName + "^n T:" + player.Team + ", disperse evenly enabled");
-        mustMove = true;
-    }
+        lenient = LenientRankDispersal;
+        maxDispersalMoves = (lenient) ? 1 : 2;
+    } 
 
     /* Check if balancing is needed */
 
@@ -3902,7 +3926,7 @@ private void BalanceAndUnstack(String name) {
     }
     for (int i = 0; i < fromList.Count; ++i) {
         if (fromList[i].Name == player.Name) {
-            if (!mustMove 
+            if (!mustMove
             && needsBalancing 
             && balanceSpeed != Speed.Fast 
             && fromList.Count >= minPlayers 
@@ -3926,7 +3950,7 @@ private void BalanceAndUnstack(String name) {
     isStrong = (playerIndex < strongest);
 
     // Exclude if too soon since last move
-    if (!mustMove && player.MovedByMBTimestamp != DateTime.MinValue) {
+    if ((!mustMove || lenient) && player.MovedByMBTimestamp != DateTime.MinValue) {
         double mins = DateTime.Now.Subtract(player.MovedByMBTimestamp).TotalMinutes;
         if (mins < MinutesAfterBeingMoved) {
             DebugBalance("Excluding ^b" + player.Name + "^n: last move was " + mins.ToString("F0") + " minutes ago, less than required " + MinutesAfterBeingMoved.ToString("F0") + " minutes");
@@ -3942,7 +3966,7 @@ private void BalanceAndUnstack(String name) {
     // Exclude if player joined less than MinutesAfterJoining
     double joinedMinutesAgo = GetPlayerJoinedTimeSpan(player).TotalMinutes;
     double enabledForMinutes = now.Subtract(fEnabledTimestamp).TotalMinutes;
-    if (!mustMove 
+    if ((!mustMove || lenient)
     && needsBalancing 
     && (enabledForMinutes > MinutesAfterJoining) 
     && balanceSpeed != Speed.Fast 
@@ -3958,7 +3982,7 @@ private void BalanceAndUnstack(String name) {
     }
 
     // Exclude if in squad with same tags
-    if (!mustMove && SameClanTagsInSquad) {
+    if ((!mustMove || lenient) && SameClanTagsInSquad) {
         int cmt =  CountMatchingTags(player, Scope.SameSquad);
         if (cmt >= 2) {
             String et = ExtractTag(player);
@@ -3970,7 +3994,7 @@ private void BalanceAndUnstack(String name) {
     }
 
     // Exclude if on friends list
-    if (OnFriendsList) {
+    if ((!mustMove || lenient) && OnFriendsList) {
         int cmf = CountMatchingFriends(player);
         if (cmf >= 2) {
             DebugBalance("Excluding ^b" + player.FullName + "^n, " + cmf + " players in squad are friends (friendex = " + player.Friendex + ")");
@@ -3981,7 +4005,7 @@ private void BalanceAndUnstack(String name) {
     }
 
     // Exempt if this player already been moved for balance or unstacking
-    if ((!mustMove && GetMoves(player) >= 1) || (mustMove && GetMoves(player) >= 2)) {
+    if ((!mustMove && GetMoves(player) >= 1) || (mustMove && GetMoves(player) >= maxDispersalMoves)) {
         DebugBalance("Exempting ^b" + name + "^n, already moved this round");
         fExemptRound = fExemptRound + 1;
         IncrementTotal();
@@ -4017,7 +4041,7 @@ private void BalanceAndUnstack(String name) {
 
     if (mustMove) DebugBalance("^4MUST MOVE^0 ^b" + name + "^n from " + GetTeamName(player.Team) + " to " + GetTeamName(toTeam));
 
-    if (!mustMove && needsBalancing && toTeamDiff <= MaxDiff()) {
+    if ((!mustMove || lenient) && needsBalancing && toTeamDiff <= MaxDiff()) {
         DebugBalance("Exempting ^b" + name + "^n, difference between " + GetTeamName(player.Team) + " team and " + GetTeamName(toTeam) + " team is only " + toTeamDiff);
         fExemptRound = fExemptRound + 1;
         IncrementTotal();
@@ -4050,7 +4074,7 @@ private void BalanceAndUnstack(String name) {
         /* Exemptions */
 
         // Already on the smallest team
-        if (!mustMove && player.Team == smallestTeam) {
+        if ((!mustMove || lenient) && player.Team == smallestTeam) {
             DebugBalance("Exempting ^b" + name + "^n, already on the smallest team");
             fExemptRound = fExemptRound + 1;
             IncrementTotal();
@@ -4642,7 +4666,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     // Check forbidden cases
     PerModeSettings perMode = GetPerModeSettings();
     bool isSQDM = IsSQDM();
-    bool isDispersal = IsDispersal(player);
+    bool isDispersal = IsDispersal(player, false);
     bool isRank = IsRankDispersal(player);
     bool forbidden = (((isDispersal || isRank) && Forbid(perMode, ForbidSwitchingAfterDispersal)) || (player.MovesByMBRound > 0 && !isSQDM && Forbid(perMode, ForbidSwitchingAfterAutobalance)));
 
@@ -6032,7 +6056,7 @@ private void ScramblerLoop () {
                         case DivideByChoices.DispersalGroup: {
                             int[] gCount = new int[3]{0,0,0};
                             foreach (PlayerModel p in sr.Roster) {
-                                if (IsDispersal(p)) {
+                                if (IsDispersal(p, true)) {
                                     if (p.DispersalGroup == 1 || p.DispersalGroup == 2) {
                                         gCount[p.DispersalGroup] = gCount[p.DispersalGroup] + 1;
                                     }
@@ -6275,7 +6299,7 @@ private void ScramblerLoop () {
                             if (filler == null) break;
 
                             // Check to make sure Dispersal isn't violated
-                            if (DivideBy == DivideByChoices.DispersalGroup && IsDispersal(filler) && filler.DispersalGroup != targetDispersalGroup) {
+                            if (DivideBy == DivideByChoices.DispersalGroup && IsDispersal(filler, true) && filler.DispersalGroup != targetDispersalGroup) {
                                 filler = null;
                                 continue;
                             }
@@ -7858,6 +7882,7 @@ public bool CheckForEquality(MULTIbalancer rhs) {
      && this.TopScorers == rhs.TopScorers
      && this.SameClanTagsInSquad == rhs.SameClanTagsInSquad
      && this.SameClanTagsForRankDispersal == rhs.SameClanTagsForRankDispersal
+     && this.LenientRankDispersal == rhs.LenientRankDispersal
      && this.MinutesAfterJoining == rhs.MinutesAfterJoining
      && this.JoinedEarlyPhase == rhs.JoinedEarlyPhase
      && this.JoinedMidPhase == rhs.JoinedMidPhase
@@ -8430,7 +8455,7 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] tea
     bool mostMoves = true;
 
     bool isDispersalByRank = IsRankDispersal(player);
-    bool isDispersalByList = IsDispersal(player);
+    bool isDispersalByList = IsDispersal(player, false);
 
     /* By Dispersal List */
 
@@ -8443,7 +8468,18 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] tea
                 if (DebugLevel >= 7) ConsoleDebug("ToTeamByDispersal ignoring Group " + player.DispersalGroup + " for ^b" + player.FullName + "^n, not SQDM");
                 // fall thru
             } else {
-                return fGroupAssignments[player.DispersalGroup];
+                if (perMode.EnableStrictDispersal) return fGroupAssignments[player.DispersalGroup];
+                // Otherwise, don't allow server to become wildly unbalanced
+                targetTeam = fGroupAssignments[player.DispersalGroup];
+                int nTarget = GetTeam(targetTeam).Count;
+                int nFrom = GetTeam(fromTeam).Count;
+                // Always ok if target team is smaller than current team
+                if (nTarget < nFrom) return targetTeam;
+                // Might be okay if target team is within MaxDiff
+                if ((nTarget - nFrom) <= MaxDiff()) return targetTeam;
+                // Target team too big, don't move this player
+                if (DebugLevel >= 7) ConsoleDebug("ToTeamByDispersal lenient mode, target team " + GetTeamName(targetTeam) + " has too many players " + nTarget + "/" + nFrom + ", skipping dispersal by group of ^b" + player.FullName);
+                return 0;
             }
         }
 
@@ -8454,7 +8490,7 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] tea
             foreach (PlayerModel p in teamListsById[teamId]) {
                 if (p.Name == player.Name) continue; // don't count this player
                 
-                if (IsDispersal(p)) {
+                if (IsDispersal(p, true)) {
                     usualSuspects[teamId] = usualSuspects[teamId] + 1;
                     grandTotal = grandTotal + 1;
 
@@ -8492,7 +8528,19 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] tea
             }
         }
 
-        if (grandTotal > 1 && !allEqual && targetTeam != 0 && targetTeam != fromTeam) return targetTeam;
+        if (grandTotal > 1 && !allEqual && targetTeam != 0 && targetTeam != fromTeam) {
+            if (perMode.EnableStrictDispersal) return targetTeam;
+            // Otherwise, don't allow server to become wildly unbalanced
+            int nTarget = GetTeam(targetTeam).Count;
+            int nFrom = GetTeam(fromTeam).Count;
+            // Always ok if target team is smaller than current team
+            if (nTarget < nFrom) return targetTeam;
+            // Might be okay if target team is within MaxDiff
+            if ((nTarget - nFrom) <= MaxDiff()) return targetTeam;
+            // Target team too big, don't move this player
+            if (DebugLevel >= 7) ConsoleDebug("ToTeamByDispersal lenient mode, target team " + GetTeamName(targetTeam) + " has too many players " + nTarget + "/" + nFrom + ", skipping dispersal by list of ^b" + player.FullName);
+            return 0;
+        }
 
         if (allEqual) DebugWrite("^9ToTeamByDispersal: all equal list, skipping", 5);
         // otherwise fall through and try rank
@@ -9231,7 +9279,7 @@ private void CheckDeativateBalancer(String reason) {
     }
 }
 
-private bool IsDispersal(PlayerModel player) {
+private bool IsDispersal(PlayerModel player, bool ignoreWhitelist) {
     if (player == null) return false;
     player.DispersalGroup = 0;
     PerModeSettings perMode = GetPerModeSettings();
@@ -9249,7 +9297,8 @@ private bool IsDispersal(PlayerModel player) {
                 && !fSettingDisperseEvenlyList.Contains(player.Name)
                 && !fSettingDisperseEvenlyList.Contains(guid)
                 && OnWhitelist
-                && (player.Whitelist & WL_DISPERSE) != 0) {
+                && !ignoreWhitelist
+                && CheckWhitelist(player, WL_DISPERSE)) {
                 isDispersalByList = false;
             } else {
                 isDispersalByList = true;
@@ -9267,7 +9316,8 @@ private bool IsDispersal(PlayerModel player) {
                     && !fDispersalGroups[i].Contains(player.Name)
                     && !fDispersalGroups[i].Contains(guid)
                     && OnWhitelist
-                    && (player.Whitelist & WL_DISPERSE) != 0) {
+                    && !ignoreWhitelist
+                    && CheckWhitelist(player, WL_DISPERSE)) {
                     isDispersalByList = false;
                 } else {
                     isDispersalByList = true;
@@ -9288,7 +9338,7 @@ private bool IsRankDispersal(PlayerModel player) {
         if (player.Rank >= perMode.DisperseEvenlyByRank) DebugWrite("^9Exempting player from rank dispersal, due to SameClanTagsForRankDispersal: ^b" + "^b" + player.FullName + "^n", 6);
         return false;
     }
-    if (OnWhitelist && (player.Whitelist & WL_RANK) != 0) return false; // special case for whitelist options
+    if (OnWhitelist && CheckWhitelist(player, WL_RANK)) return false; // special case for whitelist options
     return (player.Rank >= perMode.DisperseEvenlyByRank);
 }
 
@@ -10085,7 +10135,7 @@ private void AssignGroups() {
         all.AddRange(fTeam3);
         all.AddRange(fTeam4);
         foreach (PlayerModel p in all) {
-            if (IsDispersal(p)) {
+            if (IsDispersal(p, true)) {
                 if (DebugLevel >= 6) ConsoleDebug("AssignGroups assigned ^b" + p.FullName + "^n to Group " + p.DispersalGroup);
             }
         }
@@ -10494,7 +10544,7 @@ private void InGameCommand(String msg, ChatScope scope, int team, int squad, Str
                     } else {
                         foreach (String nm in names) {
                             player = GetPlayer(nm);
-                            if (player != null && IsDispersal(player)) {
+                            if (player != null && IsDispersal(player, true)) {
                                 lines.Add("Duplicate name ^b" + nm + "^n, add failed!");
                                 SayLines(lines, name);
                                 return;
@@ -10597,7 +10647,7 @@ private void InGameCommand(String msg, ChatScope scope, int team, int squad, Str
                     } else {
                         foreach (String nm in names) {
                             player = GetPlayer(nm);
-                            if (player != null && !IsDispersal(player)) {
+                            if (player != null && !IsDispersal(player, true)) {
                                 lines.Add("Can't find name ^b" + nm + "^n, delete failed!");
                                 SayLines(lines, name);
                                 return;
@@ -10733,7 +10783,7 @@ private void InGameCommand(String msg, ChatScope scope, int team, int squad, Str
                     } else {
                         foreach (String nm in names) {
                             player = GetPlayer(nm);
-                            if (player != null && IsDispersal(player)) {
+                            if (player != null && IsDispersal(player, true)) {
                                 lines.Add("Duplicate name ^b" + nm + "^n, new failed!");
                                 SayLines(lines, name);
                                 return;
@@ -11278,6 +11328,7 @@ static class MULTIbalancerUtils {
             lhs.TopScorers = rhs.TopScorers;
             lhs.SameClanTagsInSquad = rhs.SameClanTagsInSquad;
             lhs.SameClanTagsForRankDispersal = rhs.SameClanTagsForRankDispersal;
+            lhs.LenientRankDispersal = rhs.LenientRankDispersal;
             lhs.MinutesAfterJoining = rhs.MinutesAfterJoining;
             lhs.JoinedEarlyPhase = rhs.JoinedEarlyPhase;
             lhs.JoinedMidPhase = rhs.JoinedMidPhase;
