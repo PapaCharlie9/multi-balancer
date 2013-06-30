@@ -9161,16 +9161,22 @@ private void DebugBalance(String msg) {
 
 
 private void DebugUnswitch(String msg) {
-    DebugWrite("^5(SWITCH)^9 " + msg, 5);
+    String prefix = String.Empty;
+    if (Thread.CurrentThread.Name == null || Thread.CurrentThread.Name != "unswitcher") prefix = "^5(SWITCH)";
+    DebugWrite(prefix + " ^9" + msg, 5);
 }
 
 
 private void DebugFetch(String msg) {
-    DebugWrite("^5(FETCH)^9 " + msg, 7);
+    String prefix = String.Empty;
+    if (Thread.CurrentThread.Name == null || Thread.CurrentThread.Name != "fetcher") prefix = "^5(FETCH)";
+    DebugWrite(prefix + " ^9" + msg, 7);
 }
 
 private void DebugScrambler(String msg) {
-    DebugWrite("^5(SCRAMBLER)^9 " + msg, 6);
+    String prefix = String.Empty;
+    if (Thread.CurrentThread.Name == null || Thread.CurrentThread.Name != "scrambler") prefix = "^5(SCRAMBLER)";
+    DebugWrite(prefix + " ^9" + msg, 6);
 }
 
 
