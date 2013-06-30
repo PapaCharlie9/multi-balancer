@@ -12,5 +12,6 @@ DOC changes
 * Added: status command
 * Added: subscribers command
 * Added: whitelist command
+* Added: refresh command
 * Edited: Disperse Evenly List ("separated by spaces")
 * Added: Enable In-Game Command setting

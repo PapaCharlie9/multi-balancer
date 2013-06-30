@@ -1429,7 +1429,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.3.7";
+    return "1.0.4.0";
 }
 
 public String GetPluginAuthor() {
@@ -11681,24 +11681,6 @@ static class MULTIbalancerUtils {
 
 <p><a href='https://forum.myrcon.com/showthread.php?6054'>Go here for Frequently Asked Questions and more in-depth descriptions of settings and how to use them</a>. The descriptions below are intended as quick reference material, to remind you about things you already understand. For more in-depth understanding of what they mean and how they work, see the FAQ or ask questions in this thread.</p>
 
-<h3>Details</h3>
-<p>This plugin provides a rich set of features for a wide variety of team management styles. Some (but not all) of the styles this plugin is designed for are listed below, and you can mix and max these styles depending on the game mode, number of players on the server and whether it is early or late in the round:</p>
-
-<h4>Fair play</h4>
-<p>This style aims for each round to be as evenly balanced in skills as possible. Every round should end as a &quot;nail-biter&quot;. If you want to see Conquest rounds end with ticket differences less than 20 or Team Deathmatch or Squad Deathmatch rounds end with kill differences less than 5 or Rush matches that get down to 1 ticket before the last MCOM is blown, the settings provided by this plugin give you the best chance to have that experience on your server.</p>
-
-<h4>Cutthroat</h4>
-<p>This is pretty much the exact opposite of Fair Play. Every player for himself and damn the consequences. If one team gets stacked with good players, that's just too bad for the other team. The newest players to join are the ones moved to keep teams balanced. This plugin supports cutthroat style by turning most of the features off, except new player reassignment and new player autobalancing.</p>
-
-<h4>Retain players</h4>
-<p>This style aims to retain players on your server. Players are left alone to do what they want, but aspects of team balance and team switching that cause players to leave, like too much autobalancing, team stacking, too many Colonel 100's on one team, too many players from one clan on one team, etc., are dealt with. Only things that are related to team balance are managed, however. This plugin doesn't do anything about, for example, base raping.</p>
-
-<h4>Keep friends together</h4>
-<p>This style recognizes that friends like to play together. To the extent that friends wear the same clan tag or are specified in a friend's list, the balancer and unstacker can be configured to keep friends together.</p>
-
-<h4>Split problem clans apart</h4>
-<p>This style recognizes that some &quot;pro&quot; clans can spoil everyone's fun if they play together, so the balancer and unstacker can be configured to split players with the same clan tag apart and spread them out evenly between teams.</p>
-
 <h2>Concepts</h2>
 <p>This plugin recognizes that a game round has a natural pattern and flow that depends on several factors. Play during the very beginning of a round is different from the very end. Play when the server is nearly empty is different from when the server is nearly full. The natural flow of a round of Conquest is very different from the flow of a game of Rush. Strong (good) players are not interchangeable with weak (bad) players. So with all these differences, how can one set of settings cover all of those different situations? They can't. So this plugin allows you to configure different settings for each combination of factors. The primary factors and concepts are described in the sections that follow.</p>
 
@@ -11773,12 +11755,25 @@ static class MULTIbalancerUtils {
 
 <p><b>Seconds Until Adaptive Speed Becomes Fast</b>: Number of seconds greater than or equal to 120, default 180. If the autobalance speed is Adaptive and the autobalancer has been active for more than the specified number of seconds, the speed will be forced to Fast. This insures that teams don't remain unbalanced too long if Adaptive speed is not sufficient to move players.</p>
 
+<p><b>Enable In-Game Commands</b>: True or False, default True. Enable <b>@mb</b> in-game commands. Most commands allow admins to change settings in the plugin without needing to leave the game. See the plugin thread for details or type <b>@mb help</b> in-game.</p>
+
 <p><b>Enable Whitelisting Of Reserved Slots List</b>: True or False, default True. Treats the reserved slots list as if it were added to the specified <b>Whitelist</b>.</p>
 
-<p><b>Whitelist</b>: List of player names (without clan tags), clan tags (by themselves), or EA GUIDs, one per line, in any combination. The first item may also specify a file to merge into the list, e.g., <i>&lt;whitelist.txt</i>. See <b>Merge Files</b> above. If <b>On&nbsp;Whitelist</b> is enabled or the balance speed is <i>Slow</i>, any players on the whitelist are completely excluded from being moved by the plugin (except for between-round scrambling). Example list with the name of one player, tag of a clan, and GUID of another player:
+<p><b>Whitelist</b>: List of player names (without clan tags), clan tags (by themselves), or EA GUIDs, one per line, in any combination. The first item may also specify a file to merge into the list, e.g., <i>&lt;whitelist.txt</i>. See <b>Merge Files</b> above. If <b>On&nbsp;Whitelist</b> is enabled or the balance speed is <i>Slow</i>, any players on the whitelist are completely excluded from being moved by the plugin (except for between-round scrambling).</p>
+
+<p>Each line of the Whitelist may include one more more option codes that control which exclusions are applied. The codes <b>MUST</b> come after the name/tag/guid and must be separated by spaces. No codes means all options are applied. Codes can only be specified directly in the plugin setting or in a merge file, they cannot be specified in the reserved slots list if <b>Enable Whitelisting Of Reserved Slots List</b> is True. The codes are described in the following table:
+<table border='0'>
+<tr><td>B</td><td>Exclude from balancing moves only</td></tr>
+<tr><td>U</td><td>Exclude from unstacking moves only</td></tr>
+<tr><td>S</td><td>Exclude from unswitching (allow to switch teams freely)</td></tr>
+<tr><td>D</td><td>Exclude from <b>Disperse Evenly List</b> moves</td></tr>
+<tr><td>R</td><td>Exclude from <b>Disperse Evenly By Rank &gt;=</b> moves</td></tr>
+</table></p>
+
+<p>Example list with the name of one player, tag of a clan, and GUID of another player. The player name has the code for exclusion from unstacking and the code for exclusion from rank dispersal, and the clan tag has the code for exclusion from unswitching. The GUID has no codes, which means all exclusions apply:
 <pre>
-  PapaCharlie9
-  LGN
+  PapaCharlie9 U R
+  LGN S
   EA_20D5B089E734F589B1517C8069A37E28
 </pre></p>
 
@@ -11801,13 +11796,19 @@ static class MULTIbalancerUtils {
 
 <p><b>On Whitelist</b>: True or False, default True. If True, the <b>Whitelist</b> is used to exclude players. If False, the Whitelist is ignored.</p>
 
-<p><b>On Friends List</b>: True or False, default False. If True, the Friend List is used to exclude players. If False, the <b>Friends&nbsp;List</b> is ignored.</p>
+<p><b>On Friends List</b>: True or False, default False. If True, the Friends List is used to exclude players. If False, the <b>Friends&nbsp;List</b> is ignored.</p>
+
+<p><b>Apply Friends List To Team</b>: True or False, default False. Only visible if <b>On Friends List</b> is True. If True, if 5 or more friends are on the same team, they will not be moved, regardless of which squads they are in. If False, if 2 or more friends are in the same squad, they will not be moved.</p>
 
 <p><b>Top Scorers</b>: True or False, default True. If True, the top 1, 2, or 3 players (depending on server population and mode) on each team are excluded from moves for balancing or unstacking. This is to reduce the whining and QQing when a team loses their top players to autobalancing.</p>
 
-<p><b>Same Clan Tags In Squad</b>: True or False, default True. If True, a player will be excluded from being moved for balancing or unstacking if they are a member of a squad (or team, in the case of SQDM) that has at least one other player in it with the same clan tag.</p>
+<p><b>Same Clan Tags In Squad</b>: True or False, default True. If True, a player will be excluded from being moved if they are a member of a squad (or team, in the case of SQDM) that has at least one other player in it with the same clan tag.</p>
 
-<p><b>Same Clan Tags For Rank Dispersal</b>: True or False, default False. If True, dispersal by per-mode <b>Disperse Evenly By Rank &gt;=</b> will not be applied if the player has a clan tag that at least one other player on the same team has.</p>
+<p><b>Same Clan Tags In Team</b>: True or False, default False. If True, a player will be excluded from being moved for balancing or unstacking if they are a member of a team that has 5 or more players with the same clan tag, regardless of which squad they are in. If False, no special treatment for teams is applied, but <b>Same Clan Tags In Squad</b> may apply.</p>
+
+<p><b>Same Clan Tags For Rank Dispersal</b>: True or False, default False. If True, dispersal by per-mode <b>Disperse Evenly By Rank &gt;=</b> will not be applied if the player has a clan tag that at least one other player on the same team has. This option is a special case of <b>Lenient Rank Dispersal</b>, enabling just one specific exclusion to be applied leniently.</p>
+
+<p><b>Lenient Rank Dispersal</b>: True or False, default False. If False, dispersal by per-mode <b>Disperse Evenly By Rank &gt;=</b> will by applied strictly, ignored all exclusions except whitelisting. Teams may get unbalanced, but ranked players will be evenly dispersed. If True, dispersal by per-mode setting of ranked players will respect most exclusions, including <b>Minutes After Being Moved</b>. Teams will be kept in balance, but ranked players may not be dispersed evenly.</p>
 
 <p><b>Minutes After Joining</b>: Number greater than or equal to 0, default 5. After joining the server, a player is excluded from being moved for balance or unstacking for this number of minutes. Set to 0 to disable. Keep in mind that most joining players were already assigned to the team with the least players. They have already 'paid their dues'.</p>
 
@@ -11945,7 +11946,9 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Disperse Evenly By Rank &gt;=</b>: Number greater than or equal to 0 and less than or equal to 145, default 0. Any players with this absolute rank (Colonel 100 is 145) or higher will be dispersed evenly across teams. This is useful to insure that Colonel 100 ranked players don't all stack on one team. Set to 0 to disable.</p>
 
-<p><b>Enable Disperse Evenly List</b>:  True or False, default False. If set to true, the players are matched against the <b>Disperse Evenly List</b> and any that match will be dispersed evenly across teams. This is useful to insure that certain clans or groups of players don't always dominate whatever team they are not on.</p>
+<p><b>Enable Disperse Evenly List</b>: True or False, default False. If set to true, the players are matched against the <b>Disperse Evenly List</b> and any that match will be dispersed evenly across teams. This is useful to insure that certain clans or groups of players don't always dominate whatever team they are not on.</p>
+
+<p><b>Enable Strict Dispersal</b>: True or False, default True. Only visible if <b>Enable Disperse Evenly List</b> is set to True. If set to True, players will be moved for dispersal, ignoring all exclusions except whitelisting. This may result in wildly unbalanced teams, but absolutely guarantees that players are dispersed. If set to False, players will be moved for dispersal, but many exclusions will apply, such as <b>Same Clan Tags In Squad</b> and <b>Minutes After Being Moved</b>. The teams will be kept in balance, but players may not be dispersed evenly.</p>
 
 <p><b>Definition Of High Population For Players &gt;=</b>: Number greater than or equal to 0 and less than or equal to <b>Max&nbsp;Players</b>. This is where you define the High population level. If the total number of players in the server is greater than or equal to this number, population is High.</p>
 
@@ -12001,6 +12004,27 @@ For each phase, there are three unstacking settings for server population: Low, 
 <p>This plugin is an open source project hosted on GitHub.com. The repo is located at
 <a href='https://github.com/PapaCharlie9/multi-balancer'>https://github.com/PapaCharlie9/multi-balancer</a> and the master branch is used for public distributions. See the <a href='https://github.com/PapaCharlie9/multi-balancer/tags'>Tags</a> tab for the latest ZIP distribution. If you would like to offer bug fixes or new features, feel free to fork the repo and submit pull requests. Post questions and problem reports in the forum Plugin thread.</p>
 ";
+
+/*
+Deleted:
+<h3>Details</h3>
+<p>This plugin provides a rich set of features for a wide variety of team management styles. Some (but not all) of the styles this plugin is designed for are listed below, and you can mix and max these styles depending on the game mode, number of players on the server and whether it is early or late in the round:</p>
+
+<h4>Fair play</h4>
+<p>This style aims for each round to be as evenly balanced in skills as possible. Every round should end as a &quot;nail-biter&quot;. If you want to see Conquest rounds end with ticket differences less than 20 or Team Deathmatch or Squad Deathmatch rounds end with kill differences less than 5 or Rush matches that get down to 1 ticket before the last MCOM is blown, the settings provided by this plugin give you the best chance to have that experience on your server.</p>
+
+<h4>Cutthroat</h4>
+<p>This is pretty much the exact opposite of Fair Play. Every player for himself and damn the consequences. If one team gets stacked with good players, that's just too bad for the other team. The newest players to join are the ones moved to keep teams balanced. This plugin supports cutthroat style by turning most of the features off, except new player reassignment and new player autobalancing.</p>
+
+<h4>Retain players</h4>
+<p>This style aims to retain players on your server. Players are left alone to do what they want, but aspects of team balance and team switching that cause players to leave, like too much autobalancing, team stacking, too many Colonel 100's on one team, too many players from one clan on one team, etc., are dealt with. Only things that are related to team balance are managed, however. This plugin doesn't do anything about, for example, base raping.</p>
+
+<h4>Keep friends together</h4>
+<p>This style recognizes that friends like to play together. To the extent that friends wear the same clan tag or are specified in a friend's list, the balancer and unstacker can be configured to keep friends together.</p>
+
+<h4>Split problem clans apart</h4>
+<p>This style recognizes that some &quot;pro&quot; clans can spoil everyone's fun if they play together, so the balancer and unstacker can be configured to split players with the same clan tag apart and spread them out evenly between teams.</p>
+*/
 #endregion
 
 } // end MULTIbalancerUtils
