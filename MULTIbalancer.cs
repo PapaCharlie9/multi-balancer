@@ -854,8 +854,10 @@ public double SecondsUntilAdaptiveSpeedBecomesFast;
 
 public bool OnWhitelist;
 public bool OnFriendsList;
+public bool ApplyFriendsListToTeam;
 public bool TopScorers;
 public bool SameClanTagsInSquad;
+public bool SameClanTagsInTeam;
 public bool SameClanTagsForRankDispersal;
 public bool LenientRankDispersal;
 public double MinutesAfterJoining;
@@ -1092,8 +1094,10 @@ public MULTIbalancer() {
     
     OnWhitelist = true;
     OnFriendsList = false;
+    ApplyFriendsListToTeam = false;
     TopScorers = true;
     SameClanTagsInSquad = true;
+    SameClanTagsInTeam = false;
     SameClanTagsForRankDispersal = false;
     LenientRankDispersal = false;
     MinutesAfterJoining = 5;
@@ -1193,8 +1197,10 @@ public MULTIbalancer(PresetItems preset) : this() {
 
             OnWhitelist = true;
             OnFriendsList = false;
+            ApplyFriendsListToTeam = false;
             TopScorers = false;
             SameClanTagsInSquad = false;
+            SameClanTagsInTeam = false;
             SameClanTagsForRankDispersal = false;
             LenientRankDispersal = false;
             MinutesAfterJoining = 0;
@@ -1228,8 +1234,10 @@ public MULTIbalancer(PresetItems preset) : this() {
 
             OnWhitelist = true;
             OnFriendsList = true;
+            ApplyFriendsListToTeam = true;
             TopScorers = true;
             SameClanTagsInSquad = true;
+            SameClanTagsInTeam = true;
             SameClanTagsForRankDispersal = true;
             LenientRankDispersal = true;
             MinutesAfterJoining = 15;
@@ -1263,8 +1271,10 @@ public MULTIbalancer(PresetItems preset) : this() {
 
             OnWhitelist = true;
             OnFriendsList = false;
+            ApplyFriendsListToTeam = false;
             TopScorers = true;
             SameClanTagsInSquad = false;
+            SameClanTagsInTeam = false;
             SameClanTagsForRankDispersal = false;
             LenientRankDispersal = false;
             MinutesAfterJoining = 0;
@@ -1298,8 +1308,10 @@ public MULTIbalancer(PresetItems preset) : this() {
 
             OnWhitelist = true;
             OnFriendsList = true;
+            ApplyFriendsListToTeam = true;
             TopScorers = true;
             SameClanTagsInSquad = true;
+            SameClanTagsInTeam = false;
             SameClanTagsForRankDispersal = true;
             LenientRankDispersal = true;
             MinutesAfterJoining = 15;
@@ -1332,8 +1344,10 @@ public MULTIbalancer(PresetItems preset) : this() {
 
             OnWhitelist = true;
             OnFriendsList = false;
+            ApplyFriendsListToTeam = false;
             TopScorers = true;
             SameClanTagsInSquad = true;
+            SameClanTagsInTeam = false;
             SameClanTagsForRankDispersal = true;
             LenientRankDispersal = false;
             MinutesAfterJoining = 5;
@@ -1366,8 +1380,10 @@ public MULTIbalancer(PresetItems preset) : this() {
 
             OnWhitelist = true;
             OnFriendsList = false;
+            ApplyFriendsListToTeam = false;
             TopScorers = true;
             SameClanTagsInSquad = true;
+            SameClanTagsInTeam = false;
             SameClanTagsForRankDispersal = true;
             LenientRankDispersal = false;
             MinutesAfterJoining = 5;
@@ -1543,9 +1559,15 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
         lstReturn.Add(new CPluginVariable("2 - Exclusions|On Friends List", OnFriendsList.GetType(), OnFriendsList));
 
+        if (OnFriendsList) {
+            lstReturn.Add(new CPluginVariable("2 - Exclusions|Apply Friends List To Team", ApplyFriendsListToTeam.GetType(), ApplyFriendsListToTeam)); 
+        }
+
         lstReturn.Add(new CPluginVariable("2 - Exclusions|Top Scorers", TopScorers.GetType(), TopScorers));
 
         lstReturn.Add(new CPluginVariable("2 - Exclusions|Same Clan Tags In Squad", SameClanTagsInSquad.GetType(), SameClanTagsInSquad));
+
+        lstReturn.Add(new CPluginVariable("2 - Exclusions|Same Clan Tags In Team", SameClanTagsInTeam.GetType(), SameClanTagsInTeam));
 
         lstReturn.Add(new CPluginVariable("2 - Exclusions|Same Clan Tags For Rank Dispersal", SameClanTagsForRankDispersal.GetType(), SameClanTagsForRankDispersal)); 
 
@@ -2180,8 +2202,10 @@ private void ResetSettings() {
     
     OnWhitelist = rhs.OnWhitelist;
     OnFriendsList = rhs.OnFriendsList;
+    ApplyFriendsListToTeam = rhs.ApplyFriendsListToTeam;
     TopScorers = rhs.TopScorers;
     SameClanTagsInSquad = rhs.SameClanTagsInSquad;
+    SameClanTagsInTeam = rhs.SameClanTagsInTeam;
     SameClanTagsForRankDispersal = rhs.SameClanTagsForRankDispersal;
     LenientRankDispersal = rhs.LenientRankDispersal;
     MinutesAfterJoining = rhs.MinutesAfterJoining;
@@ -3993,14 +4017,35 @@ private void BalanceAndUnstack(String name) {
         }
     }
 
+    // Exclude if in team with same tags
+    if ((!mustMove || lenient) && SameClanTagsInTeam) {
+        int cmt =  CountMatchingTags(player, Scope.SameTeam);
+        if (cmt >= 5) {
+            String et = ExtractTag(player);
+            DebugBalance("Excluding ^b" + name + "^n, " + cmt + " players in team with tag [" + et + "]");
+            fExcludedRound = fExcludedRound + 1;
+            IncrementTotal();
+            return;
+        }
+    }
+
     // Exclude if on friends list
     if ((!mustMove || lenient) && OnFriendsList) {
-        int cmf = CountMatchingFriends(player);
+        int cmf = CountMatchingFriends(player, Scope.SameSquad);
         if (cmf >= 2) {
             DebugBalance("Excluding ^b" + player.FullName + "^n, " + cmf + " players in squad are friends (friendex = " + player.Friendex + ")");
             fExcludedRound = fExcludedRound + 1;
             IncrementTotal();
             return;
+        }
+        if (ApplyFriendsListToTeam) {
+            cmf = CountMatchingFriends(player, Scope.SameTeam);
+            if (cmf >= 5) {
+                DebugBalance("Excluding ^b" + player.FullName + "^n, " + cmf + " players in team are friends (friendex = " + player.Friendex + ")");
+                fExcludedRound = fExcludedRound + 1;
+                IncrementTotal();
+                return;
+            }
         }
     }
 
@@ -7879,8 +7924,10 @@ private List<String> GetSimplifiedModes() {
 public bool CheckForEquality(MULTIbalancer rhs) {
     return (this.OnWhitelist == rhs.OnWhitelist
      && this.OnFriendsList == rhs.OnFriendsList
+     && this.ApplyFriendsListToTeam == rhs.ApplyFriendsListToTeam
      && this.TopScorers == rhs.TopScorers
      && this.SameClanTagsInSquad == rhs.SameClanTagsInSquad
+     && this.SameClanTagsInTeam == rhs.SameClanTagsInTeam
      && this.SameClanTagsForRankDispersal == rhs.SameClanTagsForRankDispersal
      && this.LenientRankDispersal == rhs.LenientRankDispersal
      && this.MinutesAfterJoining == rhs.MinutesAfterJoining
@@ -10322,7 +10369,7 @@ private void UpdatePlayerFriends(PlayerModel friend) {
 }
 
 
-private int CountMatchingFriends(PlayerModel player) {
+private int CountMatchingFriends(PlayerModel player, Scope scope) {
     if (player == null) return 0;
     if (player.Friendex == -1) return 0;
     if (player.Team == 0 || player.Squad == 0) return 0;
@@ -10335,16 +10382,21 @@ private int CountMatchingFriends(PlayerModel player) {
     int same = 0;
 
     foreach (PlayerModel mate in teamList) {
-        if (mate.Squad != squad) continue;
+        if (scope == Scope.SameSquad && mate.Squad != squad) continue;
         if (mate.Friendex == player.Friendex) ++same;
     }
 
     String sname = squad.ToString();
     if (squad > 0 && squad <= SQUAD_NAMES.Length) {
-        sname = SQUAD_NAMES[squad];
+        sname = SQUAD_NAMES[squad] + " squad";
+    }
+
+    String where = sname;
+    if (scope == Scope.SameTeam) {
+        where = GetTeamName(team) + " team";
     }
     
-    if (DebugLevel >= 6 && same > 1) DebugBalance("Count of matching friends for player ^b" + player.Name + "^n in " + sname + ", found " + same + " matching friends (friendex = " + player.Friendex + ")");
+    if (DebugLevel >= 6 && same > 1) DebugBalance("Count of matching friends for player ^b" + player.Name + "^n in " + where + ", found " + same + " matching friends (friendex = " + player.Friendex + ")");
 
     return same;
 }
@@ -11325,8 +11377,10 @@ static class MULTIbalancerUtils {
 
             lhs.OnWhitelist = rhs.OnWhitelist;
             lhs.OnFriendsList = rhs.OnFriendsList;
+            lhs.ApplyFriendsListToTeam = rhs.ApplyFriendsListToTeam;
             lhs.TopScorers = rhs.TopScorers;
             lhs.SameClanTagsInSquad = rhs.SameClanTagsInSquad;
+            lhs.SameClanTagsInTeam = rhs.SameClanTagsInTeam;
             lhs.SameClanTagsForRankDispersal = rhs.SameClanTagsForRankDispersal;
             lhs.LenientRankDispersal = rhs.LenientRankDispersal;
             lhs.MinutesAfterJoining = rhs.MinutesAfterJoining;
