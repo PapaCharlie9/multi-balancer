@@ -2715,6 +2715,24 @@ private void CommandToLog(string cmd) {
             return;
         }
 
+        // Undocumented command: generate VBCode from HTML
+        if (Regex.Match(cmd, @"^vbcode", RegexOptions.IgnoreCase).Success) {
+            String vbCode = MULTIbalancerUtils.ConvertHTMLToVBCode(MULTIbalancerUtils.HTML_DOC);
+            ConsoleDump("Converted " + MULTIbalancerUtils.HTML_DOC.Length + " chars of HTML to " + vbCode.Length + " chars of VBCode!");
+            try {
+                String path = Path.Combine(Directory.GetParent(Application.ExecutablePath).FullName, "vbcode.txt");
+
+                using (FileStream fs = File.Open(path, FileMode.Create)) {
+                    Byte[] buffer = new UTF8Encoding(true).GetBytes(vbCode);
+                    fs.Write(buffer, 0, buffer.Length);
+                    ConsoleDump("Successfully wrote " + path);
+                }
+            } catch (Exception e) {
+                ConsoleException(e);
+            }
+            return;
+        }
+
         if (Regex.Match(cmd, @"^\s*help", RegexOptions.IgnoreCase).Success || !String.IsNullOrEmpty(cmd)) {
             ConsoleDump("^1^bgen^n ^imode^n^0: Generate settings listing for ^imode^n (one of: cs, cl, ctf, gm, r, sqdm, sr, s, tdm, u)");
             ConsoleDump("^1^bgen^n ^isection^n^0: Generate settings listing for ^isection^n (1-6,9)");
@@ -11529,17 +11547,98 @@ static class MULTIbalancerUtils {
         return speeds;
     }
 
+    public static String ConvertHTMLToVBCode(String html) {
+        if (String.IsNullOrEmpty(html)) return String.Empty;
+
+        /* Normalization */
+
+        // make all markup be lowercase
+        String norm = Regex.Replace(html, @"<[^>=]+[>=]", delegate(Match match) {
+            return match.Value.ToLower(); 
+        });
+        // make all entity refs be lowercase
+        norm = Regex.Replace(norm, @"&[^;]+;", delegate(Match match) {
+            return match.Value.ToLower();
+        });
+
+        StringBuilder tmp = new StringBuilder(norm);
+        //tmp.Replace("\r", String.Empty);
+
+        /* Markup deletions */
+
+        tmp.Replace("<p>", String.Empty);
+        tmp.Replace("</p>", String.Empty);
+
+        /* Markup replacements */
+
+        tmp.Replace("<h1>", "[SIZE=5]");
+        tmp.Replace("</h1>", "[/SIZE]\n[HR][/HR]");
+        tmp.Replace("<h2>", "[SIZE=4][B][COLOR=#0000FF]");
+        tmp.Replace("</h2>", "[/COLOR][/B][/SIZE]\n[HR][/HR]");
+        tmp.Replace("<h3>", "[SIZE=3][B]");
+        tmp.Replace("</h3>", "[/B][/SIZE]");
+        tmp.Replace("<h4>", "[B]");
+        tmp.Replace("</h4>", "[/B]");
+
+        tmp.Replace("<small>", "[INDENT][SIZE=2][FONT=Arial Narrow]");
+        tmp.Replace("</small>", "[/FONT][/SIZE][/INDENT]");
+        tmp.Replace("<font color", "[COLOR"); // TODO - be smarter about font tag
+        tmp.Replace("</font>", "[/COLOR]"); // TODO - be smarter about font tag
+
+        tmp.Replace("<ul>", "[LIST]");
+        tmp.Replace("</ul>", "[/LIST]");
+        tmp.Replace("<li>", "[*]");
+        tmp.Replace("</li>", String.Empty);
+
+        tmp.Replace("<table>", "[TABLE=\"class: grid\"]");
+        tmp.Replace("</table>", "[/TABLE]");
+        tmp.Replace("<tr>", "[TR]\n");
+        tmp.Replace("</tr>", "[/TR]");
+        tmp.Replace("<td>", "[TD]");
+        tmp.Replace("</td>", "[/TD]\n");
+
+        tmp.Replace("<a href=", "[U][URL="); // TODO - be smarter about anchors
+        tmp.Replace("</a>", "[/URL][/U]"); // TODO - be smarter about anchors
+
+        tmp.Replace("<pre>", "[CODE]");
+        tmp.Replace("</pre>", "[/CODE]");
+
+        tmp.Replace("<i>", "[I]");
+        tmp.Replace("</i>", "[/I]");
+        tmp.Replace("<b>", "[B]");
+        tmp.Replace("</b>", "[/B]");
+        tmp.Replace("<hr>", "[HR]");
+        tmp.Replace("</hr>", "[/HR]");
+
+        // Must do this before entity ref replacement
+        tmp.Replace("<", "[");
+        tmp.Replace(">", "]");
+
+        /* Entity ref replacements */
+
+        tmp.Replace("&amp;", "&");
+        tmp.Replace("&nbsp;", " ");
+        tmp.Replace("&quot;", "\"");
+        tmp.Replace("&apos;", "'");
+        tmp.Replace("&lt;", "<");
+        tmp.Replace("&gt;", ">");
+
+        /* Done */
+
+        return tmp.ToString();
+    }
+
 #region HTML_DOC
     public const String HTML_DOC = @"
 <h1>Multi-Balancer &amp; Unstacker, including SQDM</h1>
+<p>For BF3, this plugin does live round team balancing and unstacking for all game modes, including Squad Deathmatch (SQDM).</p>
+
 <h3>Acknowledgments</h3>
 <p>This plugin would not have been possible without the help and support of these individuals and communities:<br></br>
 <small>myrcon.com staff, [C2C]Blitz, [FTB]guapoloko, [Xtra]HexaCanon, [11]EBassie, Firejack, [IAF]SDS, dyn, Jaythegreat1, ADKGamers, AgentHawk, TreeSaint, Taxez, PatPgtips, Hutchew, LumpyNutz, popbndr, tarreltje, 24Flat, [Oaks]kcuestag ... and many others</small></p>
 
-<p>For BF3, this plugin does live round team balancing and unstacking for all game modes, including Squad Deathmatch (SQDM).</p>
-
 <h2>NOTICE</h2>
-<p>This plugin is free to use, forever. Support is provided on a voluntary basic, when time is available, by the author and the user community. Use at your own risk, no guarantees are made or implied (complete notice text is in the source code). Some of the code in this plugin (Battlelog and BattlelogCache code, plugin framework, other odds & ends) was directly derived from Insane Limits by micovery. Inspiration for the plugin settings came from TrueBalancer by Panther and all of the members of the design discussion group, some of whom are listed above in the acknowledgments.</p>
+<p>This plugin is free to use, forever. Support is provided on a voluntary basic, when time is available, by the author and the user community. Use at your own risk, no guarantees are made or implied (complete notice text is in the source code). Some of the code in this plugin (Battlelog and BattlelogCache code, plugin framework, other odds &amp; ends) was directly derived from Insane Limits by micovery. Inspiration for the plugin settings came from TrueBalancer by Panther and all of the members of the design discussion group, some of whom are listed above in the acknowledgments.</p>
 
 <p><b>Section 7 of settings is intentionally not defined.</b></p>
 
@@ -11567,13 +11666,17 @@ static class MULTIbalancerUtils {
 <tr><td><b>UnstackOnly</b></td><td>Disable autobalancing, only move to unstack teams</td></tr>
 <tr><td><b>None</b></td><td>Custom plugin settings (this is automatically selected if you change settings controlled by <b>Presets</b>)</td></tr>
 </table>
-<b><font color=#FF0000>Standard, Retain, and BalanceOnly are recommended to admins new to this plugin.</font></b> Aggressive and Intensify are not recommended for admins new to this plugin.</p>
+<b><font color=#FF0000>Standard, Retain, and BalanceOnly are recommended to admins new to this plugin.</font></b> Aggressive and Intensify are <b>not </b>recommended for admins new to this plugin.</p>
 
 <p>2) Review plugin section <b>5. Messages</b> and change any messages you don't like.</p>
 
 <p>3) Find your game mode in Section 8 and review the settings. Adjust the <b>Max Players</b> and <b>Definition Of ...</b> settings as needed. Or, <b>Enable Settings Wizard</b> in Section 0, <i>fill in the form that is displayed</i>, and then change <b>Apply Settings Changes</b> to True, to have the plugin set up your per-mode settings automatically.</p>
 
 <p>4) That's it! You are good to go.</p>
+
+<h3>FAQ</h3>
+
+<p><a href='https://forum.myrcon.com/showthread.php?6054'>Go here for Frequently Asked Questions and more in-depth descriptions of settings and how to use them</a>. The descriptions below are intended as quick reference material, to remind you about things you already understand. For more in-depth understanding of what they mean and how they work, see the FAQ or ask questions in this thread.</p>
 
 <h3>Details</h3>
 <p>This plugin provides a rich set of features for a wide variety of team management styles. Some (but not all) of the styles this plugin is designed for are listed below, and you can mix and max these styles depending on the game mode, number of players on the server and whether it is early or late in the round:</p>
@@ -11881,7 +11984,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 <h3>9 - Debugging</h3>
 <p>These settings are used for debugging problems with the plugin.</p>
 
-<p><b>Show Command In Log</b>: Special commands may be typed in this text area to display information in plugin.log. Type <i>help></i> into the text field and press Enter (type a return). A list of commands will be written to plugin.log.</p>
+<p><b>Show Command In Log</b>: Special commands may be typed in this text area to display information in plugin.log. Type <i>help</i> into the text field and press Enter (type a return). A list of commands will be written to plugin.log.</p>
 
 <p><b>Log Chat</b>: True or False, default True. If set to True, all chat messages sent by the plugin will be logged in chat.log.</p>
 
