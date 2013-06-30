@@ -5683,7 +5683,7 @@ private void SetStats(PlayerModel player, Hashtable stats) {
     player.StatsFetchStatus.State = FetchState.Succeeded;
     player.StatsVerified = true;
     String msg = type + " [bKDR:" + player.KDR.ToString("F2") + ", bSPM:" + player.SPM.ToString("F0") + ", bKPM:" + player.KPM.ToString("F1") + "]";
-    DebugFetch("Player stats updated ^0^b" + player.Name + "^n, " + msg);
+    DebugFetch("^4Player stats updated ^0^b" + player.Name + "^n, " + msg);
 }
 
 
@@ -7467,12 +7467,12 @@ private void SendBattlelogRequest(String name, String requestType) {
                 Hashtable data = new Hashtable();
                 data["clanTag"] = tag.Groups[1].Value;
                 SetTag(player, data);
-                DebugFetch("Player tag updated: ^b" + player.FullName);
+                DebugFetch("^Battlelog tag updated: ^b" + player.FullName);
             } else {
                 // No tag
                 player.TagVerified = true;
                 status.State = FetchState.Succeeded;
-                DebugFetch("Battlelog says ^b" + player.Name + "^n has no tag");
+                DebugFetch("^4Battlelog says ^b" + player.Name + "^n has no tag");
             }
         } else if (requestType == "overview") {
             if (!fIsEnabled || WhichBattlelogStats == BattlelogStats.ClanTagOnly) return;
@@ -7636,9 +7636,9 @@ public void CacheResponse(params String[] response) {
                 case "clanTag":
                     SetTag(player, d);
                     if (String.IsNullOrEmpty(player.Tag)) {
-                        DebugFetch("Battlelog Cache says ^b" + player.Name + "^n has no tag");
+                        DebugFetch("^4Battlelog Cache says ^b" + player.Name + "^n has no tag");
                     } else {
-                        DebugFetch("Player tag updated: ^b" + player.FullName);
+                        DebugFetch("^4Battlelog Cache tag updated: ^b" + player.FullName);
                     }
                     break;
                 case "overview": {
@@ -7785,7 +7785,7 @@ private bool FetchWebPage(ref String result, String url) {
 private String FormatMessage(String msg, MessageType type, int level) {
     String prefix = "[^b" + GetPluginName() + "^n]:" + level + " ";
 
-    if (Thread.CurrentThread.Name != null) prefix += "Thread(^b" + Thread.CurrentThread.Name + "^n): ";
+    if (Thread.CurrentThread.Name != null) prefix += "Thread(^b^5" + Thread.CurrentThread.Name + "^0^n): ";
 
     if (type.Equals(MessageType.Warning))
         prefix += "^1^bWARNING^0^n: ";
@@ -9163,7 +9163,7 @@ private void DebugBalance(String msg) {
 private void DebugUnswitch(String msg) {
     String prefix = String.Empty;
     if (Thread.CurrentThread.Name == null || Thread.CurrentThread.Name != "unswitcher") prefix = "^5(SWITCH)";
-    DebugWrite(prefix + " ^9" + msg, 5);
+    DebugWrite(prefix + " ^6" + msg, 5);
 }
 
 
@@ -11262,7 +11262,7 @@ private void LogStatus(bool isFinal, int level) {
         }
     }
 
-    if (!isFinal && (level == 4)) ConsoleWrite("+------------------------------------------------+", 4);
+    if (!isFinal && (level == 4)) ConsoleWrite("+------------------------------------------------+", 0);
 
     Speed balanceSpeed = Speed.Adaptive;
 
