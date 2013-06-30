@@ -851,6 +851,7 @@ public List<String> fSettingDisperseEvenlyList;
 public String[] FriendsList;
 public List<String> fSettingFriendsList;
 public double SecondsUntilAdaptiveSpeedBecomesFast;
+public bool EnableInGameCommands;
 
 public bool OnWhitelist;
 public bool OnFriendsList;
@@ -1089,6 +1090,7 @@ public MULTIbalancer() {
     FriendsList = new String[] {DEFAULT_LIST_ITEM};
     fSettingFriendsList = new List<String>();
     SecondsUntilAdaptiveSpeedBecomesFast = 3*60; // 3 minutes default
+    EnableInGameCommands = true;
     
     /* ===== SECTION 2 - Exclusions ===== */
     
@@ -1544,6 +1546,8 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 */
 
         lstReturn.Add(new CPluginVariable("1 - Settings|Seconds Until Adaptive Speed Becomes Fast", SecondsUntilAdaptiveSpeedBecomesFast.GetType(), SecondsUntilAdaptiveSpeedBecomesFast));
+        
+        lstReturn.Add(new CPluginVariable("1 - Settings|Enable In-Game Commands", EnableInGameCommands.GetType(), EnableInGameCommands));
         
         lstReturn.Add(new CPluginVariable("1 - Settings|Enable Whitelisting Of Reserved Slots List", EnableWhitelistingOfReservedSlotsList.GetType(), EnableWhitelistingOfReservedSlotsList));
 
@@ -2189,12 +2193,16 @@ private void ResetSettings() {
     MaximumServerSize = rhs.MaximumServerSize;
     EnableBattlelogRequests = rhs.EnableBattlelogRequests;
     MaximumRequestRate =  rhs.MaximumRequestRate;
+    WaitTimeout = rhs.WaitTimeout;
+    WhichBattlelogStats = rhs.WhichBattlelogStats;
     MaxTeamSwitchesByStrongPlayers = rhs.MaxTeamSwitchesByStrongPlayers;
     MaxTeamSwitchesByWeakPlayers = rhs.MaxTeamSwitchesByWeakPlayers;
     UnlimitedTeamSwitchingDuringFirstMinutesOfRound = rhs.UnlimitedTeamSwitchingDuringFirstMinutesOfRound;
     Enable2SlotReserve = rhs.Enable2SlotReserve;
     EnablerecruitCommand = rhs.EnablerecruitCommand;
     EnableWhitelistingOfReservedSlotsList = rhs.EnableWhitelistingOfReservedSlotsList;
+    SecondsUntilAdaptiveSpeedBecomesFast = rhs.SecondsUntilAdaptiveSpeedBecomesFast;
+    EnableInGameCommands = rhs.EnableInGameCommands;
     // Whitelist = rhs.Whitelist; // don't reset the whitelist
     // DisperseEvenlyList = rhs.DisperseEvenlyList; // don't reset the dispersal list
     
@@ -2209,6 +2217,7 @@ private void ResetSettings() {
     SameClanTagsForRankDispersal = rhs.SameClanTagsForRankDispersal;
     LenientRankDispersal = rhs.LenientRankDispersal;
     MinutesAfterJoining = rhs.MinutesAfterJoining;
+    MinutesAfterBeingMoved = rhs.MinutesAfterBeingMoved;
     JoinedEarlyPhase = rhs.JoinedEarlyPhase;
     JoinedMidPhase = rhs.JoinedMidPhase;
     JoinedLatePhase = rhs.JoinedLatePhase;
@@ -10416,6 +10425,10 @@ private int CountMatchingFriends(PlayerModel player, Scope scope) {
 private void InGameCommand(String msg, ChatScope scope, int team, int squad, String name) {
     if (EnableLoggingOnlyMode) {
         ConsoleDebug("EnableLoggingOnlyMode enabled, commands disabled");
+        return;
+    }
+    if (!EnableInGameCommands) {
+        ConsoleDebug("EnableInGameCommands is False, commands disabled");
         return;
     }
     CPrivileges p = this.GetAccountPrivileges(name);
