@@ -7376,8 +7376,12 @@ public void FetchLoop() {
             if (since == DateTime.MinValue) since = DateTime.Now;
 
             String msg = n.ToString() + " request" + ((n > 1) ? "s" : "") + " in Battlelog request queue";
-            if (n == 0) msg = "no more requests in Battlelog request queue";
-            DebugFetch("^0" + msg, 3);
+            if (n == 0) {
+                msg = "no more requests in Battlelog request queue";
+                DebugFetch("^0" + msg, 4);
+            } else {
+                DebugFetch("^0" + msg, 3);
+            }
 
             PlayerModel player = GetPlayer(name);
             if (player == null) continue;
