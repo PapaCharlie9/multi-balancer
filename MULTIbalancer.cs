@@ -11590,7 +11590,8 @@ static class MULTIbalancerUtils {
         tmp.Replace("<li>", "[*]");
         tmp.Replace("</li>", String.Empty);
 
-        tmp.Replace("<table>", "[TABLE=\"class: grid\"]");
+        tmp.Replace("<table>", "[TABLE=\"class: grid\"]"); // TODO - be smarter about table tag
+        tmp.Replace("<table border='0'>", "[TABLE=\"class: grid\"]");
         tmp.Replace("</table>", "[/TABLE]");
         tmp.Replace("<tr>", "[TR]\n");
         tmp.Replace("</tr>", "[/TR]");
@@ -11609,6 +11610,8 @@ static class MULTIbalancerUtils {
         tmp.Replace("</b>", "[/B]");
         tmp.Replace("<hr>", "[HR]");
         tmp.Replace("</hr>", "[/HR]");
+        tmp.Replace("<br>", String.Empty);
+        tmp.Replace("</br>", "\n");
 
         // Must do this before entity ref replacement
         tmp.Replace("<", "[");
@@ -11996,8 +11999,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <h2>Development</h2>
 <p>This plugin is an open source project hosted on GitHub.com. The repo is located at
-<a href='https://github.com/PapaCharlie9/multi-balancer'>https://github.com/PapaCharlie9/multi-balancer</a> and
-the master branch is used for public distributions. See the <a href='https://github.com/PapaCharlie9/multi-balancer/tags'>Tags</a> tab for the latest ZIP distribution. If you would like to offer bug fixes or new features, feel free to fork the repo and submit pull requests. Post questions and problem reports in the forum Plugin thread.</p>
+<a href='https://github.com/PapaCharlie9/multi-balancer'>https://github.com/PapaCharlie9/multi-balancer</a> and the master branch is used for public distributions. See the <a href='https://github.com/PapaCharlie9/multi-balancer/tags'>Tags</a> tab for the latest ZIP distribution. If you would like to offer bug fixes or new features, feel free to fork the repo and submit pull requests. Post questions and problem reports in the forum Plugin thread.</p>
 ";
 #endregion
 
