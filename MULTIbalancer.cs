@@ -2944,7 +2944,7 @@ public void OnPluginEnable() {
     fEnabledTimestamp = DateTime.Now;
     fRoundStartTimestamp = DateTime.Now;
 
-    ConsoleWrite("^b^2Enabled!^0^n Version = " + GetPluginVersion());
+    ConsoleWrite("^b^2Enabled!^0^n Version = " + GetPluginVersion(), 0);
     DebugWrite("^b^3State = " + fPluginState, 6);
     DebugWrite("^b^3Game state = " + fGameState, 6);
 
@@ -2974,7 +2974,7 @@ public void OnPluginDisable() {
 
         Reset();
     
-        ConsoleWrite("^bDisabling, stopping threads ...^n");
+        ConsoleWrite("^bDisabling, stopping threads ...^n", 0);
         fPluginState = PluginState.Disabled;
         fGameState = GameState.Unknown;
         DebugWrite("^b^3State = " + fPluginState, 6);
@@ -5172,7 +5172,7 @@ public void MoveLoop() {
     } catch (Exception e) {
         ConsoleException(e);
     } finally {
-        ConsoleWrite("^bMoveLoop^n thread stopped");
+        ConsoleWrite("^bMoveLoop^n thread stopped", 0);
     }
 }
 
@@ -6537,7 +6537,7 @@ private void ScramblerLoop () {
         ConsoleException(e);
     } finally {
         fWhileScrambling = false;
-        ConsoleWrite("^bScramblerLoop^n thread stopped");
+        ConsoleWrite("^bScramblerLoop^n thread stopped", 0);
     }
 }
 
@@ -7407,7 +7407,7 @@ public void FetchLoop() {
     } catch (Exception e) {
         ConsoleException(e);
     } finally {
-        ConsoleWrite("^bFetchLoop^n thread stopped");
+        ConsoleWrite("^bFetchLoop^n thread stopped", 0);
     }
 }
 
@@ -7782,8 +7782,8 @@ private bool FetchWebPage(ref String result, String url) {
 
 
 
-private String FormatMessage(String msg, MessageType type) {
-    String prefix = "[^b" + GetPluginName() + "^n] ";
+private String FormatMessage(String msg, MessageType type, int level) {
+    String prefix = "[^b" + GetPluginName() + "^n]:" + level + " ";
 
     if (Thread.CurrentThread.Name != null) prefix += "Thread(^b" + Thread.CurrentThread.Name + "^n): ";
 
@@ -7808,44 +7808,44 @@ public void LogWrite(String msg)
     }
 }
 
-public void ConsoleWrite(String msg, MessageType type)
+public void ConsoleWrite(String msg, MessageType type, int level)
 {
-    LogWrite(FormatMessage(msg, type));
+    LogWrite(FormatMessage(msg, type, level));
 }
 
-public void ConsoleWrite(String msg)
+public void ConsoleWrite(String msg, int level)
 {
-    ConsoleWrite(msg, MessageType.Normal);
+    ConsoleWrite(msg, MessageType.Normal, level);
 }
 
 public void ConsoleWarn(String msg)
 {
-    ConsoleWrite(msg, MessageType.Warning);
+    ConsoleWrite(msg, MessageType.Warning, 1);
 }
 
 public void ConsoleError(String msg)
 {
-    ConsoleWrite(msg, MessageType.Error);
+    ConsoleWrite(msg, MessageType.Error, 0);
 }
 
 public void ConsoleException(Exception e)
 {
-    if (DebugLevel >= 3) ConsoleWrite(e.ToString(), MessageType.Exception);
+    if (DebugLevel >= 3) ConsoleWrite(e.ToString(), MessageType.Exception, 3);
 }
 
 public void DebugWrite(String msg, int level)
 {
-    if (DebugLevel >= level) ConsoleWrite(msg, MessageType.Normal);
+    if (DebugLevel >= level) ConsoleWrite(msg, MessageType.Normal, level);
 }
 
 public void ConsoleDebug(String msg)
 {
-    if (DebugLevel >= 6) ConsoleWrite(msg, MessageType.Debug);
+    if (DebugLevel >= 6) ConsoleWrite(msg, MessageType.Debug, 6);
 }
 
 public void ConsoleDump(String msg)
 {
-    ConsoleWrite("^b[Show In Log]^n ^1" + msg);
+    ConsoleWrite("^b[Show In Log]^n ^1" + msg, 0);
 }
 
 
@@ -8727,7 +8727,7 @@ private int ToSquad(String name, int team) {
             if (!fWhileScrambling) {
                 ConsoleDebug("ToSquad ^b" + name + "^n: " + ss);
             } else {
-                ConsoleWrite("While scrambling, ToSquad ^b" + name + "^n: " + ss);
+                ConsoleDebug("While scrambling, ToSquad ^b" + name + "^n: " + ss);
             }
         }
     } catch (Exception e) {
@@ -8763,7 +8763,7 @@ private void JoinWith(Thread thread, int secs)
     if (thread == null || !thread.IsAlive)
         return;
 
-    ConsoleWrite("Waiting for ^b" + thread.Name + "^n to finish");
+    ConsoleWrite("Waiting for ^b" + thread.Name + "^n to finish", 0);
     thread.Join(secs*1000);
 }
 
@@ -8803,7 +8803,7 @@ private void StopThreads() {
                 }
 
                 fFinalizerActive = false;
-                ConsoleWrite("Finished disabling threads, ready to be enabled again!");
+                ConsoleWrite("Finished disabling threads, ready to be enabled again!", 0);
             }));
 
         stopper.Name = "stopper";
@@ -8901,7 +8901,7 @@ private void ListPlayersLoop() {
     } catch (Exception e) {
         ConsoleException(e);
     } finally {
-        ConsoleWrite("^bListPlayersLoop^n thread stopped");
+        ConsoleWrite("^bListPlayersLoop^n thread stopped", 0);
     }
 }
 
@@ -9806,7 +9806,7 @@ private void LogExternal(String msg) {
 }
 
 void ApplyWizardSettings() {
-    ConsoleWrite("Applying Wizard settings ...");
+    ConsoleWrite("Applying Wizard settings ...", 0);
 
     // Validate the numbers
     ValidateIntRange(ref MaximumPlayersForMode, "Maximum Players For Mode", 8, 64, 64, false);
@@ -9822,7 +9822,7 @@ void ApplyWizardSettings() {
     try {
         String modeName = WhichMode;
         if (modeName == "Conq Small or Dom or Scav") modeName = "Conq Small, Dom, Scav"; // settings don't like commas in enum
-        ConsoleWrite("For mode: ^b" + modeName);
+        ConsoleWrite("For mode: ^b" + modeName, 0);
         PerModeSettings perMode = null;
         if (fPerMode == null) {
             ConsoleWarn("Settings Wizard failed due to being disabled, please enable the plugin!");
@@ -9833,7 +9833,7 @@ void ApplyWizardSettings() {
 
             // Set the per mode Max Players
             perMode.MaxPlayers = MaximumPlayersForMode;
-            ConsoleWrite("Set ^bMax Players^n to " + perMode.MaxPlayers);
+            ConsoleWrite("Set ^bMax Players^n to " + perMode.MaxPlayers, 0);
 
             // Set the Population ranges
             if (MaximumPlayersForMode == 64) {
@@ -9861,8 +9861,8 @@ void ApplyWizardSettings() {
                 perMode.DefinitionOfHighPopulationForPlayers = 6;
                 perMode.DefinitionOfLowPopulationForPlayers = 4;
             }
-            ConsoleWrite("Set ^bDefinition Of High Population For Players^n to " + perMode.DefinitionOfHighPopulationForPlayers);
-            ConsoleWrite("Set ^bDefinition Of Low Population For Players^n to " + perMode.DefinitionOfLowPopulationForPlayers);
+            ConsoleWrite("Set ^bDefinition Of High Population For Players^n to " + perMode.DefinitionOfHighPopulationForPlayers, 0);
+            ConsoleWrite("Set ^bDefinition Of Low Population For Players^n to " + perMode.DefinitionOfLowPopulationForPlayers, 0);
 
             // Set the Phase ranges
             if (!isCTF) {
@@ -9881,16 +9881,16 @@ void ApplyWizardSettings() {
                 }
                 perMode.DefinitionOfEarlyPhaseFromStart = Math.Min(300, Convert.ToInt32(delta)); // adaptive early
                 perMode.DefinitionOfLatePhaseFromEnd = Math.Min(300, Convert.ToInt32(late));
-                ConsoleWrite("Set ^bDefinition Of Early Phase As Tickets From Start^n to " + perMode.DefinitionOfEarlyPhaseFromStart);
-                ConsoleWrite("Set ^bDefinition Of Late Phase As Tickets From End^n to " + perMode.DefinitionOfLatePhaseFromEnd);
+                ConsoleWrite("Set ^bDefinition Of Early Phase As Tickets From Start^n to " + perMode.DefinitionOfEarlyPhaseFromStart, 0);
+                ConsoleWrite("Set ^bDefinition Of Late Phase As Tickets From End^n to " + perMode.DefinitionOfLatePhaseFromEnd, 0);
             } else {
-                ConsoleWrite("CTF Phase definitions cannot be set with the wizard, skipping.");
+                ConsoleWrite("CTF Phase definitions cannot be set with the wizard, skipping.", 0);
             }
 
             if (MetroIsInMapRotation && modeName.Contains("Conq")) {
                 // Use half of low
                 perMode.MetroAdjustedDefinitionOfLatePhase = LowestMaximumTicketsForMode / 2;
-                ConsoleWrite("Set ^bMetro Adjusted Defintion Of Late Phase^n to " + perMode.MetroAdjustedDefinitionOfLatePhase);
+                ConsoleWrite("Set ^bMetro Adjusted Defintion Of Late Phase^n to " + perMode.MetroAdjustedDefinitionOfLatePhase, 0);
             }
 
             switch (PreferredStyleOfBalancing) {
@@ -9961,9 +9961,9 @@ void ApplyWizardSettings() {
                 LatePhaseBalanceSpeed = new Speed[3] {Speed.Stop,  Speed.Stop, Speed.Stop};
             }
 
-            ConsoleWrite("Please review your Section 3 Early, Mid and Late Balance Speeds set to style " + PreferredStyleOfBalancing);
+            ConsoleWrite("Please review your Section 3 Early, Mid and Late Balance Speeds set to style " + PreferredStyleOfBalancing, 0);
 
-            ConsoleWrite("COMPLETED application of Wizard settings! Please review your Section 8 settings for ^b" + modeName);
+            ConsoleWrite("COMPLETED application of Wizard settings! Please review your Section 8 settings for ^b" + modeName, 0);
         }
     } catch (Exception e) {
         ConsoleException(e);
@@ -10271,7 +10271,7 @@ private void AssignGroups() {
                 msg = msg + fGroupAssignments[i];
                 if (i < 4) msg = msg + "/";
             }
-            ConsoleWrite(msg);
+            ConsoleWrite(msg, 6);
         }
     }
 }
@@ -11090,13 +11090,13 @@ public void CheckForPluginUpdate() { // runs in one-shot thread
             xml.Load("https://myrcon.com/procon/plugins/report/format/xml/plugin/MULTIbalancer");
         } catch (System.Security.SecurityException e) {
             if (DebugLevel >= 8) ConsoleException(e);
-            ConsoleWrite(" ");
-            ConsoleWrite("^8^bNOTICE! Unable to check for plugin update!");
-            ConsoleWrite("Tools => Options... => Plugins tab: ^bPlugin security^n is set to ^bRun plugins in a sandbox^n.");
+            ConsoleWrite(" ", 0);
+            ConsoleWrite("^8^bNOTICE! Unable to check for plugin update!", 0);
+            ConsoleWrite("Tools => Options... => Plugins tab: ^bPlugin security^n is set to ^bRun plugins in a sandbox^n.", 0);
             //ConsoleWrite("Please add ^bmyrcon.com^n to your trusted ^bOutgoing connections^n");
-            ConsoleWrite("Consider changing to ^bRun plugins with no restrictions.^n");
-            ConsoleWrite("Alternatively, check the ^bPlugins^n forum for an update to this plugin.");
-            ConsoleWrite(" ");
+            ConsoleWrite("Consider changing to ^bRun plugins with no restrictions.^n", 0);
+            ConsoleWrite("Alternatively, check the ^bPlugins^n forum for an update to this plugin.", 0);
+            ConsoleWrite(" ", 0);
             return;
         } 
         if (DebugLevel >= 8) ConsoleDebug("CheckForPluginUpdate: Got " + xml.BaseURI);
@@ -11200,13 +11200,13 @@ public void CheckForPluginUpdate() { // runs in one-shot thread
 
             if (hasMost != -1 && hasMost < byNumeric.Count && most >= MIN_UPDATE_USAGE_COUNT) {
                 String newVersion = byNumeric[hasMost];
-                ConsoleWrite("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-                ConsoleWrite(" ");
-                ConsoleWrite("^8^bA NEW VERSION OF THIS PLUGIN IS AVAILABLE!");
-                ConsoleWrite(" ");
-                ConsoleWrite("^8^bPLEASE UPDATE TO VERSION: ^0" + newVersion);
-                ConsoleWrite(" ");
-                ConsoleWrite("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+                ConsoleWrite("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", 0);
+                ConsoleWrite(" ", 0);
+                ConsoleWrite("^8^bA NEW VERSION OF THIS PLUGIN IS AVAILABLE!", 0);
+                ConsoleWrite(" ", 0);
+                ConsoleWrite("^8^bPLEASE UPDATE TO VERSION: ^0" + newVersion, 0);
+                ConsoleWrite(" ", 0);
+                ConsoleWrite("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", 0);
 
                 TaskbarNotify(GetPluginName() + ": new version available!", "Please download and install " + newVersion); 
             }
@@ -11252,7 +11252,7 @@ private void LogStatus(bool isFinal, int level) {
         }
     }
 
-    if (!isFinal && (level == 4)) ConsoleWrite("+------------------------------------------------+");
+    if (!isFinal && (level == 4)) ConsoleWrite("+------------------------------------------------+", 4);
 
     Speed balanceSpeed = Speed.Adaptive;
 
