@@ -3726,6 +3726,8 @@ private void BalanceAndUnstack(String name) {
 
     int totalPlayerCount = this.TotalPlayerCount;
 
+    if (DebugLevel >= 8) DebugBalance("BalanceAndUnstack(^b" + name + "^n), " + totalPlayerCount + " players");
+
     if (totalPlayerCount >= (MaximumServerSize-1)) {
         if (DebugLevel >= 6) DebugBalance("Server is full, no balancing or unstacking will be attempted!");
         IncrementTotal(); // no matching stat, reflect total deaths handled
