@@ -1429,7 +1429,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.4.0";
+    return "1.0.4.1";
 }
 
 public String GetPluginAuthor() {
@@ -11763,8 +11763,8 @@ static class MULTIbalancerUtils {
 
 <p>Each line of the Whitelist may include one more more option codes that control which exclusions are applied. The codes <b>MUST</b> come after the name/tag/guid and must be separated by spaces. No codes means all options are applied. Codes can only be specified directly in the plugin setting or in a merge file, they cannot be specified in the reserved slots list if <b>Enable Whitelisting Of Reserved Slots List</b> is True. The codes are described in the following table:
 <table border='0'>
-<tr><td>B</td><td>Exclude from balancing moves only</td></tr>
-<tr><td>U</td><td>Exclude from unstacking moves only</td></tr>
+<tr><td>B</td><td>Exclude from balancing moves</td></tr>
+<tr><td>U</td><td>Exclude from unstacking moves</td></tr>
 <tr><td>S</td><td>Exclude from unswitching (allow to switch teams freely)</td></tr>
 <tr><td>D</td><td>Exclude from <b>Disperse Evenly List</b> moves</td></tr>
 <tr><td>R</td><td>Exclude from <b>Disperse Evenly By Rank &gt;=</b> moves</td></tr>
