@@ -1936,6 +1936,8 @@ public void SetPluginVariable(String strVariable, String strValue) {
                 if (DebugLevel >= 8) ConsoleDebug("String array " + propertyName + " <- " + strValue);
                 field.SetValue(this, CPluginVariable.DecodeStringArray(strValue));
                 if (propertyName == "Whitelist") {
+                    UpdateWhitelistModel();
+                    /*
                     MergeWithFile(Whitelist, fSettingWhitelist);
                     if (EnableWhitelistingOfReservedSlotsList) MergeWhitelistWithReservedSlots();
                     UpdateAllFromWhitelist();
@@ -1944,12 +1946,13 @@ public void SetPluginVariable(String strVariable, String strValue) {
                         l = l + String.Join(", ", fSettingWhitelist.ToArray());
                         ConsoleDebug(l);
                     }
+                    */
                 } else if (propertyName == "DisperseEvenlyList") {
-                    MergeWithFile(DisperseEvenlyList, fSettingDisperseEvenlyList);
+                    MergeWithFile(DisperseEvenlyList, fSettingDisperseEvenlyList); // clears fSettingDispersEvenlyList
                     SetDispersalListGroups();
                     AssignGroups();
                 } else if (propertyName == "FriendsList") {
-                    MergeWithFile(FriendsList, fSettingFriendsList);
+                    MergeWithFile(FriendsList, fSettingFriendsList); // clears fSettingFriendsList
                     SetFriends();
                 }
             } else if (fBoolDict.ContainsValue(fieldType)) {
@@ -3660,10 +3663,14 @@ public override void OnPlayerKilledByAdmin(string soldierName) {
 }
 
 public override void OnReservedSlotsList(List<String> lstSoldierNames) {
-    //if (!fIsEnabled) return; // do this always
+    // do this always
     
     DebugWrite("^9^bGot OnReservedSlotsList^n", 7);
     fReservedSlots = lstSoldierNames;
+
+    if (EnableWhitelistingOfReservedSlotsList) {
+        UpdateWhitelistModel();
+    }
 }
 
 public override void OnEndRound(int iWinningTeamID) {
@@ -11093,6 +11100,22 @@ private bool CheckWhitelist(PlayerModel player, uint flags) {
         }
     }
     return false;
+}
+
+private void UpdateWhitelistModel() {
+    try {
+        DebugWrite("^9Updating Whitelist data model", 7);
+        MergeWithFile(Whitelist, fSettingWhitelist); // clears fSettingWhitelist
+        if (EnableWhitelistingOfReservedSlotsList) MergeWhitelistWithReservedSlots();
+        UpdateAllFromWhitelist();
+        if (DebugLevel >= 8) {
+            String l = "Whitelist: ";
+            l = l + String.Join(", ", fSettingWhitelist.ToArray());
+            ConsoleDebug(l);
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
 }
 
 /* === NEW_NEW_NEW === */
