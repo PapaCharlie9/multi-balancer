@@ -11286,7 +11286,7 @@ private void UpdateTicketLossRateLog(DateTime now, int strong, int weak) {
     Weak unstacked to: Number (0 means no unstack this entry, 1 means to US team, 2 means to RU team)
     */
 
-    if (fServerInfo == null || TotalPlayerCount < 4 && fGameState != GameState.Playing) return;
+    if (fServerInfo == null || TotalPlayerCount < 4 || fGameState != GameState.Playing) return;
 
     String path = String.Empty;
 
