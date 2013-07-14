@@ -149,7 +149,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             OnlyMoveWeakPlayers = true;
             isDefault = false;
             EnableTicketLossRatio = false;
-            TicketLossSampleCount = 60;
+            TicketLossSampleCount = 180;
             // Rush only
             Stage1TicketPercentageToUnstackAdjustment = 0;
             Stage2TicketPercentageToUnstackAdjustment = 0;
@@ -306,7 +306,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         public bool OnlyMoveWeakPlayers = true;
         public bool EnableStrictDispersal = true;
         public bool EnableTicketLossRatio = false;
-        public int TicketLossSampleCount = 12;
+        public int TicketLossSampleCount = 180;
 
         // Rush only
         public double Stage1TicketPercentageToUnstackAdjustment = 0;
@@ -2071,11 +2071,6 @@ public void SetPluginVariable(String strVariable, String strValue) {
             CommandToLog(ShowCommandInLog);
             ShowCommandInLog = String.Empty;
         }
-
-        // Handle TLR log activation
-        if (EnableTicketLossRateLogging && fUpdateTicketsRequest == null) {
-            SetupUpdateTicketsRequest();
-        }
     }
 }
 
@@ -3550,7 +3545,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
         }
 
         // Ticket loss rate updates
-        if (perMode.EnableTicketLossRatio && fGameState == GameState.Playing && TotalPlayerCount >= 4) {
+        if ((EnableTicketLossRateLogging || perMode.EnableTicketLossRatio) && fGameState == GameState.Playing && TotalPlayerCount >= 4) {
             if (fUpdateTicketsRequest == null) SetupUpdateTicketsRequest();
             AddTicketLossSample(1, oldTickets[1], fTickets[1], elapsedTimeInSeconds);
             AddTicketLossSample(2, oldTickets[2], fTickets[2], elapsedTimeInSeconds);
@@ -8169,6 +8164,7 @@ private void Reset() {
     fGrandTotalQuits = 0;
     fGrandRageQuits = 0;
     fWhileScrambling = false;
+    fUpdateTicketsRequest = null;
 
     fDebugScramblerBefore[0].Clear();
     fDebugScramblerBefore[1].Clear();
@@ -8868,7 +8864,11 @@ private void StartThreads() {
     fScramblerThread.Name = "scrambler";
     fScramblerThread.Start();
 
-    // fTimerThread is lazy evaluated
+    DebugWrite("Starting timer loop", 3);
+    fTimerThread = new Thread(new ThreadStart(TimerLoop));
+    fTimerThread.IsBackground = true;
+    fTimerThread.Name = "timer";
+    fTimerThread.Start();
 }
 
 private void JoinWith(Thread thread, int secs)
@@ -11234,16 +11234,8 @@ private void TimerLoop() {
     }
 }
 
-private void StartTimerLoop() {
-    DebugWrite("Starting timer loop", 3);
-    fTimerThread = new Thread(new ThreadStart(TimerLoop));
-    fTimerThread.IsBackground = true;
-    fTimerThread.Name = "timer";
-    fTimerThread.Start();
-}
 
 private DelayedRequest AddTimedRequest(String name, double maxDelay, Action<DateTime> request) {
-    if (fTimerThread == null) StartTimerLoop();
     DelayedRequest r = null;
     lock (fTimerRequestList) {
         foreach (DelayedRequest old in fTimerRequestList) {
@@ -11282,6 +11274,7 @@ private void UpdateTicketLossRateLog(DateTime now, int strong, int weak) {
     Samples: Number
     US Average Ticket Loss: Number (looking backward for Samples, normalized to a positive value)
     RU Average Ticket Loss: Number (looking backward for Samples, normalized to a positive value)
+    Ratio%: Number (as a percentage)
     Strong unstacked to: Number (0 means no unstack this entry, 1 means to US team, 2 means to RU team)
     Weak unstacked to: Number (0 means no unstack this entry, 1 means to US team, 2 means to RU team)
     */
@@ -11298,6 +11291,7 @@ private void UpdateTicketLossRateLog(DateTime now, int strong, int weak) {
         path = Path.Combine(Path.Combine("Logs", fHost + "_" + fPort), log);
         DebugWrite("^9^bDEBUG^n: UpdateTicketLossRateLog " + path + " at " + now, 8);
 
+        PerModeSettings perMode = GetPerModeSettings();
         String[] row = new String[18];
         row[0] = now.ToString("HH:mm:ss");
         row[1] = (fServerInfo.CurrentRound + 1).ToString();
@@ -11307,17 +11301,19 @@ private void UpdateTicketLossRateLog(DateTime now, int strong, int weak) {
         row[5] = fTeam1.Count.ToString();
         row[6] = fTeam2.Count.ToString();
         row[7] = fTickets[1].ToString();
-        row[8] = fTickets[2].ToString();
-        PerModeSettings perMode = GetPerModeSettings();
+        row[8] = ((IsRush()) ? Convert.ToInt32(Math.Max(fTickets[1]/2, fMaxTickets - (fRushMaxTickets - fTickets[2]))) : fTickets[2]).ToString();
         row[9] = perMode.TicketLossSampleCount.ToString();
         double a1 = GetAverageTicketLossRate(1, true);
         row[10] = a1.ToString("F3");
         double a2 = GetAverageTicketLossRate(2, true);
         row[11] = a2.ToString("F3");
-        row[12] = strong.ToString();
-        row[13] = weak.ToString();
+        double ratio = (a1 > a2) ? (a1/Math.Max(1, a2)) : (a2/Math.Max(1, a1));
+        ratio = Math.Min(ratio, 50.0); // cap at 50x
+        ratio = ratio * 100.0;
+        row[12] = ratio.ToString("F0");
+        row[13] = strong.ToString();
+        row[14] = weak.ToString();
         // Spares for future expansion
-        row[14] = String.Empty;
         row[15] = String.Empty;
         row[16] = String.Empty;
         row[17] = String.Empty;
@@ -11368,7 +11364,8 @@ private double GetAverageTicketLossRate(int team, bool verbose) {
                     }
                 }
             }
-            rate = (rate / perMode.TicketLossSampleCount) * 60.0; // loss per minute
+            double actual = Math.Max(1.0, copy.Count);
+            rate = (rate / actual) * 60.0; // loss per minute
             if (verbose) {
                 if (debug != null) DebugWrite("^7" + TEAM_NAMES[team] + " = " + debug + "]", 8);
                 DebugWrite("^9Samples " + TEAM_NAMES[team] + ": " + fAverageTicketLoss[team].Count, 8);
@@ -12303,7 +12300,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Enable Ticket Loss Ratio</b>: True or False, default False, not visible for SQDM or Gun Master. If set to True, unstacking will be based on ticket loss ratio percentage instead of ticket ratio percentage in Section 3.</p>
 
-<p><b>Ticket Loss Sample Count</b>: Number greater than or equal to 15 and less than or equal to 600, default 60. This setting determines how many ticket loss samples are included in the average. Each sample is the average ticket loss per second. The higher this number is, the longer it will take to detect a significant change in loss rate; however, the lower the number is, the more susceptible unstacking will be to false detections (temporary spikes). The value 60 gives a per minute average, roughly. The average is a rolling average, so as new samples are added, old samples are dropped.</p>
+<p><b>Ticket Loss Sample Count</b>: Number greater than or equal to 15 and less than or equal to 600, default 180. This setting determines how many ticket loss samples are included in the average. Each sample is the average ticket loss per second. The higher this number is, the longer it will take to detect a significant change in loss rate; however, the lower the number is, the more susceptible unstacking will be to false detections (temporary spikes). The average is a moving average, so as new samples are added, old samples are dropped.</p>
 
 <p>These settings are unique to Conquest.</p>
 
