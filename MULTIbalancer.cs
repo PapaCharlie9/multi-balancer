@@ -774,15 +774,15 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             List<String> log = new List<String>();
             // multiply normFactor into each frequency count to get a value less than or equal to maxLine
             double normFactor = Convert.ToDouble(maxLine) / Convert.ToDouble(MaxFrequency);
-            log.Add(String.Format("Total samples = {0}, bins = {1}, peak bin = {2}, peak count = {3}, scale factor = {4:F2}",
+            log.Add(String.Format("Total samples = {0}, bins = {1}, peak bin = {2}, peak count = {3}, scale factor = {4:F4}",
                 Total,
-                MaxBin * BIN_SIZE,
+                MaxBin,
                 PeakBin * BIN_SIZE,
                 MaxFrequency,
                 normFactor));
             
             foreach (int bin in Bin.Keys) {
-                if (bin >= MaxBin) break;
+                if (bin == 0) continue;
                 StringBuilder buf = new StringBuilder(String.Format("{0,5}:", bin * BIN_SIZE));
                 int normFreq = Convert.ToInt32(Math.Round(Bin[bin] * normFactor));
                 for (int i = 0; i < normFreq; ++i) {
@@ -3740,6 +3740,10 @@ public override void OnRoundOver(int winningTeamId) {
         if (fGameState == GameState.Playing || fGameState == GameState.Unknown) {
             fGameState = GameState.RoundEnding;
             DebugWrite("OnRoundOver: ^b^3Game state = " + fGameState, 6);
+        }
+
+        if (DebugLevel >= 3 && fTicketLossHistogram.Total > 10) {
+            CommandToLog("histogram");
         }
     } catch (Exception e) {
         ConsoleException(e);
