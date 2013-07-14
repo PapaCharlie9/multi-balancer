@@ -148,6 +148,8 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             EnableScrambler = false;
             OnlyMoveWeakPlayers = true;
             isDefault = false;
+            EnableTicketLossRatio = false;
+            TicketLossSampleCount = 60;
             // Rush only
             Stage1TicketPercentageToUnstackAdjustment = 0;
             Stage2TicketPercentageToUnstackAdjustment = 0;
@@ -303,6 +305,8 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         public int MetroAdjustedDefinitionOfLatePhase = 50;
         public bool OnlyMoveWeakPlayers = true;
         public bool EnableStrictDispersal = true;
+        public bool EnableTicketLossRatio = false;
+        public int TicketLossSampleCount = 12;
 
         // Rush only
         public double Stage1TicketPercentageToUnstackAdjustment = 0;
@@ -657,19 +661,25 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
     } // end MoveInfo
 
     public class DelayedRequest {
+        public String Name;
         public double MaxDelay; // in seconds
         public DateTime LastUpdate;
+        public Action<DateTime> Request;
 
         public DelayedRequest() {
             MaxDelay = 0;
             LastUpdate = DateTime.MinValue;
+            Request = null;
+            Name = null;
         }
 
         public DelayedRequest(double delay, DateTime last) {
             MaxDelay = delay;
             LastUpdate = last;
+            Request = null;
+            Name = null;
         }
-    } // end ListPlayersRequest
+    } // end DelayedRequest
 
     public class PriorityQueue {
         /*
@@ -730,6 +740,7 @@ private Thread fMoveThread = null;
 private Thread fFetchThread = null;
 private Thread fListPlayersThread = null;
 private Thread fScramblerThread = null;
+private Thread fTimerThread = null;
 private List<String> fReservedSlots = null;
 private bool fRefreshCommand = false;
 private int fServerUptime = -1;
@@ -756,6 +767,8 @@ private DelayedRequest fExtrasLock;
 private List<String> fExtraNames = null;
 private bool fGotLogin = false;
 private Dictionary<String,String> fDebugScramblerSuspects = null;
+private DelayedRequest fUpdateTicketsRequest = null;
+private Queue<double>[] fAverageTicketLoss = null;
 
 // Data model
 private List<String> fAllPlayers = null;
@@ -796,6 +809,7 @@ private int fWinner = 0;
 private bool fStageInProgress = false;
 private Dictionary<int,List<String>> fFriends;
 private List<String> fAllFriends;
+private List<DelayedRequest> fTimerRequestList = null;
 
 // Operational statistics
 private int fReassignedRound = 0;
@@ -870,6 +884,7 @@ public bool JoinedLatePhase; // disabled
 public double[] EarlyPhaseTicketPercentageToUnstack;
 public double[] MidPhaseTicketPercentageToUnstack;
 public double[] LatePhaseTicketPercentageToUnstack;
+public bool EnableTicketLossRateLogging;
 public Speed SpellingOfSpeedNamesReminder;
 public Speed[] EarlyPhaseBalanceSpeed;
 public Speed[] MidPhaseBalanceSpeed;
@@ -972,6 +987,7 @@ public MULTIbalancer() {
     fFetchThread = null;
     fListPlayersThread = null;
     fScramblerThread = null;
+    fTimerThread = null;
     
     fModeToSimple = new Dictionary<String,String>();
 
@@ -1052,6 +1068,8 @@ public MULTIbalancer() {
     fExtraNames = new List<String>();
     fGotLogin = false;
     fDebugScramblerSuspects = new Dictionary<String,String>();
+    fTimerRequestList = new List<DelayedRequest>();
+    fAverageTicketLoss = new Queue<double>[3]{null, new Queue<double>(), new Queue<double>()};
     
     /* Settings */
 
@@ -1114,6 +1132,8 @@ public MULTIbalancer() {
     EarlyPhaseTicketPercentageToUnstack = new double[3]         {  0,120,120};
     MidPhaseTicketPercentageToUnstack = new double[3]           {  0,120,120};
     LatePhaseTicketPercentageToUnstack = new double[3]          {  0,  0,  0};
+
+    EnableTicketLossRateLogging = false;
     
     SpellingOfSpeedNamesReminder = Speed.Click_Here_For_Speed_Names;
 
@@ -1429,7 +1449,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.4.1";
+    return "1.0.4.2";
 }
 
 public String GetPluginAuthor() {
@@ -1548,6 +1568,8 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         lstReturn.Add(new CPluginVariable("1 - Settings|Seconds Until Adaptive Speed Becomes Fast", SecondsUntilAdaptiveSpeedBecomesFast.GetType(), SecondsUntilAdaptiveSpeedBecomesFast));
         
         lstReturn.Add(new CPluginVariable("1 - Settings|Enable In-Game Commands", EnableInGameCommands.GetType(), EnableInGameCommands));
+
+        lstReturn.Add(new CPluginVariable("1 - Settings|Enable Ticket Loss Rate Logging", EnableTicketLossRateLogging.GetType(), EnableTicketLossRateLogging));
         
         lstReturn.Add(new CPluginVariable("1 - Settings|Enable Whitelisting Of Reserved Slots List", EnableWhitelistingOfReservedSlotsList.GetType(), EnableWhitelistingOfReservedSlotsList));
 
@@ -1763,6 +1785,15 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
             if (!isSQDM) {
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Enable Scrambler", oneSet.EnableScrambler.GetType(), oneSet.EnableScrambler));
+
+            }
+
+            if (!isGM && !isSQDM) {
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Enable Ticket Loss Ratio", oneSet.EnableTicketLossRatio.GetType(), oneSet.EnableTicketLossRatio));
+
+                if (oneSet.EnableTicketLossRatio) {
+                    lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Ticket Loss Sample Count", oneSet.TicketLossSampleCount.GetType(), oneSet.TicketLossSampleCount));
+                }
             }
 
             if (isRush) {
@@ -2040,6 +2071,11 @@ public void SetPluginVariable(String strVariable, String strValue) {
             CommandToLog(ShowCommandInLog);
             ShowCommandInLog = String.Empty;
         }
+
+        // Handle TLR log activation
+        if (EnableTicketLossRateLogging && fUpdateTicketsRequest == null) {
+            SetupUpdateTicketsRequest();
+        }
     }
 }
 
@@ -2095,13 +2131,13 @@ private bool ValidateSettings(String strVariable, String strValue) {
         /* ===== SECTION 3 - Round Phase & Population Settings ===== */
     
         for (int i = 0; i < EarlyPhaseTicketPercentageToUnstack.Length; ++i) {
-            if (strVariable.Contains("Early Phase: Ticket Percentage To Unstack")) ValidateDoubleRange(ref EarlyPhaseTicketPercentageToUnstack[i], "Early Phase Ticket Percentage To Unstack", 100.0, 1000.0, 120.0, true);
+            if (strVariable.Contains("Early Phase: Ticket Percentage To Unstack")) ValidateDoubleRange(ref EarlyPhaseTicketPercentageToUnstack[i], "Early Phase Ticket Percentage To Unstack", 100.0, 5000.0, 120.0, true);
         }
         for (int i = 0; i < MidPhaseTicketPercentageToUnstack.Length; ++i) {
-            if (strVariable.Contains("Mid Phase: Ticket Percentage To Unstack")) ValidateDoubleRange(ref MidPhaseTicketPercentageToUnstack[i], "Mid Phase Ticket Percentage To Unstack", 100.0, 1000.0, 120.0, true);
+            if (strVariable.Contains("Mid Phase: Ticket Percentage To Unstack")) ValidateDoubleRange(ref MidPhaseTicketPercentageToUnstack[i], "Mid Phase Ticket Percentage To Unstack", 100.0, 5000.0, 120.0, true);
         }
         for (int i = 0; i < LatePhaseTicketPercentageToUnstack.Length; ++i) {
-            if (strVariable.Contains("Late Phase: Ticket Percentage To Unstack")) ValidateDoubleRange(ref LatePhaseTicketPercentageToUnstack[i], "Late Phase Ticket Percentage To Unstack", 100.0, 1000.0, 120.0, true);
+            if (strVariable.Contains("Late Phase: Ticket Percentage To Unstack")) ValidateDoubleRange(ref LatePhaseTicketPercentageToUnstack[i], "Late Phase Ticket Percentage To Unstack", 100.0, 5000.0, 120.0, true);
         }
 
         /* ===== SECTION 4 - Scrambler ===== */
@@ -2156,6 +2192,7 @@ private bool ValidateSettings(String strVariable, String strValue) {
             else if (strVariable.Contains("Disperse Evenly By Rank")) ValidateIntRange(ref perMode.DisperseEvenlyByRank, mode + ":" + "Disperse Evenly By Rank", 0, 145, def.DisperseEvenlyByRank, true);
             else if (strVariable.Contains("Definition Of High Population For Players")) ValidateIntRange(ref perMode.DefinitionOfHighPopulationForPlayers, mode + ":" + "Definition Of High Population For Players", 0, perMode.MaxPlayers, def.DefinitionOfHighPopulationForPlayers, false); 
             else if (strVariable.Contains("Definition Of Low Population For Players")) ValidateIntRange(ref perMode.DefinitionOfLowPopulationForPlayers, mode + ":" + "Definition Of Low Population For Players", 0, perMode.MaxPlayers, def.DefinitionOfLowPopulationForPlayers, false);
+            else if (strVariable.Contains("Ticket Loss Sample Count")) ValidateIntRange(ref perMode.TicketLossSampleCount, mode + ":" + "Ticket Loss Sample Count", 15, 600, def.TicketLossSampleCount, false);
             else if (strVariable.Contains("Definition Of Early Phase")) ValidateInt(ref perMode.DefinitionOfEarlyPhaseFromStart, mode + ":" + "Definition Of Early Phase From Start", def.DefinitionOfEarlyPhaseFromStart);
             else if (strVariable.Contains("Metro Adjusted Definition Of Late Phase")) ValidateInt(ref perMode.MetroAdjustedDefinitionOfLatePhase, mode + ":" + "Metro Adjusted Definition Of Late Phase", def.MetroAdjustedDefinitionOfLatePhase);
             else if (strVariable.Contains("Definition Of Late Phase")) ValidateInt(ref perMode.DefinitionOfLatePhaseFromEnd, mode + ":" + "Definition Of Late Phase From End", def.DefinitionOfLatePhaseFromEnd);
@@ -2230,6 +2267,8 @@ private void ResetSettings() {
     EarlyPhaseTicketPercentageToUnstack = rhs.EarlyPhaseTicketPercentageToUnstack;
     MidPhaseTicketPercentageToUnstack = rhs.MidPhaseTicketPercentageToUnstack;
     LatePhaseTicketPercentageToUnstack = rhs.LatePhaseTicketPercentageToUnstack;
+
+    EnableTicketLossRateLogging = rhs.EnableTicketLossRateLogging;
     
     SpellingOfSpeedNamesReminder = rhs.SpellingOfSpeedNamesReminder;
 
@@ -3382,9 +3421,13 @@ public override void OnServerInfo(CServerInfo serverInfo) {
     if (!fIsEnabled || serverInfo == null) return;
 
     DebugWrite("^9^bGot OnServerInfo^n: Debug level = " + DebugLevel, 8);
+
+    DateTime debugTime = DateTime.Now;
     
     try {
+        double elapsedTimeInSeconds = DateTime.Now.Subtract(fLastServerInfoTimestamp).TotalSeconds;
         fLastServerInfoTimestamp = DateTime.Now;
+        if (fUpdateTicketsRequest != null) fUpdateTicketsRequest.LastUpdate = fLastServerInfoTimestamp;
 
         // Update game state if just enabled (as of R38, CTF TeamScores may be null, does not mean round end)
         if (fGameState == GameState.Unknown && serverInfo.GameMode != "CaptureTheFlag0") {
@@ -3427,6 +3470,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
         double maxTickets = 0;
         double attacker = 0;
         double defender = 0;
+        double[] oldTickets = new double[]{0, fTickets[1], fTickets[2]};
         if (fServerInfo.TeamScores == null)  return;
         foreach (TeamScore ts in fServerInfo.TeamScores) {
             if (ts.TeamID >= fTickets.Length) break;
@@ -3445,7 +3489,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
                 }
             }
             String avl = String.Empty;
-            if (fStageInProgress) avl = ", avg loss = " + RushAttackerAvgLoss().ToString("F1") + "/" + perMode.SecondsToCheckForNewStage.ToString("F0") + " secs";
+            if (fStageInProgress) avl = ", avg loss = " + RushAttackerAvgLoss().ToString("F1") + "/" + Math.Min(perMode.SecondsToCheckForNewStage, elapsedTimeInSeconds).ToString("F0") + " secs";
             if (this.TotalPlayerCount > 3) DebugWrite("^7serverInfo: Rush attacker = " + attacker + ", was = " + fMaxTickets + avl + ", defender = " + defender, 7); 
         }
 
@@ -3505,6 +3549,19 @@ public override void OnServerInfo(CServerInfo serverInfo) {
             fRushPrevAttackerTickets = attacker;
         }
 
+        // Ticket loss rate updates
+        if (perMode.EnableTicketLossRatio && fGameState == GameState.Playing && TotalPlayerCount >= 4) {
+            if (fUpdateTicketsRequest == null) SetupUpdateTicketsRequest();
+            AddTicketLossSample(1, oldTickets[1], fTickets[1], elapsedTimeInSeconds);
+            AddTicketLossSample(2, oldTickets[2], fTickets[2], elapsedTimeInSeconds);
+        } else {
+            ResetAverageTicketLoss();
+        }
+
+        if (EnableTicketLossRateLogging) {
+            UpdateTicketLossRateLog(DateTime.Now, 0, 0);
+        }
+
         // Check for plugin updates periodically
         if (fLastVersionCheckTimestamp != DateTime.MinValue 
         && DateTime.Now.Subtract(fLastVersionCheckTimestamp).TotalMinutes > CHECK_FOR_UPDATES_MINS) {
@@ -3512,6 +3569,11 @@ public override void OnServerInfo(CServerInfo serverInfo) {
         }
     } catch (Exception e) {
         ConsoleException(e);
+    } finally {
+        double elapsedTime = DateTime.Now.Subtract(debugTime).TotalMilliseconds;
+        if (DebugLevel >= 8 || (DebugLevel >= 7 && elapsedTime > 100.0)) {
+            DebugWrite("^8OnServerInfo took ^b" + elapsedTime.ToString("F0") + "^n ms", 1);
+        }
     }
 }
 
@@ -4312,12 +4374,10 @@ private void BalanceAndUnstack(String name) {
     }
 
     double ratio = 1;
-    double usPoints = 0;
-    double ruPoints = 0;
     if (IsCTF()) {
         // Use team points, not tickets
-        usPoints = GetTeamPoints(1);
-        ruPoints = GetTeamPoints(2);
+        double usPoints = GetTeamPoints(1);
+        double ruPoints = GetTeamPoints(2);
         if (usPoints <= 0) usPoints = 1;
         if (ruPoints <= 0) ruPoints = 1;
         ratio = (usPoints > ruPoints) ? (usPoints/ruPoints) : (ruPoints/usPoints);
@@ -4329,14 +4389,23 @@ private void BalanceAndUnstack(String name) {
                 double attackers = fTickets[1];
                 double defenders = fMaxTickets - (fRushMaxTickets - fTickets[2]);
                 defenders = Math.Max(defenders, attackers/2);
-                ratio = (attackers > defenders) ? (attackers/defenders) : (defenders/attackers);
+                ratio = (attackers > defenders) ? (attackers/Math.Max(1, defenders)) : (defenders/Math.Max(1, attackers));
             } else {
-                ratio = Convert.ToDouble(fTickets[winningTeam]) / Convert.ToDouble(fTickets[losingTeam]);
+                ratio = Convert.ToDouble(fTickets[winningTeam]) / Math.Max(1, Convert.ToDouble(fTickets[losingTeam]));
             }
         }
     }
 
     String um = "Ticket ratio " + (ratio*100.0).ToString("F0") + " vs. unstack ratio of " + (unstackTicketRatio*100.0).ToString("F0");
+
+    // Using ticket loss instead of ticket ratio?
+    if (perMode.EnableTicketLossRatio) {
+        double a1 = GetAverageTicketLossRate(1, false);
+        double a2 = GetAverageTicketLossRate(2, false);
+        ratio = (a1 > a2) ? (a1/Math.Max(1, a2)) : (a2/Math.Max(1, a1));
+        ratio = Math.Min(ratio, 50.0); // cap at 50x
+        um = "Ticket loss ratio is " + (ratio*100.0).ToString("F0") + " vs. unstack ratio of " + (unstackTicketRatio*100.0).ToString("F0");
+    }
 
     if (unstackTicketRatio == 0 || ratio < unstackTicketRatio) {
         if (DebugLevel >= 6) DebugBalance("No unstacking needed: " + um);
@@ -4418,6 +4487,7 @@ private void BalanceAndUnstack(String name) {
                 moveUnstack = new MoveInfo(name, player.Tag, origUnTeam, origUnName, losingTeam, GetTeamName(losingTeam));
                 toTeam = losingTeam;
                 fUnstackState = UnstackState.SwappedStrong;
+                if (EnableTicketLossRateLogging) UpdateTicketLossRateLog(DateTime.Now, losingTeam, 0);
             } else {
                 DebugBalance("Skipping ^b" + name + "^n, don't move weak player to losing team (#" + (playerIndex+1) + " of " + fromList.Count + ", median " + (strongest) + ")");
                 fExemptRound = fExemptRound + 1;
@@ -4441,6 +4511,7 @@ private void BalanceAndUnstack(String name) {
                 fUnstackState = UnstackState.SwappedWeak;
                 strength = "weak";
                 FinishedFullSwap(name, perMode); // updates group count
+                if (EnableTicketLossRateLogging) UpdateTicketLossRateLog(DateTime.Now, 0, winningTeam);
             } else {
                 DebugBalance("Skipping ^b" + name + "^n, don't move strong player to winning team (#" + (playerIndex+1) + " of " + fromList.Count + ", median " + (strongest) + ")");
                 fExemptRound = fExemptRound + 1;
@@ -5565,7 +5636,7 @@ private double GetUnstackTicketRatio(PerModeSettings perMode) {
     }
 
     // apply rush adjustment
-    if (IsRush() && fRushStage > 0 && fRushStage <= 5 && unstackTicketRatio > 100) {
+    if (IsRush() && fRushStage > 0 && fRushStage <= 5 && unstackTicketRatio > 100 && !perMode.EnableTicketLossRatio) {
         double adj = 0;
         switch (fRushStage) {
             case 1: adj = perMode.Stage1TicketPercentageToUnstackAdjustment; break;
@@ -5580,7 +5651,7 @@ private double GetUnstackTicketRatio(PerModeSettings perMode) {
     
     if (unstackTicketRatio <= 100) unstackTicketRatio = 0;
 
-    if (AdjustForMetro(perMode)) {
+    if (AdjustForMetro(perMode) && !perMode.EnableTicketLossRatio) {
         double old = unstackTicketRatio;
         switch (phase) {
             case Phase.Early: unstackTicketRatio = 0; break;
@@ -8155,6 +8226,8 @@ private void ResetRound() {
     fRageQuits = 0;
 
     fLastBalancedTimestamp = DateTime.MinValue;
+
+    ResetAverageTicketLoss();
 }
 
 private bool IsSQDM() {
@@ -8794,6 +8867,8 @@ private void StartThreads() {
     fScramblerThread.IsBackground = true;
     fScramblerThread.Name = "scrambler";
     fScramblerThread.Start();
+
+    // fTimerThread is lazy evaluated
 }
 
 private void JoinWith(Thread thread, int secs)
@@ -8834,6 +8909,11 @@ private void StopThreads() {
                     }
                     JoinWith(fScramblerThread, 3);
                     fScramblerThread = null;
+                    lock (fTimerRequestList) {
+                        Monitor.Pulse(fTimerRequestList);
+                    }
+                    JoinWith(fTimerThread, 3); // checks for null
+                    fTimerThread = null;
                 }
                 catch (Exception e)
                 {
@@ -8841,7 +8921,7 @@ private void StopThreads() {
                 }
 
                 fFinalizerActive = false;
-                ConsoleWrite("Finished disabling threads, ready to be enabled again!", 0);
+                ConsoleWrite("^1^bFinished disabling threads, ready to be enabled again!", 0);
             }));
 
         stopper.Name = "stopper";
@@ -8913,6 +8993,8 @@ private void ListPlayersLoop() {
     Strategy: Control the rate of listPlayers commands by keeping track of the
     timestamp of the last event. Only issue a new command if no new event occurs within
     the required time.
+    
+    TBD: This ought to be retired in favor of a TimerLoop request
     */
     try {
         while (fIsEnabled) {
@@ -9117,12 +9199,6 @@ public static int DescendingKPM(PlayerModel lhs, PlayerModel rhs) {
     if (lKPM > rKPM) return -1;
     return 0;
 }
-
-
-
-
-
-
 
 
 private void GatherProconGoodies() {
@@ -9802,7 +9878,7 @@ private void CheckServerInfoUpdate() {
     PerModeSettings perMode = GetPerModeSettings();
     if (DateTime.Now.Subtract(fLastServerInfoTimestamp).TotalSeconds >= perMode.SecondsToCheckForNewStage) {
         ServerCommand("serverInfo");
-        fLastServerInfoTimestamp = DateTime.Now;
+        //fLastServerInfoTimestamp = DateTime.Now;
     }
 }
 
@@ -11118,6 +11194,230 @@ private void UpdateWhitelistModel() {
     }
 }
 
+private void TimerLoop() {
+    /*
+    Strategy: Every 1/2 second, check the list of timers to see if any
+    actions need to be fired.
+    */
+    try {
+        while (fIsEnabled) {
+            lock (fTimerRequestList) {
+                Monitor.Wait(fTimerRequestList, 500); // 1/2 second max heartbeat
+                if (!fIsEnabled) {
+                    fTimerRequestList.Clear();
+                    return;
+                }
+
+                // Time to check all requests
+                DebugWrite("Checking " + fTimerRequestList.Count + " requests", 9);
+                DateTime now = DateTime.Now;
+                foreach (DelayedRequest request in fTimerRequestList) {
+                    DebugWrite("Request: " + request.Name + ", " + now.Subtract(request.LastUpdate).TotalSeconds.ToString("F1") + " of " + request.MaxDelay + " seconds", 9);
+                    if (now.Subtract(request.LastUpdate).TotalSeconds >= request.MaxDelay) {
+                        try {
+                            if (request.Request != null) {
+                                if (DebugLevel >= 8) ConsoleDebug("Executing request: " + request.Name);
+                                request.Request(now);
+                            }
+                        } catch (Exception e) {
+                            if (DebugLevel >= 9) ConsoleException(e);
+                        }
+                        request.LastUpdate = now;
+                    }
+                }
+            }
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
+    } finally {
+        ConsoleWrite("^bTimerLoop^n thread stopped", 0);
+    }
+}
+
+private void StartTimerLoop() {
+    DebugWrite("Starting timer loop", 3);
+    fTimerThread = new Thread(new ThreadStart(TimerLoop));
+    fTimerThread.IsBackground = true;
+    fTimerThread.Name = "timer";
+    fTimerThread.Start();
+}
+
+private DelayedRequest AddTimedRequest(String name, double maxDelay, Action<DateTime> request) {
+    if (fTimerThread == null) StartTimerLoop();
+    DelayedRequest r = null;
+    lock (fTimerRequestList) {
+        foreach (DelayedRequest old in fTimerRequestList) {
+            if (!String.IsNullOrEmpty(old.Name) && !String.IsNullOrEmpty(name) && old.Name == name) {
+                ConsoleDebug("ASSERT AddTimedRequest: request with name ^b" + name + "^n already exists, skipping!");
+                return null;
+            }
+        }
+        r = new DelayedRequest();
+        r.Name = name;
+        r.MaxDelay = maxDelay;
+        r.LastUpdate = DateTime.MinValue;
+        r.Request = request;
+        ConsoleDebug("Added: " + name);
+        fTimerRequestList.Add(r);
+    }
+    return r;
+}
+
+private void UpdateTicketLossRateLog(DateTime now, int strong, int weak) {
+    /*
+    Log will be log rolled at midnight, so date is built into the log name
+    Log will be log rolled by round-map-mode
+    Sequence number follows date to disambiguate round-map-mode
+    Log name template: YYYYMMDD_Seq_Round-Map-ModeCode_tlr.csv
+    Example: 20130713_09_2-Caspian_Border-CL0_tlr.csv
+    Time: HH:MM:SS
+    Round: Number
+    Map: Text
+    Mode: Text
+    Max Players: Number
+    US Players: Number
+    RU Players: Number
+    US Tickets: Number
+    RU Tickets: Number
+    Samples: Number
+    US Average Ticket Loss: Number (looking backward for Samples, normalized to a positive value)
+    RU Average Ticket Loss: Number (looking backward for Samples, normalized to a positive value)
+    Strong unstacked to: Number (0 means no unstack this entry, 1 means to US team, 2 means to RU team)
+    Weak unstacked to: Number (0 means no unstack this entry, 1 means to US team, 2 means to RU team)
+    */
+
+    if (fServerInfo == null || TotalPlayerCount < 4 && fGameState != GameState.Playing) return;
+
+    String path = String.Empty;
+
+    try {
+        String date = now.ToString("yyyyMMdd");
+        String suffix = "tlr.csv";
+        String map = GetRoundMapMode();
+        String log = String.Join("_", new String[]{date, String.Format("{0:D3}", fRoundsEnabled), map, suffix});
+        path = Path.Combine(Path.Combine("Logs", fHost + "_" + fPort), log);
+        DebugWrite("^9^bDEBUG^n: UpdateTicketLossRateLog " + path + " at " + now, 8);
+
+        String[] row = new String[18];
+        row[0] = now.ToString("HH:mm:ss");
+        row[1] = (fServerInfo.CurrentRound + 1).ToString();
+        row[2] = FriendlyMap;
+        row[3] = FriendlyMode;
+        row[4] = fServerInfo.MaxPlayerCount.ToString();
+        row[5] = fTeam1.Count.ToString();
+        row[6] = fTeam2.Count.ToString();
+        row[7] = fTickets[1].ToString();
+        row[8] = fTickets[2].ToString();
+        PerModeSettings perMode = GetPerModeSettings();
+        row[9] = perMode.TicketLossSampleCount.ToString();
+        double a1 = GetAverageTicketLossRate(1, true);
+        row[10] = a1.ToString("F3");
+        double a2 = GetAverageTicketLossRate(2, true);
+        row[11] = a2.ToString("F3");
+        row[12] = strong.ToString();
+        row[13] = weak.ToString();
+        // Spares for future expansion
+        row[14] = String.Empty;
+        row[15] = String.Empty;
+        row[16] = String.Empty;
+        row[17] = String.Empty;
+
+        if (!Path.IsPathRooted(path)) path = Path.Combine(Directory.GetParent(Application.ExecutablePath).FullName, path);
+
+        // Add newline
+        String entry = String.Join(",", row) + "\n";
+
+        lock (fAverageTicketLoss) { // mutex access to log file
+            using (FileStream fs = File.Open(path, FileMode.Append)) {
+                Byte[] info = new UTF8Encoding(true).GetBytes(entry);
+                fs.Write(info, 0, info.Length);
+            }
+        }
+    } catch (Exception ex) {
+        ConsoleError("Unable to append to log file: " + path);
+        ConsoleError(ex.ToString());
+    }
+
+}
+
+private String GetRoundMapMode() {
+    String map = Regex.Replace(FriendlyMap, @"[\s]+", "_");
+    String mode = Regex.Replace(fServerInfo.GameMode, @"[a-z]+", String.Empty);
+    String round = (fServerInfo.CurrentRound + 1).ToString();
+    return String.Join("-", new String[]{round, map, mode});
+}
+
+private double GetAverageTicketLossRate(int team, bool verbose) {
+    if (team < 1 || team > 2) return 0;
+    double rate = 0;
+    try {
+        PerModeSettings perMode = GetPerModeSettings();
+        lock (fAverageTicketLoss) {
+            while (fAverageTicketLoss[team].Count > perMode.TicketLossSampleCount) {
+                fAverageTicketLoss[team].Dequeue();
+            }
+            List<double> copy = new List<double>(fAverageTicketLoss[team].ToArray());
+            String debug = null;
+            foreach (double sample in copy) {
+                rate = rate + sample;
+                if (verbose) {
+                    if (debug == null) {
+                        debug = "[" + sample.ToString("F2");
+                    } else {
+                        debug = debug + "," + sample.ToString("F2");
+                    }
+                }
+            }
+            rate = (rate / perMode.TicketLossSampleCount) * 60.0; // loss per minute
+            if (verbose) {
+                if (debug != null) DebugWrite("^7" + TEAM_NAMES[team] + " = " + debug + "]", 8);
+                DebugWrite("^9Samples " + TEAM_NAMES[team] + ": " + fAverageTicketLoss[team].Count, 8);
+            }
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+    return rate;
+}
+
+private void AddTicketLossSample(int team, double oldTickets, double newTickets, double seconds) {
+    // Ticket changes are normalized to a positive value
+    if (seconds < 1) seconds = 1;
+    PerModeSettings perMode = GetPerModeSettings();
+
+    try {
+        lock (fAverageTicketLoss) {
+            double normalizedSample = Math.Abs(oldTickets - newTickets) / seconds;
+            int secs = Convert.ToInt32(Math.Round(seconds));
+            for (int i = 0; i < secs; ++i) {
+                fAverageTicketLoss[team].Enqueue(normalizedSample);
+            }
+            while (fAverageTicketLoss[team].Count > perMode.TicketLossSampleCount) {
+                fAverageTicketLoss[team].Dequeue();
+            }
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+}
+
+private void ResetAverageTicketLoss() {
+    lock (fAverageTicketLoss) {
+        fAverageTicketLoss[1].Clear();
+        fAverageTicketLoss[2].Clear();
+    }
+}
+
+private void SetupUpdateTicketsRequest() {
+    if (fUpdateTicketsRequest != null) return;
+    fUpdateTicketsRequest = AddTimedRequest("Update serverInfo every 5 seconds", 5.0, delegate(DateTime now) {
+        try {
+            if (fGameState == GameState.Playing && TotalPlayerCount >= 4) ServerCommand("serverInfo");
+        } catch (Exception) {}
+    });
+}
+
+
 /* === NEW_NEW_NEW === */
 
 
@@ -11201,7 +11501,7 @@ public void CheckForPluginUpdate() { // runs in one-shot thread
             XmlNode ver = tr.SelectSingleNode("version");
             //XmlNode count = tr.SelectSingleNode("sum_in_use");
             XmlNode count = tr.SelectSingleNode("max_in_use");
-            if (DebugLevel >= 7) ConsoleDebug("CheckForPluginUpdate: using max_in_use");
+            if (DebugLevel >= 8) ConsoleDebug("CheckForPluginUpdate: using max_in_use");
             if (ver != null && count != null) {
                 int test = 0;
                 XmlNode major = ver.SelectSingleNode("major");
@@ -11360,6 +11660,22 @@ private void LogStatus(bool isFinal, int level) {
     } else {
         if (level >= useLevel) DebugWrite("^bStatus^n: Map = " + this.FriendlyMap + ", mode = " + this.FriendlyMode + ", time in round = " + rt + ", tickets = " + tm, 0);
     }
+    if (perMode.EnableTicketLossRatio) {
+        double a1 = GetAverageTicketLossRate(1, !EnableTicketLossRateLogging);
+        double a2 = GetAverageTicketLossRate(2, !EnableTicketLossRateLogging);
+        double rat = (a1 > a2) ? (a1/Math.Max(1, a2)) : (a2/Math.Max(1, a1));
+        rat = Math.Min(rat, 50.0); // cap at 50x
+        rat = rat * 100.0;
+        if (level >= useLevel) DebugWrite("^bStatus^n: Average ticket loss = " + a1.ToString("F2") + "(US) vs " + a2.ToString("F2") + " (RU)" + " for " + perMode.TicketLossSampleCount + " samples, ratio is " + rat.ToString("F0") + "%", 0);
+    } else if (!IsSQDM() && fServerInfo.GameMode != "GunMaster0")  {
+        double a1 = fTickets[1];
+        double a2 = (IsRush()) ? (Math.Max(fTickets[1]/2, fMaxTickets - (fRushMaxTickets - fTickets[2]))) : fTickets[2];
+        double rat = (a1 > a2) ? (a1/Math.Max(1, a2)) : (a2/Math.Max(1, a1));
+        rat = Math.Min(rat, 50.0); // cap at 50x
+        rat = rat * 100.0;
+        if (level >= useLevel) DebugWrite("^bStatus^n: Ticket ratio percentage is " + rat.ToString("F0") + "%", 0);
+    }
+
     if (fPluginState == PluginState.Active) {
         double secs = DateTime.Now.Subtract(fLastBalancedTimestamp).TotalSeconds;
         if (!fBalanceIsActive || fLastBalancedTimestamp == DateTime.MinValue) secs = 0;
@@ -11780,6 +12096,8 @@ static class MULTIbalancerUtils {
 
 <p><b>Enable In-Game Commands</b>: True or False, default True. Enable <b>@mb</b> in-game commands. Most commands allow admins to change settings in the plugin without needing to leave the game. See the plugin thread for details or type <b>@mb help</b> in-game.</p>
 
+<p><b>Enable Ticket Loss Rate Logging</b>: True or False, default False. If set to True, a comma separated value (CSV) log file will be created for each map/mode/round. Look for a file that ends with tlr.csv in your procon/Logs/<i>ip_port</i> folder. The log will be updated every 5 seconds with ticket loss information and unstacking moves.</p>
+
 <p><b>Enable Whitelisting Of Reserved Slots List</b>: True or False, default True. Treats the reserved slots list as if it were added to the specified <b>Whitelist</b>.</p>
 
 <p><b>Whitelist</b>: List of player names (without clan tags), clan tags (by themselves), or EA GUIDs, one per line, in any combination. The first item may also specify a file to merge into the list, e.g., <i>&lt;whitelist.txt</i>. See <b>Merge Files</b> above. If <b>On&nbsp;Whitelist</b> is enabled or the balance speed is <i>Slow</i>, any players on the whitelist are completely excluded from being moved by the plugin (except for between-round scrambling).</p>
@@ -11841,7 +12159,7 @@ static class MULTIbalancerUtils {
 <p>These settings control balancing and unstacking, depending on the round phase and server population.
 For each phase, there are three unstacking settings for server population: Low, Medium and High, by number of players. Each number is the ticket percentage ratio that triggers unstacking for each combination of phase and population. Setting the value to 0 disables team unstacking for that combination. If the number is not 0, if the ratio of the winning team's tickets to the losing teams tickets is equal to or greater than the ticket percentage ratio specified, unstacking will be activated.</p>
 
-<p><i>Example</i>: for the <b>Ticket Percentage To Unstack</b> setting, there are three phases, Early, Mid and Late. For each phase, the value is a list of 3 number, either 0 or greater than 100, one for each of the population levels of Low, Medium, and High, respectively:
+<p><i>Example</i>: for the <b>Ticket Percentage To Unstack</b> setting, there are three phases, Early, Mid and Late. For each phase, the value is a list of 3 number, either 0 or greater than 100 and less than 5000, one for each of the population levels of Low, Medium, and High, respectively:
 <pre>
     Early Phase: Ticket Percentage To Unstack        0, 120, 120
     Mid Phase: Ticket Percentage To Unstack          0, 120, 120
@@ -11981,7 +12299,11 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Definition Of Late Phase As Tickets From End</b>: Number greater than or equal to 0. This is where you define the Late phase, as tickets from the end of the round. For example, if you set this to 300 and at least one team in Conquest has less than 300 tickets less, the phase is Late. If the ticket level of both teams is between the Early and Late settings, the phase is Mid. Set to 0 to disable Late phase.</p>
 
-<p><b>Enable Scrambler</b>: True or False, default False. If set to True, between-round scrambling of teams will be attempted for rounds played in this mode, depending on the settings in Section 5.</p>
+<p><b>Enable Scrambler</b>: True or False, default False, not visible for SQDM. If set to True, between-round scrambling of teams will be attempted for rounds played in this mode, depending on the settings in Section 5.</p>
+
+<p><b>Enable Ticket Loss Ratio</b>: True or False, default False, not visible for SQDM or Gun Master. If set to True, unstacking will be based on ticket loss ratio percentage instead of ticket ratio percentage in Section 3.</p>
+
+<p><b>Ticket Loss Sample Count</b>: Number greater than or equal to 15 and less than or equal to 600, default 60. This setting determines how many ticket loss samples are included in the average. Each sample is the average ticket loss per second. The higher this number is, the longer it will take to detect a significant change in loss rate; however, the lower the number is, the more susceptible unstacking will be to false detections (temporary spikes). The value 60 gives a per minute average, roughly. The average is a rolling average, so as new samples are added, old samples are dropped.</p>
 
 <p>These settings are unique to Conquest.</p>
 
