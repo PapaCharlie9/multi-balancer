@@ -134,6 +134,8 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     public const uint WL_ALL = (WL_BALANCE | WL_UNSTACK | WL_SWITCH | WL_DISPERSE | WL_RANK);
 
+    public const int MIN_SAMPLE_COUNT = 15;
+
     /* Classes */
 #region Classes
     public class PerModeSettings {
@@ -724,6 +726,74 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         }
     }
 
+    public class Histogram {
+        public const int BIN_SIZE = 100;
+        public SortedDictionary<int,int> Bin;
+        public int MaxBin;
+        public int PeakBin;
+        public int MaxFrequency;
+        public int Total;
+
+        public Histogram() {
+            this.Bin = new SortedDictionary<int,int>();
+            this.MaxBin = 0;
+            this.PeakBin = 1;
+            this.MaxFrequency = 0;
+            this.Total = 0;
+            this.Bin[PeakBin] = 0;
+        }
+
+        public void Clear() {
+            Bin.Clear();
+            MaxBin = 0;
+            PeakBin = 1;
+            MaxFrequency = 0;
+            Total = 0;
+            Bin[PeakBin] = 0;
+        }
+
+        public void Add(int sample) {
+            if (sample < 100) return;
+            int binNumber = sample / BIN_SIZE;
+            // insure bin and all bins up to this bin are initialized
+            if (!Bin.ContainsKey(binNumber)) {
+                Bin[binNumber] = 1;
+                for (int i = 1; i < binNumber; ++i) {
+                    if (!Bin.ContainsKey(i)) Bin[i] = 0;
+                }
+            } else {
+                Bin[binNumber] = Bin[binNumber] + 1;
+            }
+            MaxBin = Math.Max(MaxBin, binNumber);
+            MaxFrequency = Math.Max(MaxFrequency, Bin[binNumber]);
+            if (Bin[PeakBin] < Bin[binNumber]) PeakBin = binNumber;
+            ++Total;
+        }
+
+        public List<String> Log(int maxLine) {
+            List<String> log = new List<String>();
+            // multiply normFactor into each frequency count to get a value less than or equal to maxLine
+            double normFactor = Convert.ToDouble(maxLine) / Convert.ToDouble(MaxFrequency);
+            log.Add(String.Format("Total samples = {0}, bins = {1}, peak bin = {2}, peak count = {3}, scale factor = {4:F2}",
+                Total,
+                MaxBin * BIN_SIZE,
+                PeakBin * BIN_SIZE,
+                MaxFrequency,
+                normFactor));
+            
+            foreach (int bin in Bin.Keys) {
+                if (bin >= MaxBin) break;
+                StringBuilder buf = new StringBuilder(String.Format("{0,5}:", bin * BIN_SIZE));
+                int normFreq = Convert.ToInt32(Math.Round(Bin[bin] * normFactor));
+                for (int i = 0; i < normFreq; ++i) {
+                    buf.Append("#");
+                }
+                log.Add(buf.ToString());
+            }
+            return log;
+        }
+    }
+
 #endregion
 
 /* Inherited:
@@ -769,6 +839,7 @@ private bool fGotLogin = false;
 private Dictionary<String,String> fDebugScramblerSuspects = null;
 private DelayedRequest fUpdateTicketsRequest = null;
 private Queue<double>[] fAverageTicketLoss = null;
+private Histogram fTicketLossHistogram = null;
 
 // Data model
 private List<String> fAllPlayers = null;
@@ -1070,6 +1141,7 @@ public MULTIbalancer() {
     fDebugScramblerSuspects = new Dictionary<String,String>();
     fTimerRequestList = new List<DelayedRequest>();
     fAverageTicketLoss = new Queue<double>[3]{null, new Queue<double>(), new Queue<double>()};
+    fTicketLossHistogram = new Histogram();
     
     /* Settings */
 
@@ -1788,14 +1860,6 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
             }
 
-            if (!isGM && !isSQDM) {
-                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Enable Ticket Loss Ratio", oneSet.EnableTicketLossRatio.GetType(), oneSet.EnableTicketLossRatio));
-
-                if (oneSet.EnableTicketLossRatio) {
-                    lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Ticket Loss Sample Count", oneSet.TicketLossSampleCount.GetType(), oneSet.TicketLossSampleCount));
-                }
-            }
-
             if (isRush) {
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Stage 1 Ticket Percentage To Unstack Adjustment", oneSet.Stage1TicketPercentageToUnstackAdjustment.GetType(), oneSet.Stage1TicketPercentageToUnstackAdjustment));
 
@@ -1809,10 +1873,16 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
             }
 
             if (isConquest) {
-                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Enable Metro Adjustments", oneSet.EnableMetroAdjustments.GetType(), oneSet.EnableMetroAdjustments));
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Enable Ticket Loss Ratio", oneSet.EnableTicketLossRatio.GetType(), oneSet.EnableTicketLossRatio));
 
-                if (oneSet.EnableMetroAdjustments) {
-                    lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Metro Adjusted Definition Of Late Phase", oneSet.MetroAdjustedDefinitionOfLatePhase.GetType(), oneSet.MetroAdjustedDefinitionOfLatePhase));
+                if (oneSet.EnableTicketLossRatio) {
+                    lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Ticket Loss Sample Count", oneSet.TicketLossSampleCount.GetType(), oneSet.TicketLossSampleCount));
+                } else {
+                    lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Enable Metro Adjustments", oneSet.EnableMetroAdjustments.GetType(), oneSet.EnableMetroAdjustments));
+
+                    if (oneSet.EnableMetroAdjustments) {
+                        lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Metro Adjusted Definition Of Late Phase", oneSet.MetroAdjustedDefinitionOfLatePhase.GetType(), oneSet.MetroAdjustedDefinitionOfLatePhase));
+                    }
                 }
             }
 
@@ -2187,7 +2257,7 @@ private bool ValidateSettings(String strVariable, String strValue) {
             else if (strVariable.Contains("Disperse Evenly By Rank")) ValidateIntRange(ref perMode.DisperseEvenlyByRank, mode + ":" + "Disperse Evenly By Rank", 0, 145, def.DisperseEvenlyByRank, true);
             else if (strVariable.Contains("Definition Of High Population For Players")) ValidateIntRange(ref perMode.DefinitionOfHighPopulationForPlayers, mode + ":" + "Definition Of High Population For Players", 0, perMode.MaxPlayers, def.DefinitionOfHighPopulationForPlayers, false); 
             else if (strVariable.Contains("Definition Of Low Population For Players")) ValidateIntRange(ref perMode.DefinitionOfLowPopulationForPlayers, mode + ":" + "Definition Of Low Population For Players", 0, perMode.MaxPlayers, def.DefinitionOfLowPopulationForPlayers, false);
-            else if (strVariable.Contains("Ticket Loss Sample Count")) ValidateIntRange(ref perMode.TicketLossSampleCount, mode + ":" + "Ticket Loss Sample Count", 15, 600, def.TicketLossSampleCount, false);
+            else if (strVariable.Contains("Ticket Loss Sample Count")) ValidateIntRange(ref perMode.TicketLossSampleCount, mode + ":" + "Ticket Loss Sample Count", MIN_SAMPLE_COUNT, 1200, def.TicketLossSampleCount, false);
             else if (strVariable.Contains("Definition Of Early Phase")) ValidateInt(ref perMode.DefinitionOfEarlyPhaseFromStart, mode + ":" + "Definition Of Early Phase From Start", def.DefinitionOfEarlyPhaseFromStart);
             else if (strVariable.Contains("Metro Adjusted Definition Of Late Phase")) ValidateInt(ref perMode.MetroAdjustedDefinitionOfLatePhase, mode + ":" + "Metro Adjusted Definition Of Late Phase", def.MetroAdjustedDefinitionOfLatePhase);
             else if (strVariable.Contains("Definition Of Late Phase")) ValidateInt(ref perMode.DefinitionOfLatePhaseFromEnd, mode + ":" + "Definition Of Late Phase From End", def.DefinitionOfLatePhaseFromEnd);
@@ -2374,6 +2444,15 @@ private void CommandToLog(string cmd) {
                         ConsoleDump(var.Name + ": " + var.Value);
                     }
                 }
+            }
+            return;
+        }
+
+        if (Regex.Match(cmd, @"^histogram", RegexOptions.IgnoreCase).Success) {
+            if (fTicketLossHistogram.Total < 1) return;
+            List<String> graph = fTicketLossHistogram.Log(60);
+            foreach (String line in graph) {
+                ConsoleDump(line);
             }
             return;
         }
@@ -2773,6 +2852,7 @@ private void CommandToLog(string cmd) {
         if (Regex.Match(cmd, @"^\s*help", RegexOptions.IgnoreCase).Success || !String.IsNullOrEmpty(cmd)) {
             ConsoleDump("^1^bgen^n ^imode^n^0: Generate settings listing for ^imode^n (one of: cs, cl, ctf, gm, r, sqdm, sr, s, tdm, u)");
             ConsoleDump("^1^bgen^n ^isection^n^0: Generate settings listing for ^isection^n (1-6,9)");
+            ConsoleDump("^1^bhistogram^n^0: Examine a histogram graph of ticket loss ratios");
             ConsoleDump("^1^blists^n^0: Examine all settings that are lists");
             ConsoleDump("^1^bmodes^n^0: Examine the known game modes");
             ConsoleDump("^1^bmoved^n^0: Examine which players were moved, how many times total and how long ago");
@@ -3553,8 +3633,21 @@ public override void OnServerInfo(CServerInfo serverInfo) {
             ResetAverageTicketLoss();
         }
 
-        if (EnableTicketLossRateLogging) {
+        if (EnableTicketLossRateLogging && IsConquest()) {
             UpdateTicketLossRateLog(DateTime.Now, 0, 0);
+        }
+        
+        if (perMode.EnableTicketLossRatio && fGameState == GameState.Playing && TotalPlayerCount >= 4) {
+            try {
+                double a1 = GetAverageTicketLossRate(1, false);
+                double a2 = GetAverageTicketLossRate(2, false);
+                double ratio = (a1 > a2) ? (a1/Math.Max(1, a2)) : (a2/Math.Max(1, a1));
+                ratio = Math.Min(ratio, 50.0); // cap at 50x
+                ratio = ratio * 100.0;
+                fTicketLossHistogram.Add(Convert.ToInt32(Math.Round(ratio)));
+            } catch (Exception e) {
+                ConsoleException(e);
+            }
         }
 
         // Check for plugin updates periodically
@@ -4400,6 +4493,15 @@ private void BalanceAndUnstack(String name) {
         ratio = (a1 > a2) ? (a1/Math.Max(1, a2)) : (a2/Math.Max(1, a1));
         ratio = Math.Min(ratio, 50.0); // cap at 50x
         um = "Ticket loss ratio is " + (ratio*100.0).ToString("F0") + " vs. unstack ratio of " + (unstackTicketRatio*100.0).ToString("F0");
+
+        // Don't unstack if the team with the highest loss rate is the winning team
+        // We don't want to send strong players to the team with the highest score!
+        if ((a1 > a2 && winningTeam == 1)
+        ||  (a2 > a1 && winningTeam == 2)) {
+            if (DebugLevel >= 7) DebugBalance("Team with highest ticket loss rate is the winning team, do not unstack: " + a1.ToString("F1") + " vs " + a2.ToString("F1") + ", winning team is " + TEAM_NAMES[winningTeam]);
+            IncrementTotal();
+            return;
+        }
     }
 
     if (unstackTicketRatio == 0 || ratio < unstackTicketRatio) {
@@ -5631,7 +5733,7 @@ private double GetUnstackTicketRatio(PerModeSettings perMode) {
     }
 
     // apply rush adjustment
-    if (IsRush() && fRushStage > 0 && fRushStage <= 5 && unstackTicketRatio > 100 && !perMode.EnableTicketLossRatio) {
+    if (IsRush() && fRushStage > 0 && fRushStage <= 5 && unstackTicketRatio > 100) {
         double adj = 0;
         switch (fRushStage) {
             case 1: adj = perMode.Stage1TicketPercentageToUnstackAdjustment; break;
@@ -5646,7 +5748,7 @@ private double GetUnstackTicketRatio(PerModeSettings perMode) {
     
     if (unstackTicketRatio <= 100) unstackTicketRatio = 0;
 
-    if (AdjustForMetro(perMode) && !perMode.EnableTicketLossRatio) {
+    if (AdjustForMetro(perMode)) {
         double old = unstackTicketRatio;
         switch (phase) {
             case Phase.Early: unstackTicketRatio = 0; break;
@@ -8224,6 +8326,7 @@ private void ResetRound() {
     fLastBalancedTimestamp = DateTime.MinValue;
 
     ResetAverageTicketLoss();
+    fTicketLossHistogram.Clear();
 }
 
 private bool IsSQDM() {
@@ -8239,6 +8342,11 @@ private bool IsRush() {
 private bool IsCTF() {
     if (fServerInfo == null) return false;
     return (fServerInfo.GameMode == "CaptureTheFlag0");
+}
+
+private bool IsConquest() {
+    if (fServerInfo == null) return false;
+    return Regex.Match(fServerInfo.GameMode, @"(Conquest|Domination|Scavenger)", RegexOptions.IgnoreCase).Success;
 }
 
 private int MaxDiff() {
@@ -9897,6 +10005,7 @@ private double RushAttackerAvgLoss() {
 private bool AdjustForMetro(PerModeSettings perMode) {
     if (perMode == null) return false;
     if (!perMode.EnableMetroAdjustments) return false;
+    if (perMode.EnableTicketLossRatio) return false;
     if (fServerInfo == null) return false;
     return (fServerInfo.Map == "MP_Subway");
 }
@@ -11348,28 +11457,31 @@ private double GetAverageTicketLossRate(int team, bool verbose) {
     double rate = 0;
     try {
         PerModeSettings perMode = GetPerModeSettings();
+        if (perMode.TicketLossSampleCount < MIN_SAMPLE_COUNT) return 0;
+        List<double> copy = null;
         lock (fAverageTicketLoss) {
             while (fAverageTicketLoss[team].Count > perMode.TicketLossSampleCount) {
                 fAverageTicketLoss[team].Dequeue();
             }
-            List<double> copy = new List<double>(fAverageTicketLoss[team].ToArray());
-            String debug = null;
-            foreach (double sample in copy) {
-                rate = rate + sample;
-                if (verbose) {
-                    if (debug == null) {
-                        debug = "[" + sample.ToString("F2");
-                    } else {
-                        debug = debug + "," + sample.ToString("F2");
-                    }
+            copy = new List<double>(fAverageTicketLoss[team].ToArray());
+        }
+        // If not enough samples, force average to 0
+        if (copy.Count < perMode.TicketLossSampleCount) return 0;
+        String debug = null;
+        foreach (double sample in copy) {
+            rate = rate + sample;
+            if (verbose) {
+                if (debug == null) {
+                    debug = "[" + sample.ToString("F2");
+                } else {
+                    debug = debug + "," + sample.ToString("F2");
                 }
             }
-            double actual = Math.Max(1.0, copy.Count);
-            rate = (rate / actual) * 60.0; // loss per minute
-            if (verbose) {
-                if (debug != null) DebugWrite("^7" + TEAM_NAMES[team] + " = " + debug + "]", 8);
-                DebugWrite("^9Samples " + TEAM_NAMES[team] + ": " + fAverageTicketLoss[team].Count, 8);
-            }
+        }
+        double actual = Math.Max(1.0, copy.Count);
+        rate = (rate / actual) * 60.0; // loss per minute
+        if (verbose) {
+            if (debug != null) DebugWrite("^7" + TEAM_NAMES[team] + " (" + copy.Count + ") = " + debug + "]", 8);
         }
     } catch (Exception e) {
         ConsoleException(e);
@@ -12093,7 +12205,7 @@ static class MULTIbalancerUtils {
 
 <p><b>Enable In-Game Commands</b>: True or False, default True. Enable <b>@mb</b> in-game commands. Most commands allow admins to change settings in the plugin without needing to leave the game. See the plugin thread for details or type <b>@mb help</b> in-game.</p>
 
-<p><b>Enable Ticket Loss Rate Logging</b>: True or False, default False. If set to True, a comma separated value (CSV) log file will be created for each map/mode/round. Look for a file that ends with tlr.csv in your procon/Logs/<i>ip_port</i> folder. The log will be updated every 5 seconds with ticket loss information and unstacking moves.</p>
+<p><b>Enable Ticket Loss Rate Logging</b>: True or False, default False. If set to True and the current game mode is one of the Conquest types, including Scavenger and Domination, a comma separated value (CSV) log file will be created for each map/mode/round. Look for files that end with <b>tlr.csv</b> in your procon/Logs/<i>ip_port</i> folder. The log will be updated approximately every 5 seconds with ticket loss information and unstacking moves.</p>
 
 <p><b>Enable Whitelisting Of Reserved Slots List</b>: True or False, default True. Treats the reserved slots list as if it were added to the specified <b>Whitelist</b>.</p>
 
@@ -12298,9 +12410,9 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Enable Scrambler</b>: True or False, default False, not visible for SQDM. If set to True, between-round scrambling of teams will be attempted for rounds played in this mode, depending on the settings in Section 5.</p>
 
-<p><b>Enable Ticket Loss Ratio</b>: True or False, default False, not visible for SQDM or Gun Master. If set to True, unstacking will be based on ticket loss ratio percentage instead of ticket ratio percentage in Section 3.</p>
+<p><b>Enable Ticket Loss Ratio</b>: True or False, default False, only visible for Conquest-type modes. If set to True, unstacking will be based on ticket loss ratio percentage instead of ticket ratio percentage in Section 3. <font color=#FF0000><b>IMPORTANT</b>: you <b>must</b> adjust your Section 3 <b>Ticket Percentage To Unstack</b> settings if you <b>Enable Ticket Loss Ratio</b>.</font> The percentages for ticket loss ratios are much larger than for tickets ratios. If you don't adjust your values upwards, you will be constantly unstacking teams. See discussion in the forums for details.</p>
 
-<p><b>Ticket Loss Sample Count</b>: Number greater than or equal to 15 and less than or equal to 600, default 180. This setting determines how many ticket loss samples are included in the average. Each sample is the average ticket loss per second. The higher this number is, the longer it will take to detect a significant change in loss rate; however, the lower the number is, the more susceptible unstacking will be to false detections (temporary spikes). The average is a moving average, so as new samples are added, old samples are dropped.</p>
+<p><b>Ticket Loss Sample Count</b>: Number greater than or equal to 15 and less than or equal to 1200, default 180. This setting determines how many ticket loss samples are included in the average. Each sample is the average ticket loss per second. The higher this number is, the longer it will take to detect a significant change in loss rate; however, the lower the number is, the more susceptible unstacking will be to false detections (temporary spikes). The average is a moving average, so as new samples are added, old samples are dropped.</p>
 
 <p>These settings are unique to Conquest.</p>
 
