@@ -5390,9 +5390,9 @@ private void Reassign(String name, int fromTeam, int toTeam, int diff) {
     String doing = (EnableLoggingOnlyMode) ? "^9(SIMULATING) ^b^4REASSIGNING^0^n new player ^b" : "^b^4REASSIGNING^0^n new player ^b";
     String because = (diff > 0) ? ", because difference is " + diff : String.Empty;
     if (!fWhileScrambling) {
-        DebugWrite(doing + name + "^n from " + GetTeamName(fromTeam) + " team to " + GetTeamName(toTeam) + " team" + because, 3);
+        DebugWrite(doing + name + "^n from " + GetTeamName(fromTeam) + " team to " + GetTeamName(toTeam) + " team" + because, 4);
     } else {
-        DebugWrite(doing + name + "^n to " + GetTeamName(toTeam) + " team" + because, 3);
+        DebugWrite(doing + name + "^n to " + GetTeamName(toTeam) + " team" + because, 4);
     }
     int toSquad = ToSquad(name, toTeam);
     if (!EnableLoggingOnlyMode) {
