@@ -774,7 +774,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             List<String> log = new List<String>();
             // multiply normFactor into each frequency count to get a value less than or equal to maxLine
             double normFactor = Convert.ToDouble(maxLine) / Convert.ToDouble(MaxFrequency);
-            log.Add(String.Format("Total samples = {0}, bins = {1}, peak bin = {2}, peak count = {3}, scale factor = {4:F4}",
+            log.Add(String.Format("Total ratios = {0}, bins = {1}, peak bin = {2}, peak count = {3}, scale factor = {4:F4}",
                 Total,
                 MaxBin,
                 PeakBin * BIN_SIZE,
@@ -784,7 +784,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             foreach (int bin in Bin.Keys) {
                 if (bin == 0) continue;
                 StringBuilder buf = new StringBuilder(String.Format("{0,5}:", bin * BIN_SIZE));
-                int normFreq = Convert.ToInt32(Math.Round(Bin[bin] * normFactor));
+                int normFreq = (Bin[bin] == 0) ? 0 : Convert.ToInt32(Math.Ceiling(Bin[bin] * normFactor));
                 for (int i = 0; i < normFreq; ++i) {
                     buf.Append("#");
                 }
