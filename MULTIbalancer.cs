@@ -5846,15 +5846,17 @@ private void SetStats(PlayerModel player, Hashtable stats) {
     
     foreach (DictionaryEntry entry in stats) {
         try {
+            if (entry.Key == null) continue;
             String entryKey = (String)(entry.Key.ToString());
 
             // skip entries we are not interested in 
             if (!propValues.ContainsKey(entryKey)) continue;
+            if (entry.Value == null) continue;
 
             String entryValue = (String)(entry.Value.ToString());
 
             double dValue = -1;
-            if (entryValue != null) Double.TryParse(entryValue, out dValue);
+            if (!String.IsNullOrEmpty(entryValue)) Double.TryParse(entryValue, out dValue);
             propValues[entryKey] = (Double.IsNaN(dValue)) ? -1 : dValue;
         } catch (Exception) {}
     }
@@ -7637,20 +7639,12 @@ private void SendBattlelogRequest(String name, String requestType) {
         if (String.IsNullOrEmpty(player.PersonaId)) {
             // Get the main page
             bool ok = false;
-            try {
-                if (!fIsEnabled) return;
-                ok = FetchWebPage(ref result, "http://battlelog.battlefield.com/bf3/user/" + name);
-                if (!fIsEnabled) return;
-            } catch (Exception e) {
-                ConsoleException(e);
-            } finally {
-                status.State = FetchState.Failed;
-            }
+            status.State = FetchState.Failed;
+            if (!fIsEnabled) return;
+            ok = FetchWebPage(ref result, "http://battlelog.battlefield.com/bf3/user/" + name);
+            if (!fIsEnabled) return;
 
-            if (!ok) {
-                status.State = FetchState.Failed;
-                return;
-            }
+            if (!ok) return;
 
             // Extract the personaId
             MatchCollection pid = Regex.Matches(result, @"bf3/soldier/" + name + @"/stats/(\d+)(['""]|/\s*['""]|/[^/'""]+)", RegexOptions.IgnoreCase | RegexOptions.Singleline);
@@ -7676,7 +7670,7 @@ private void SendBattlelogRequest(String name, String requestType) {
             if (tag.Success) {
                 Hashtable data = new Hashtable();
                 data["clanTag"] = tag.Groups[1].Value;
-                SetTag(player, data);
+                SetTag(player, data); // sets status.State
                 DebugFetch("^Battlelog tag updated: ^b" + player.FullName);
             } else {
                 // No tag
@@ -7685,19 +7679,16 @@ private void SendBattlelogRequest(String name, String requestType) {
                 DebugFetch("^4Battlelog says ^b" + player.Name + "^n has no tag");
             }
         } else if (requestType == "overview") {
+            status.State = FetchState.Failed;
             if (!fIsEnabled || WhichBattlelogStats == BattlelogStats.ClanTagOnly) return;
             String furl = "http://battlelog.battlefield.com/bf3/overviewPopulateStats/" + player.PersonaId + "/bf3-us-assault/1/";
             if (FetchWebPage(ref result, furl)) {
-                if (!fIsEnabled) {
-                    status.State = FetchState.Failed;
-                    return;
-                }
+                if (!fIsEnabled) return;
 
                 Hashtable json = (Hashtable)JSON.JsonDecode(result);
 
                 // verify we got a success message
                 if (!CheckSuccess(json, out err)) {
-                    status.State = FetchState.Failed;
                     DebugFetch("Request " + status.RequestType + "(^b" + name + "^n): " + err);
                     return;
                 }
@@ -7705,7 +7696,6 @@ private void SendBattlelogRequest(String name, String requestType) {
                 // verify there is data structure
                 Hashtable data = null;
                 if (!json.ContainsKey("data") || (data = (Hashtable)json["data"]) == null) {
-                    status.State = FetchState.Failed;
                     DebugFetch("Request " + status.RequestType + "(^b" + name + "^n): JSON response does not contain a data field (^4" + furl + "^0)");
                     return;
                 }
@@ -7713,15 +7703,12 @@ private void SendBattlelogRequest(String name, String requestType) {
                 // verify there is stats structure
                 Hashtable stats = null;
                 if (!data.ContainsKey("overviewStats") || (stats = (Hashtable)data["overviewStats"]) == null) {
-                    status.State = FetchState.Failed;
                     DebugFetch("Request " + status.RequestType + "(^b" + name + "^n): JSON response data does not contain overviewStats (^4" + furl + "^0)");
                     return;
                 }
 
                 // extract the fields from the stats
-                SetStats(player, stats);
-            } else {
-                status.State = FetchState.Failed;
+                SetStats(player, stats); // sets status.State
             }
         }
     } catch (Exception e) {
@@ -7791,6 +7778,10 @@ public void CacheResponse(params String[] response) {
 
         String name = response[0]; // Player's name
         val = response[1]; // JSON string
+        if (String.IsNullOrEmpty(name) || String.IsNullOrEmpty(val)) {
+            DebugFetch("Invalid response from Battlelog Cache!");
+            return;
+        }
 
         Hashtable header = (Hashtable)JSON.JsonDecode(val);
 
@@ -7806,25 +7797,21 @@ public void CacheResponse(params String[] response) {
         Double.TryParse((String)header["age"], out age);
 
         PlayerModel player = GetPlayer(name);
+        if (player == null) {
+            DebugFetch("Unknown player ^b" + name);
+            return;
+        }
         String err = String.Empty;
         String requestType = String.Empty;
         DateTime since = DateTime.Now;
-        
         FetchInfo status = null;
-        if (player.TagFetchStatus.State == FetchState.Requesting) {
-            status = player.TagFetchStatus;
-            since = status.Since;
-        } else if (player.StatsFetchStatus.State == FetchState.Requesting) {
-            status = player.StatsFetchStatus;
-            since = status.Since;
-        } else return;
 
         if (CheckSuccess(header, out err)) {
             // verify there is data structure
             Hashtable d = null;
             if (!header.ContainsKey("data") || (d = (Hashtable)header["data"]) == null) {
                 ConsoleDebug("CacheResponse header does not contain data field!");
-                status.State = FetchState.Failed;
+                // FetchStatus left in Requesting state, since we can't decide which requestType this is
                 return;
             }
             if (d.ContainsKey("clanTag")) {
@@ -7833,7 +7820,16 @@ public void CacheResponse(params String[] response) {
                 requestType = "overview";
             }
 
-            status.RequestType = requestType;
+            if (player.TagFetchStatus.RequestType == requestType) {
+                status = player.TagFetchStatus;
+            } else if (player.StatsFetchStatus.RequestType == requestType) {
+                status = player.StatsFetchStatus;
+            } else {
+                ConsoleDebug("CacheResponse unknown requestType: " + requestType);
+                return;
+            }
+            since = status.Since;
+
             if (fetchTime > 0) {
                 DebugFetch("Request " + status.RequestType + "(^b" + name + "^n) succeeded, cache refreshed from Battlelog, took ^2" + fetchTime.ToString("F1") + " seconds");
             } else if (age > 0) {
