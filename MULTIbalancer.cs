@@ -3486,6 +3486,31 @@ public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subs
             try { RememberTeams(); } catch (Exception e) { ConsoleException(e); }
             fNeedPlayerListUpdate = false;
         }
+
+        //CommandToLog("whitelist");
+        foreach (CPlayerInfo p in players) {
+            try {
+                PlayerModel player = GetPlayer(p.SoldierName);
+                if (player == null) continue;
+                String guid = (String.IsNullOrEmpty(player.EAGUID)) ? INVALID_NAME_TAG_GUID : player.EAGUID;
+                String xt = ExtractTag(player);
+                if (String.IsNullOrEmpty(xt)) xt = INVALID_NAME_TAG_GUID;
+                foreach (String item in fSettingWhitelist) {
+                    List<String> tokens = new List<String>(Regex.Split(item, @"\s+"));
+                    if (tokens.Count < 1) {
+                        continue;
+                    }
+                    if (tokens[0] == player.Name || tokens[0] == xt || tokens[0] == guid) {
+                        if (player.Whitelist == 0) {
+                            DebugWrite("^8^bWARNING^n^0: (^b" + player.Name + ", " + xt + ", ^n" + guid + ") matches (" + String.Join(", ", tokens.ToArray()) + ") ^8^bBUT NO WHITELIST FLAGS SET!", 7);
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                ConsoleException(e);
+            }
+        }
+
     } catch (Exception e) {
         ConsoleException(e);
     }
@@ -5824,6 +5849,10 @@ private void SetTag(PlayerModel player, Hashtable data) {
     }
 
     player.Tag = (String)data["clanTag"];
+    if (!String.IsNullOrEmpty(player.Tag)) DebugFetch("Set tag ^b" + player.Tag + "^n for ^b" + player.Name);
+    UpdateFromWhitelist(player);
+    UpdatePlayerFriends(player);
+    if (IsDispersal(player, false)) DebugFetch("^b" + player.FullName + "^n in Dispersal Group " + player.DispersalGroup);
 }
 
 private void SetStats(PlayerModel player, Hashtable stats) {
@@ -10581,8 +10610,7 @@ private void UpdateFriends() {
 
 private void UpdatePlayerFriends(PlayerModel friend) {
     if (friend == null) return;
-    friend.Friendex = -1; 
-    if (!fAllFriends.Contains(friend.Name)) return; // optmization, avoid search if not a friend
+    friend.Friendex = -1;
 
     String guid = (String.IsNullOrEmpty(friend.EAGUID)) ? INVALID_NAME_TAG_GUID : friend.EAGUID;
     String tag = ExtractTag(friend);
@@ -10595,6 +10623,7 @@ private void UpdatePlayerFriends(PlayerModel friend) {
             || subList.Contains(tag)
             || subList.Contains(guid)) {
                 friend.Friendex = key;
+                if (DebugLevel >= 7) ConsoleDebug("UpdatePlayerFriends: (^b" + friend.Name + ", " + tag + ", ^n" + guid + ") in " + key + ": " + String.Join(", ", subList.ToArray())); // 8
                 break;
             }
         } catch (Exception e) {
@@ -11279,8 +11308,23 @@ private bool CheckWhitelist(PlayerModel player, uint flags) {
     if (String.IsNullOrEmpty(xt)) xt = INVALID_NAME_TAG_GUID;
     foreach (String item in fSettingWhitelist) {
         List<String> tokens = new List<String>(Regex.Split(item, @"\s+"));
-        if (tokens.Count < 1) continue;
+        if (tokens.Count < 1) {
+            ConsoleError("tokens.Count < 1!");
+            continue;
+        }
         if (tokens[0] == player.Name || tokens[0] == xt || tokens[0] == guid) {
+            if (DebugLevel >= 7) { // 8
+                DebugWrite("^b" + player.Name + ", " + xt + ", ^n" + player.Whitelist.ToString("X") + ", " + guid, 7);
+                DebugWrite("WL: " + String.Join(", ", tokens.ToArray()), 7);
+                String fs = String.Empty;
+                if ((player.Whitelist & WL_BALANCE) == WL_BALANCE) fs = fs + "B ";
+                if ((player.Whitelist & WL_UNSTACK) == WL_UNSTACK) fs = fs + "U ";
+                if ((player.Whitelist & WL_SWITCH) == WL_SWITCH) fs = fs + "S ";
+                if ((player.Whitelist & WL_RANK) == WL_RANK) fs = fs + "R ";
+                if ((player.Whitelist & WL_DISPERSE) == WL_DISPERSE) fs = fs + "D ";
+                if (fs == String.Empty) fs = "(none)";
+                DebugWrite("CheckWhitelist ^b" + player.FullName + "^n " + fs, 7);
+            }
             return ((player.Whitelist & flags) == flags);
         }
     }
@@ -11293,7 +11337,7 @@ private void UpdateWhitelistModel() {
         MergeWithFile(Whitelist, fSettingWhitelist); // clears fSettingWhitelist
         if (EnableWhitelistingOfReservedSlotsList) MergeWhitelistWithReservedSlots();
         UpdateAllFromWhitelist();
-        if (DebugLevel >= 8) {
+        if (DebugLevel >= 7) {
             String l = "Whitelist: ";
             l = l + String.Join(", ", fSettingWhitelist.ToArray());
             ConsoleDebug(l);
