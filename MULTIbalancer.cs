@@ -165,6 +165,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxUnstackingSwapsPerRound = 2;
                     NumberOfSwapsPerGroup = 2;
                     DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
+                    MaxUnstackingTicketDifference = 100;
                     DefinitionOfHighPopulationForPlayers = 24;
                     DefinitionOfLowPopulationForPlayers = 8;
                     DefinitionOfEarlyPhaseFromStart = 50; // assuming 200 tickets typical
@@ -178,6 +179,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxUnstackingSwapsPerRound = 4;
                     NumberOfSwapsPerGroup = 2;
                     DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
+                    MaxUnstackingTicketDifference = 150;
                     DefinitionOfHighPopulationForPlayers = 48;
                     DefinitionOfLowPopulationForPlayers = 16;
                     DefinitionOfEarlyPhaseFromStart = 100; // assuming 300 tickets typical
@@ -191,6 +193,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxUnstackingSwapsPerRound = 4;
                     NumberOfSwapsPerGroup = 2;
                     DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
+                    MaxUnstackingTicketDifference = 0;
                     DefinitionOfHighPopulationForPlayers = 48;
                     DefinitionOfLowPopulationForPlayers = 16;
                     DefinitionOfEarlyPhaseFromStart = 5; // minutes
@@ -202,6 +205,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxUnstackingSwapsPerRound = 2;
                     NumberOfSwapsPerGroup = 2;
                     DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
+                    MaxUnstackingTicketDifference = 40;
                     DefinitionOfHighPopulationForPlayers = 24;
                     DefinitionOfLowPopulationForPlayers = 8;
                     DefinitionOfEarlyPhaseFromStart = 25; // assuming 75 tickets typical
@@ -219,6 +223,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxUnstackingSwapsPerRound = 0;
                     NumberOfSwapsPerGroup = 0;
                     DelaySecondsBetweenSwapGroups = 60;
+                    MaxUnstackingTicketDifference = 25;
                     DefinitionOfHighPopulationForPlayers = 14;
                     DefinitionOfLowPopulationForPlayers = 8;
                     DefinitionOfEarlyPhaseFromStart = 10; // assuming 50 tickets typical
@@ -230,6 +235,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxUnstackingSwapsPerRound = 2;
                     NumberOfSwapsPerGroup = 2;
                     DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
+                    MaxUnstackingTicketDifference = 125;
                     DefinitionOfHighPopulationForPlayers = 16;
                     DefinitionOfLowPopulationForPlayers = 8;
                     DefinitionOfEarlyPhaseFromStart = 50; // assuming 250 tickets typical
@@ -241,6 +247,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxUnstackingSwapsPerRound = 4;
                     NumberOfSwapsPerGroup = 2;
                     DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
+                    MaxUnstackingTicketDifference = 50;
                     DefinitionOfHighPopulationForPlayers = 48;
                     DefinitionOfLowPopulationForPlayers = 16;
                     DefinitionOfEarlyPhaseFromStart = 20; // assuming 100 tickets typical
@@ -252,6 +259,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxUnstackingSwapsPerRound = 1;
                     NumberOfSwapsPerGroup = 1;
                     DelaySecondsBetweenSwapGroups = 60;
+                    MaxUnstackingTicketDifference = 10;
                     DefinitionOfHighPopulationForPlayers = 6;
                     DefinitionOfLowPopulationForPlayers = 4;
                     DefinitionOfEarlyPhaseFromStart = 5; // assuming 20 tickets typical
@@ -269,6 +277,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxUnstackingSwapsPerRound = 2;
                     NumberOfSwapsPerGroup = 2;
                     DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
+                    MaxUnstackingTicketDifference = 0;
                     DefinitionOfHighPopulationForPlayers = 12;
                     DefinitionOfLowPopulationForPlayers = 6;
                     DefinitionOfEarlyPhaseFromStart = 0;
@@ -281,6 +290,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxUnstackingSwapsPerRound = 2;
                     NumberOfSwapsPerGroup = 2;
                     DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
+                    MaxUnstackingTicketDifference = 0;
                     DefinitionOfHighPopulationForPlayers = 24;
                     DefinitionOfLowPopulationForPlayers = 8;
                     DefinitionOfEarlyPhaseFromStart = 50;
@@ -309,6 +319,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         public bool EnableStrictDispersal = true;
         public bool EnableTicketLossRatio = false;
         public int TicketLossSampleCount = 180;
+        public int MaxUnstackingTicketDifference = 0;
 
         // Rush only
         public double Stage1TicketPercentageToUnstackAdjustment = 0;
@@ -1822,6 +1833,8 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Delay Seconds Between Swap Groups", oneSet.DelaySecondsBetweenSwapGroups.GetType(), oneSet.DelaySecondsBetweenSwapGroups));
 
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Max Unstacking Ticket Difference", oneSet.MaxUnstackingTicketDifference.GetType(), oneSet.MaxUnstackingTicketDifference));
+
                 var_name = "8 - Settings for " + sm + "|" + sm + ": " + "Determine Strong Players By";
                 var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(DefineStrong))) + ")";
 
@@ -1875,7 +1888,7 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
             if (isConquest) {
                 // lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Enable Ticket Loss Ratio", oneSet.EnableTicketLossRatio.GetType(), oneSet.EnableTicketLossRatio)); // disable for this release
 
-                if (false && oneSet.EnableTicketLossRatio) {
+                if (oneSet.EnableTicketLossRatio && false) {
                     lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Ticket Loss Sample Count", oneSet.TicketLossSampleCount.GetType(), oneSet.TicketLossSampleCount));
                 } else {
                     lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Enable Metro Adjustments", oneSet.EnableMetroAdjustments.GetType(), oneSet.EnableMetroAdjustments));
@@ -2253,6 +2266,7 @@ private bool ValidateSettings(String strVariable, String strValue) {
             else if (strVariable.Contains("Max Unstacking Swaps Per Round")) ValidateInt(ref perMode.MaxUnstackingSwapsPerRound, mode + ":" + "Max Unstacking Swaps Per Round", def.MaxUnstackingSwapsPerRound);
             else if (strVariable.Contains("Number Of Swaps Per Group")) ValidateIntRange(ref perMode.NumberOfSwapsPerGroup, mode + ":" + "Number Of Swaps Per Group", 0, perMode.MaxUnstackingSwapsPerRound, def.NumberOfSwapsPerGroup, false);
             else if (strVariable.Contains("Delay Seconds Between Swap Groups")) ValidateDoubleRange(ref perMode.DelaySecondsBetweenSwapGroups, mode + ":" + "Delay Seconds Between Swap Groups", 60, 24*60*60, def.DelaySecondsBetweenSwapGroups, false);
+            else if (strVariable.Contains("Max Unstacking Ticket Difference")) ValidateInt(ref perMode.MaxUnstackingTicketDifference, mode + ":" + "Max Unstacking Ticket Difference", def.MaxUnstackingTicketDifference);
             else if (strVariable.Contains("Percent Of Top Of Team Is Strong")) ValidateDoubleRange(ref perMode.PercentOfTopOfTeamIsStrong, mode + ":" + "Percent Of Top Of Team Is Strong", 5, 50, def.PercentOfTopOfTeamIsStrong, false);
             else if (strVariable.Contains("Disperse Evenly By Rank")) ValidateIntRange(ref perMode.DisperseEvenlyByRank, mode + ":" + "Disperse Evenly By Rank", 0, 145, def.DisperseEvenlyByRank, true);
             else if (strVariable.Contains("Definition Of High Population For Players")) ValidateIntRange(ref perMode.DefinitionOfHighPopulationForPlayers, mode + ":" + "Definition Of High Population For Players", 0, perMode.MaxPlayers, def.DefinitionOfHighPopulationForPlayers, false); 
@@ -4491,6 +4505,8 @@ private void BalanceAndUnstack(String name) {
     }
 
     double ratio = 1;
+    double t1Tickets = 0;
+    double t2Tickets = 0;
     if (IsCTF()) {
         // Use team points, not tickets
         double usPoints = GetTeamPoints(1);
@@ -4507,16 +4523,29 @@ private void BalanceAndUnstack(String name) {
                 double defenders = fMaxTickets - (fRushMaxTickets - fTickets[2]);
                 defenders = Math.Max(defenders, attackers/2);
                 ratio = (attackers > defenders) ? (attackers/Math.Max(1, defenders)) : (defenders/Math.Max(1, attackers));
+                t1Tickets = attackers;
+                t2Tickets = defenders;
             } else {
-                ratio = Convert.ToDouble(fTickets[winningTeam]) / Math.Max(1, Convert.ToDouble(fTickets[losingTeam]));
+                t1Tickets = Convert.ToDouble(fTickets[winningTeam]);
+                t2Tickets = Convert.ToDouble(fTickets[losingTeam]);
+                ratio =  t1Tickets / Math.Max(1, t2Tickets);
             }
         }
+    }
+
+    // Ticket difference greater than per-mode maximum for unstacking
+    int ticketGap = Convert.ToInt32(Math.Abs(t1Tickets - t2Tickets));
+    if (perMode.MaxUnstackingTicketDifference > 0 && ticketGap > perMode.MaxUnstackingTicketDifference) {
+        DebugBalance("Ticket difference of " + ticketGap + " exceeds Max Unstacking Ticket Difference of " + perMode.MaxUnstackingTicketDifference + ", skipping ^b" + name + "^n");
+        fExemptRound = fExemptRound + 1;
+        IncrementTotal();
+        return;
     }
 
     String um = "Ticket ratio " + (ratio*100.0).ToString("F0") + " vs. unstack ratio of " + (unstackTicketRatio*100.0).ToString("F0");
 
     // Using ticket loss instead of ticket ratio?
-    if (false && perMode.EnableTicketLossRatio) { // disable for this release
+    if (perMode.EnableTicketLossRatio && false) { // disable for this release
         double a1 = GetAverageTicketLossRate(1, false);
         double a2 = GetAverageTicketLossRate(2, false);
         ratio = (a1 > a2) ? (a1/Math.Max(1, a2)) : (a2/Math.Max(1, a1));
@@ -10223,6 +10252,12 @@ void ApplyWizardSettings() {
                 LatePhaseBalanceSpeed = new Speed[3] {Speed.Stop,  Speed.Stop, Speed.Stop};
             }
 
+            // Set unstacking maximum ticket gap
+            if (!isCTF) {
+                perMode.MaxUnstackingTicketDifference = (HighestMaximumTicketsForMode / 2); // 50% of max
+                ConsoleWrite("Set ^bMax Unstacking Ticket Difference^n to " + perMode.MaxUnstackingTicketDifference, 0);
+            }
+
             ConsoleWrite("Please review your Section 3 Early, Mid and Late Balance Speeds set to style " + PreferredStyleOfBalancing, 0);
 
             ConsoleWrite("COMPLETED application of Wizard settings! Please review your Section 8 settings for ^b" + modeName, 0);
@@ -11813,20 +11848,22 @@ private void LogStatus(bool isFinal, int level) {
     } else {
         if (level >= useLevel) DebugWrite("^bStatus^n: Map = " + this.FriendlyMap + ", mode = " + this.FriendlyMode + ", time in round = " + rt + ", tickets = " + tm, 0);
     }
-    if (false && perMode.EnableTicketLossRatio) { // disable for this release
+
+    int ticketGap = Math.Abs(fTickets[1] - fTickets[2]);
+    if (perMode.EnableTicketLossRatio && false) { // disable for this release
         double a1 = GetAverageTicketLossRate(1, !EnableTicketLossRateLogging);
         double a2 = GetAverageTicketLossRate(2, !EnableTicketLossRateLogging);
         double rat = (a1 > a2) ? (a1/Math.Max(1, a2)) : (a2/Math.Max(1, a1));
         rat = Math.Min(rat, 50.0); // cap at 50x
         rat = rat * 100.0;
-        if (level >= useLevel) DebugWrite("^bStatus^n: Average ticket loss = " + a1.ToString("F2") + "(US) vs " + a2.ToString("F2") + " (RU)" + " for " + perMode.TicketLossSampleCount + " samples, ratio is " + rat.ToString("F0") + "%", 0);
+        if (level >= useLevel) DebugWrite("^bStatus^n: Ticket difference = " + ticketGap + ", average ticket loss = " + a1.ToString("F2") + "(US) vs " + a2.ToString("F2") + " (RU)" + " for " + perMode.TicketLossSampleCount + " samples, ratio is " + rat.ToString("F0") + "%", 0);
     } else if (!IsSQDM() && fServerInfo.GameMode != "GunMaster0")  {
         double a1 = fTickets[1];
         double a2 = (IsRush()) ? (Math.Max(fTickets[1]/2, fMaxTickets - (fRushMaxTickets - fTickets[2]))) : fTickets[2];
         double rat = (a1 > a2) ? (a1/Math.Max(1, a2)) : (a2/Math.Max(1, a1));
         rat = Math.Min(rat, 50.0); // cap at 50x
         rat = rat * 100.0;
-        if (level >= useLevel) DebugWrite("^bStatus^n: Ticket ratio percentage is " + rat.ToString("F0") + "%", 0);
+        if (level >= useLevel) DebugWrite("^bStatus^n: Ticket difference = " + ticketGap + ", ticket ratio percentage is " + rat.ToString("F0") + "%", 0);
     }
 
     if (fPluginState == PluginState.Active) {
@@ -12431,6 +12468,8 @@ For each phase, there are three unstacking settings for server population: Low, 
 <p><b>Number Of Swaps Per Group</b>: Number greater than or equal to 0 and less than or equal to <b>Max Unstacking Swaps Per Round</b>, ideally an integral factor, e.g., if <b>Max Unstacking Swaps Per Round</b> is 12, <b>Number Of Swaps Per Group</b> may be 1, 2, 3, 4, 6 or 12. During unstacking, swaps are done as quickly as possible, up to this number. Once this number of swaps is reached, the <b>Delay Seconds Between Swap Groups</b> delay is applied before further swaps are attempted.</p>
 
 <p><b>Delay Seconds Between Swap Groups</b>: Number greater than or equal to 60. After a group of unstacking swaps, wait this number of seconds before doing another group of unstacking swaps.</p>
+
+<p><b>Max Unstacking Ticket Difference</b>: Number greater than or equal to 0. If the difference in tickets is greater than the number specified, unstacking will be disabled. Set to 0 to allow any difference for unstacking.</p>
 
 <p><b>Determine Strong Players By</b>: Choice based on method. The setting defines how strong players are determined. Any player that is not a strong player is a weak player. See the <b>Definition of Strong</b> section above for the list of settings. All players in a single team are sorted by the specified definition. Any player above the median position after sorting is considered strong. For example, suppose there are 31 players on a team and this setting is set to <i>RoundScore</i> and after sorting, the median is position #16. If this player is position #7, he is considered strong. If his position is #16 or #17, he is considered weak.</p>
 
