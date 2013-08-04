@@ -1873,9 +1873,9 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
             }
 
             if (isConquest) {
-                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Enable Ticket Loss Ratio", oneSet.EnableTicketLossRatio.GetType(), oneSet.EnableTicketLossRatio));
+                // lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Enable Ticket Loss Ratio", oneSet.EnableTicketLossRatio.GetType(), oneSet.EnableTicketLossRatio)); // disable for this release
 
-                if (oneSet.EnableTicketLossRatio) {
+                if (false && oneSet.EnableTicketLossRatio) {
                     lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Ticket Loss Sample Count", oneSet.TicketLossSampleCount.GetType(), oneSet.TicketLossSampleCount));
                 } else {
                     lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Enable Metro Adjustments", oneSet.EnableMetroAdjustments.GetType(), oneSet.EnableMetroAdjustments));
@@ -3662,7 +3662,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
             UpdateTicketLossRateLog(DateTime.Now, 0, 0);
         }
         
-        if (perMode.EnableTicketLossRatio && fGameState == GameState.Playing && TotalPlayerCount >= 4) {
+        if ((EnableTicketLossRateLogging || perMode.EnableTicketLossRatio) && fGameState == GameState.Playing && TotalPlayerCount >= 4) {
             try {
                 double a1 = GetAverageTicketLossRate(1, false);
                 double a2 = GetAverageTicketLossRate(2, false);
@@ -4516,7 +4516,7 @@ private void BalanceAndUnstack(String name) {
     String um = "Ticket ratio " + (ratio*100.0).ToString("F0") + " vs. unstack ratio of " + (unstackTicketRatio*100.0).ToString("F0");
 
     // Using ticket loss instead of ticket ratio?
-    if (perMode.EnableTicketLossRatio) {
+    if (false && perMode.EnableTicketLossRatio) { // disable for this release
         double a1 = GetAverageTicketLossRate(1, false);
         double a2 = GetAverageTicketLossRate(2, false);
         ratio = (a1 > a2) ? (a1/Math.Max(1, a2)) : (a2/Math.Max(1, a1));
@@ -4801,7 +4801,7 @@ private void UpdatePlayerModel(String name, int team, int squad, String eaGUID, 
     // TBD
 
     // Friends
-    UpdatePlayerFriends(m);
+    UpdatePlayerFriends(m); // Overkill, but insures that Friendex is always updated
 
     if (!EnableLoggingOnlyMode && unTeam != -2 && !fPendingTeamChange.ContainsKey(name)) {
         ConsoleDebug("UpdatePlayerModel:^b" + name + "^n has team " + unTeam + " but update says " + team + "!");
@@ -10574,7 +10574,7 @@ private void SetFriends() {
         List<String> copy = new List<String>(fFriends[k]);
         foreach (String name in copy) {
             if (fAllFriends.Contains(name)) {
-                ConsoleWarn("In Friends List, ^b" + name + "^n is duplicated, please remove all duplicates");
+                ConsoleWarn("In Friends List, ^b" + name + "^n is duplicated on one line, please change the line");
                 fFriends[k].Remove(name);
             } else {
                 fAllFriends.Add(name);
@@ -11445,7 +11445,7 @@ private void UpdateTicketLossRateLog(DateTime now, int strong, int weak) {
         DebugWrite("^9^bDEBUG^n: UpdateTicketLossRateLog " + path + " at " + now, 8);
 
         PerModeSettings perMode = GetPerModeSettings();
-        String[] row = new String[18];
+        String[] row = new String[18]; // index of array is column number
         row[0] = now.ToString("HH:mm:ss");
         row[1] = (fServerInfo.CurrentRound + 1).ToString();
         row[2] = FriendlyMap;
@@ -11813,7 +11813,7 @@ private void LogStatus(bool isFinal, int level) {
     } else {
         if (level >= useLevel) DebugWrite("^bStatus^n: Map = " + this.FriendlyMap + ", mode = " + this.FriendlyMode + ", time in round = " + rt + ", tickets = " + tm, 0);
     }
-    if (perMode.EnableTicketLossRatio) {
+    if (false && perMode.EnableTicketLossRatio) { // disable for this release
         double a1 = GetAverageTicketLossRate(1, !EnableTicketLossRateLogging);
         double a2 = GetAverageTicketLossRate(2, !EnableTicketLossRateLogging);
         double rat = (a1 > a2) ? (a1/Math.Max(1, a2)) : (a2/Math.Max(1, a1));
@@ -12454,9 +12454,11 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Enable Scrambler</b>: True or False, default False, not visible for SQDM. If set to True, between-round scrambling of teams will be attempted for rounds played in this mode, depending on the settings in Section 5.</p>
 
+<!--
 <p><b>Enable Ticket Loss Ratio</b>: True or False, default False, only visible for Conquest-type modes. If set to True, unstacking will be based on ticket loss ratio percentage instead of ticket ratio percentage in Section 3. <font color=#FF0000><b>IMPORTANT</b>: you <b>must</b> adjust your Section 3 <b>Ticket Percentage To Unstack</b> settings if you <b>Enable Ticket Loss Ratio</b>.</font> The percentages for ticket loss ratios are much larger than for tickets ratios. If you don't adjust your values upwards, you will be constantly unstacking teams. See discussion in the forums for details.</p>
 
 <p><b>Ticket Loss Sample Count</b>: Number greater than or equal to 15 and less than or equal to 1200, default 180. This setting determines how many ticket loss samples are included in the average. Each sample is the average ticket loss per second. The higher this number is, the longer it will take to detect a significant change in loss rate; however, the lower the number is, the more susceptible unstacking will be to false detections (temporary spikes). The average is a moving average, so as new samples are added, old samples are dropped.</p>
+-->
 
 <p>These settings are unique to Conquest.</p>
 
