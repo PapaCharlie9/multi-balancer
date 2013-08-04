@@ -851,6 +851,8 @@ private Dictionary<String,String> fDebugScramblerSuspects = null;
 private DelayedRequest fUpdateTicketsRequest = null;
 private Queue<double>[] fAverageTicketLoss = null;
 private Histogram fTicketLossHistogram = null;
+private double fTotalRoundEndingSeconds = 0;
+private double fTotalRoundEndingRounds = 0;
 
 // Data model
 private List<String> fAllPlayers = null;
@@ -864,6 +866,7 @@ private List<PlayerModel> fTeam3 = null;
 private List<PlayerModel> fTeam4 = null;
 private List<String> fUnassigned = null;
 private DateTime fRoundStartTimestamp;
+private DateTime fRoundOverTimestamp;
 private Dictionary<String, MoveInfo> fMoving = null;
 private Queue<MoveInfo> fMoveQ = null;
 private List<String> fReassigned = null;
@@ -1101,6 +1104,7 @@ public MULTIbalancer() {
     fTeam4 = new List<PlayerModel>();
     fUnassigned = new List<String>();
     fRoundStartTimestamp = DateTime.MinValue;
+    fRoundOverTimestamp = DateTime.MinValue;
     fListPlayersTimestamp = DateTime.MinValue;
     fFullUnstackSwapTimestamp = DateTime.MinValue;
     fListPlayersQ = new Queue<DelayedRequest>();
@@ -2423,6 +2427,69 @@ private void CommandToLog(string cmd) {
         String msg = String.Empty;
         ConsoleDump("Command: " + cmd);
 
+        if (Regex.Match(cmd, @"^bad\s+tags?", RegexOptions.IgnoreCase).Success) {
+            lock (fKnownPlayers) {
+                List<String> failures = new List<String>();
+                foreach (String name in fKnownPlayers.Keys) {
+                    PlayerModel p = fKnownPlayers[name];
+
+                    double joinedMinutesAgo = GetPlayerJoinedTimeSpan(p).TotalMinutes;
+                    double enabledForMinutes = DateTime.Now.Subtract(fEnabledTimestamp).TotalMinutes;
+                    if ((enabledForMinutes > MinutesAfterJoining) 
+                    && (joinedMinutesAgo > MinutesAfterJoining)
+                    && !p.TagVerified) {
+                        failures.Add(name);
+                    }
+                }
+                if (failures.Count == 0) {
+                    ConsoleDump("^bNo clan tag fetch failures to report");
+                } else {
+                    ConsoleDump("^bUnable to fetch clan tags for: " + String.Join(", ", failures.ToArray()));
+                }
+            }
+            return;
+        }
+
+        if (Regex.Match(cmd, @"^bad\s+stats?", RegexOptions.IgnoreCase).Success) {
+            lock (fKnownPlayers) {
+                List<String> failures = new List<String>();
+                foreach (String name in fKnownPlayers.Keys) {
+                    PlayerModel p = fKnownPlayers[name];
+
+                    double joinedMinutesAgo = GetPlayerJoinedTimeSpan(p).TotalMinutes;
+                    double enabledForMinutes = DateTime.Now.Subtract(fEnabledTimestamp).TotalMinutes;
+                    if ((enabledForMinutes > MinutesAfterJoining) 
+                    && (joinedMinutesAgo > MinutesAfterJoining)
+                    && !p.StatsVerified
+                    && (p.StatsFetchStatus.State == FetchState.Failed || p.StatsFetchStatus.State == FetchState.Requesting)) {
+                        failures.Add(name);
+                    }
+                }
+                if (failures.Count == 0) {
+                    ConsoleDump("^bNo stats fetch failures to report");
+                } else {
+                    ConsoleDump("^bUnable to fetch stats for: " + String.Join(", ", failures.ToArray()));
+                }
+            }
+            return;
+        }
+
+
+
+        if (Regex.Match(cmd, @"^delay", RegexOptions.IgnoreCase).Success) {
+            if (fTotalRoundEndingRounds < 1) {
+                ConsoleDump("Not enough rounds timed to make a recommendation yet");
+                return;
+            }
+            double total = (fTotalRoundEndingSeconds/fTotalRoundEndingRounds); // total amount of time between rounds
+            double backoff = (TotalPlayerCount / 10) * 5; // scrambler needs about 5 seconds per 10 players
+            backoff = Math.Max(5, backoff);
+            double advice = total - backoff;
+            advice = Math.Max(48, advice); // never less than 48 seconds
+            ConsoleDump("Recommended scrambler delay, based on " + fTotalRoundEndingRounds + " rounds, is " + advice.ToString("F0") + " seconds");
+            return;
+        }
+
         m = Regex.Match(cmd, @"^gen\s+((?:cs|cl|ctf|gm|r|sqdm|sr|s|tdm|u)|[1234569])", RegexOptions.IgnoreCase);
         if (m.Success) {
             String what = m.Groups[1].Value;
@@ -2864,6 +2931,9 @@ private void CommandToLog(string cmd) {
         }
 
         if (Regex.Match(cmd, @"^\s*help", RegexOptions.IgnoreCase).Success || !String.IsNullOrEmpty(cmd)) {
+            ConsoleDump("^1^bbad tags^n^0: Examine list of players whose clan tag fetch failed");
+            ConsoleDump("^1^bbad stats^n^0: Examine list of players whose stats fetch failed");
+            ConsoleDump("^1^bdelay^n^0: Examine recommended scrambler delay time");
             ConsoleDump("^1^bgen^n ^imode^n^0: Generate settings listing for ^imode^n (one of: cs, cl, ctf, gm, r, sqdm, sr, s, tdm, u)");
             ConsoleDump("^1^bgen^n ^isection^n^0: Generate settings listing for ^isection^n (1-6,9)");
             ConsoleDump("^1^bhistogram^n^0: Examine a histogram graph of ticket loss ratios");
@@ -3100,6 +3170,7 @@ public void OnPluginEnable() {
     fPluginState = PluginState.JustEnabled;
     fGameState = GameState.Unknown;
     fEnabledTimestamp = DateTime.Now;
+    fRoundOverTimestamp = DateTime.MinValue;
     fRoundStartTimestamp = DateTime.Now;
 
     ConsoleWrite("^b^2Enabled!^0^n Version = " + GetPluginVersion(), 0);
@@ -3243,7 +3314,7 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
             } else {
                 Reassign(soldierName, teamId, reassignTo, diff);
             }
-        } else if (fGameState == GameState.Playing) {
+       } else if (fGameState == GameState.Playing) {
 
             // If this was an MB move, finish it
             bool wasPluginMove = FinishMove(soldierName, teamId);
@@ -3275,6 +3346,7 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
             // Admin move event may still be on its way, so do a round-trip to check
             ServerCommand("player.isAlive", soldierName);
         } else if (fGameState == GameState.RoundStarting || fGameState == GameState.RoundEnding) {
+            
             UpdatePlayerTeam(soldierName, teamId);
             UpdateTeams();
         }
@@ -3561,6 +3633,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
                 }
                 LogStatus(true, DebugLevel);
                 DebugWrite("+------------------------------------------------+", 2);
+                if (DebugLevel >= 3) CommandToLog("bad tags");
             } catch (Exception) {}
             fFinalStatus = null;
         }
@@ -3771,9 +3844,11 @@ public override void OnRoundOver(int winningTeamId) {
     if (!fIsEnabled) return;
     
     DebugWrite("^9^bGot OnRoundOver^n: winner " + winningTeamId, 7);
-    fWinner = winningTeamId;
 
     try {
+        fWinner = winningTeamId;
+        fRoundOverTimestamp = DateTime.Now;
+
         DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1Round over detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
     
         if (fGameState == GameState.Playing || fGameState == GameState.Unknown) {
@@ -3799,7 +3874,9 @@ public override void OnLevelLoaded(String mapFileName, String Gamemode, int roun
 
         if (fGameState == GameState.RoundEnding || (fGameState == GameState.Warmup && this.TotalPlayerCount >= 4) || fGameState == GameState.Unknown) {
             fGameState = GameState.RoundStarting;
-            DebugWrite("OnLevelLoaded: ^b^3Game state = " + fGameState, 6);  
+            DebugWrite("OnLevelLoaded: ^b^3Game state = " + fGameState, 6);
+
+            CheckRoundEndingDuration();
         }
 
         fMaxTickets = -1; // flag to pay attention to next serverInfo
@@ -4232,6 +4309,14 @@ private void BalanceAndUnstack(String name) {
         fExcludedRound = fExcludedRound + 1;
         IncrementTotal();
         return;   
+    }
+
+    // Special exemption if tag not verified and first/partial round
+    if (!player.TagVerified && player.Rounds <= 1) {
+        if (DebugLevel >= 7) DebugBalance("Skipping ^b" + player.Name + "^n, clan tag not verified yet"); // 8
+        // Don't count this as an excemption
+        // Don't increment the total
+        return;
     }
 
     // Exclude if in squad with same tags
@@ -8325,6 +8410,8 @@ private void Reset() {
     fGrandRageQuits = 0;
     fWhileScrambling = false;
     fUpdateTicketsRequest = null;
+    fTotalRoundEndingRounds = 0;
+    fTotalRoundEndingSeconds = 0;
 
     fDebugScramblerBefore[0].Clear();
     fDebugScramblerBefore[1].Clear();
@@ -11605,6 +11692,19 @@ private void SetupUpdateTicketsRequest() {
     });
 }
 
+private void CheckRoundEndingDuration() {
+    if (fRoundOverTimestamp == DateTime.MinValue) return;
+    double secs = DateTime.Now.Subtract(fRoundOverTimestamp).TotalSeconds;
+    if (secs < 30) {
+        ConsoleDebug("CheckRoundEndingDuration less than 30 seconds, skipping");
+        return;
+    }
+    // Sum up for average
+    fTotalRoundEndingSeconds += secs;
+    fTotalRoundEndingRounds += 1;
+    DebugWrite("Between round seconds = " + secs.ToString("F0") + ", average of " + fTotalRoundEndingRounds + " rounds = " + (fTotalRoundEndingSeconds/fTotalRoundEndingRounds).ToString("F1"), 3);
+}
+
 
 /* === NEW_NEW_NEW === */
 
@@ -11850,6 +11950,7 @@ private void LogStatus(bool isFinal, int level) {
     }
 
     int ticketGap = Math.Abs(fTickets[1] - fTickets[2]);
+    if (IsRush()) ticketGap = Convert.ToInt32(Math.Abs(fTickets[1] - Math.Max(fTickets[1]/2, fMaxTickets - (fRushMaxTickets - fTickets[2]))));
     if (perMode.EnableTicketLossRatio && false) { // disable for this release
         double a1 = GetAverageTicketLossRate(1, !EnableTicketLossRateLogging);
         double a2 = GetAverageTicketLossRate(2, !EnableTicketLossRateLogging);
