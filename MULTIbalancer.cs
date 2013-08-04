@@ -2482,10 +2482,10 @@ private void CommandToLog(string cmd) {
                 return;
             }
             double total = (fTotalRoundEndingSeconds/fTotalRoundEndingRounds); // total amount of time between rounds
-            double backoff = (TotalPlayerCount / 10) * 5; // scrambler needs about 5 seconds per 10 players
+            double backoff = (TotalPlayerCount / 15) * 5; // scrambler needs about 5 seconds per 15 players
             backoff = Math.Max(5, backoff);
             double advice = total - backoff;
-            advice = Math.Max(48, advice); // never less than 48 seconds
+            advice = Math.Max(50, advice); // never less than 50 seconds
             ConsoleDump("Recommended scrambler delay, based on " + fTotalRoundEndingRounds + " rounds, is " + advice.ToString("F0") + " seconds");
             return;
         }
