@@ -1536,7 +1536,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.5.0";
+    return "1.0.5.1";
 }
 
 public String GetPluginAuthor() {
@@ -4313,7 +4313,7 @@ private void BalanceAndUnstack(String name) {
 
     // Special exemption if tag not verified and first/partial round
     if (!player.TagVerified && player.Rounds <= 1) {
-        if (DebugLevel >= 7) DebugBalance("Skipping ^b" + player.Name + "^n, clan tag not verified yet"); // 8
+        if (DebugLevel >= 7) DebugBalance("Skipping ^b" + player.Name + "^n, clan tag not verified yet");
         // Don't count this as an excemption
         // Don't increment the total
         return;
@@ -10745,7 +10745,7 @@ private void UpdatePlayerFriends(PlayerModel friend) {
             || subList.Contains(tag)
             || subList.Contains(guid)) {
                 friend.Friendex = key;
-                if (DebugLevel >= 7) ConsoleDebug("UpdatePlayerFriends: (^b" + friend.Name + ", " + tag + ", ^n" + guid + ") in " + key + ": " + String.Join(", ", subList.ToArray())); // 8
+                if (DebugLevel >= 8) ConsoleDebug("UpdatePlayerFriends: (^b" + friend.Name + ", " + tag + ", ^n" + guid + ") in " + key + ": " + String.Join(", ", subList.ToArray()));
                 break;
             }
         } catch (Exception e) {
@@ -11435,7 +11435,7 @@ private bool CheckWhitelist(PlayerModel player, uint flags) {
             continue;
         }
         if (tokens[0] == player.Name || tokens[0] == xt || tokens[0] == guid) {
-            if (DebugLevel >= 7) { // 8
+            if (DebugLevel >= 7) {
                 DebugWrite("^b" + player.Name + ", " + xt + ", ^n" + player.Whitelist.ToString("X") + ", " + guid, 7);
                 DebugWrite("WL: " + String.Join(", ", tokens.ToArray()), 7);
                 String fs = String.Empty;
