@@ -854,6 +854,9 @@ private Histogram fTicketLossHistogram = null;
 private double fTotalRoundEndingSeconds = 0;
 private double fTotalRoundEndingRounds = 0;
 
+// BF4
+private int fMaxSquadSize = 4;
+
 // Data model
 private List<String> fAllPlayers = null;
 private Dictionary<String, PlayerModel> fKnownPlayers = null;
@@ -1536,7 +1539,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.5.1";
+    return "1.1.0.1";
 }
 
 public String GetPluginAuthor() {
@@ -2554,7 +2557,7 @@ private void CommandToLog(string cmd) {
                 ConsoleDump(item);
             }
             ConsoleDump(" ");
-            for (int i = 1; i <= 4; ++i) {
+            for (int i = 1; i <= 4; ++i) { // 1 to 4 teams
                 if (fDispersalGroups[i].Count > 0) {
                     msg = "Dispersal Group " + i + " (" + fDispersalGroups[i].Count + "): " + String.Join(", ", fDispersalGroups[i].ToArray());
                     ConsoleDump(msg);
@@ -2562,7 +2565,7 @@ private void CommandToLog(string cmd) {
             }
             ConsoleDump(" ");
             msg = "Group assignments: ";
-            for (int i = 1; i <= 4; ++i) {
+            for (int i = 1; i <= 4; ++i) { // 1 to 4 teams
                 msg = msg + fGroupAssignments[i];
                 if (i < 4) msg = msg + "/";
             }
@@ -3172,6 +3175,9 @@ public void OnPluginEnable() {
     fEnabledTimestamp = DateTime.Now;
     fRoundOverTimestamp = DateTime.MinValue;
     fRoundStartTimestamp = DateTime.Now;
+
+    // Determine BF3 vs. BF4?
+    fMaxSquadSize = 4; // TODO
 
     ConsoleWrite("^b^2Enabled!^0^n Version = " + GetPluginVersion(), 0);
     DebugWrite("^b^3State = " + fPluginState, 6);
@@ -6648,7 +6654,7 @@ private void ScramblerLoop () {
                                 if (xtra == null) continue;
                                 SquadRoster sr = null;
                                 if (targetSquadTable.TryGetValue(xtra.Squad, out sr)) {
-                                    if (sr.Roster.Count >= 4) continue;
+                                    if (sr.Roster.Count >= fMaxSquadSize) continue;
                                     sr.Roster.Add(xtra);
                                 } else {
                                     sr = new SquadRoster(xtra.Squad);
@@ -6808,7 +6814,7 @@ private void ScramblerLoop () {
                     }
                 }
                 
-                // Assert that no squad has more than 4 players
+                // Assert that no squad has more than fMaxSquadSize players
                 Dictionary<int,int> playerCount = new Dictionary<int,int>();
                 foreach (PlayerModel clone in usScrambled) {
                     int num = 0;
@@ -6823,8 +6829,8 @@ private void ScramblerLoop () {
                     playerCount[clone.Squad] = num;
                 }
                 foreach (int squadId in playerCount.Keys) {
-                    if (playerCount[squadId] > 4) {
-                        ConsoleDebug("ASSERT: " + GetTeamName(1) + "/" + SQUAD_NAMES[squadId] + " has > 4 players! = " + playerCount[squadId]);
+                    if (playerCount[squadId] > fMaxSquadSize) {
+                        ConsoleDebug("ASSERT: " + GetTeamName(1) + "/" + SQUAD_NAMES[squadId] + " has > " + fMaxSquadSize + " players! = " + playerCount[squadId]);
                     }
                 }
                 playerCount.Clear();
@@ -6841,8 +6847,8 @@ private void ScramblerLoop () {
                     playerCount[clone.Squad] = num;
                 }
                 foreach (int squadId in playerCount.Keys) {
-                    if (playerCount[squadId] > 4) {
-                        ConsoleDebug("ASSERT: " + GetTeamName(2) + "/" + SQUAD_NAMES[squadId] + " has > 4 players! = " + playerCount[squadId]);
+                    if (playerCount[squadId] > fMaxSquadSize) {
+                        ConsoleDebug("ASSERT: " + GetTeamName(2) + "/" + SQUAD_NAMES[squadId] + " has > " + fMaxSquadSize + " players! = " + playerCount[squadId]);
                     }
                 }
                 playerCount.Clear();
@@ -7309,8 +7315,8 @@ private ScrambleStatus ScrambleTeams(List<PlayerModel> usOrig, List<PlayerModel>
             if (allocated.TryGetValue(key, out num)) {
                 num = num + 1;
             }
-            if (num > 4) {
-                DebugScrambler("WARNING: team " + nextList + ", squad " + clone.ScrambledSquad + " has more than 4 players!");
+            if (num > fMaxSquadSize) {
+                DebugScrambler("WARNING: team " + nextList + ", squad " + clone.ScrambledSquad + " has more than " + fMaxSquadSize + " players!");
             } else {
                 allocated[key] = num;
             }
@@ -7377,7 +7383,7 @@ private void RestoreSquads(List<PlayerModel> allCopy, Dictionary<int,int> alloca
             // If the original squad is full, pick one that isn't
             if (allocated != null) {
                 int key = (1000 * clone.Team) + toSquad;
-                while (allocated.ContainsKey(key) && allocated[key] >= 4) {
+                while (allocated.ContainsKey(key) && allocated[key] >= fMaxSquadSize) {
                     ++toSquad;
                     if (toSquad >= SQUAD_NAMES.Length) {
                         break;
@@ -7407,7 +7413,7 @@ private void RestoreSquads(List<PlayerModel> allCopy, Dictionary<int,int> alloca
 private SquadRoster AddPlayerToSquadRoster(Dictionary<int,SquadRoster> squads, PlayerModel player, int key, int squadId, bool ignoreSize) {
     SquadRoster squad = null;
     if (squads.TryGetValue(key, out squad)) {
-        if (ignoreSize || squad.Roster.Count < 4) {
+        if (ignoreSize || squad.Roster.Count < fMaxSquadSize) {
             squad.Roster.Add(player);
         }
     } else {
@@ -7555,7 +7561,7 @@ private void AssignFillerToTeam(PlayerModel filler, int toTeamId, List<PlayerMod
     SquadRoster toSquad = null;
     foreach (int key in targetSquadTable.Keys) {
         toSquad = targetSquadTable[key];
-        if (toSquad.Roster.Count == 4) continue;
+        if (toSquad.Roster.Count == fMaxSquadSize) continue;
         toSquadId = key;
         break;
     }
@@ -9036,7 +9042,7 @@ private int ToSquad(String name, int team) {
             squads[i] = squads[i] + 1;
         }
 
-        // Find the biggest squad less than 4 (that isn't locked -- TBD)
+        // Find the biggest squad less than fMaxSquadSize (that isn't locked -- TODO)
         int squad = 0;
         int best = 0;
         int atZero = 0;
@@ -9048,7 +9054,7 @@ private int ToSquad(String name, int team) {
                 continue;
             }
             highOccupied = squadNum;
-            if (n >= 4) continue;
+            if (n >= fMaxSquadSize) continue;
             if (n > best) {
                 squad = squadNum;
                 best = n;
