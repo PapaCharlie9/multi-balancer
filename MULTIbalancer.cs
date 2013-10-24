@@ -6958,8 +6958,7 @@ private void SwapSameClanTags(ref List<PlayerModel> usScrambled, ref List<Player
         // Calculate distribution between the two teams
         foreach (PlayerModel clone in usScrambled) {
             String tagOrFriendex = ExtractTagOrFriendex(clone);
-            if (String.IsNullOrEmpty(tagOrFriendex)) {
-            }
+            if (String.IsNullOrEmpty(tagOrFriendex)) continue;
             int[] teamCounts = null;
             if (matesDistribution.TryGetValue(tagOrFriendex, out teamCounts) && teamCounts != null) {
                 teamCounts[1] = teamCounts[1] + 1;
