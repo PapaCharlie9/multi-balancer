@@ -59,6 +59,8 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
 {
     /* Enums */
 
+    public enum GameVersion { BF3, BF4 };
+
     public enum MessageType { Warning, Error, Exception, Normal, Debug };
     
     public enum PresetItems { Standard, Aggressive, Passive, Intensify, Retain, BalanceOnly, UnstackOnly, None };
@@ -856,6 +858,7 @@ private double fTotalRoundEndingRounds = 0;
 
 // BF4
 private int fMaxSquadSize = 4;
+private GameVersion fGameVersion = GameVersion.BF3;
 
 // Data model
 private List<String> fAllPlayers = null;
@@ -1539,7 +1542,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.1.0.1";
+    return "1.4.0.1";
 }
 
 public String GetPluginAuthor() {
@@ -3311,6 +3314,10 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
             int diff = 0;
             bool mustMove = false; // don't have a player model yet, can't determine if must move
             int reassignTo = ToTeam(soldierName, teamId, true, out diff, ref mustMove);
+            if (fGameVersion == GameVersion.BF4) {
+                DebugWrite("^4New player^0: ^b" + soldierName + "^n not reassigned, reassignment disabled for BF4 ... ", 5);
+                reassignTo = 0; 
+            }
             if ((reassignTo == 0 || reassignTo == teamId) && !fWhileScrambling) {
                 // New player was going to the right team anyway
                 IncrementTotal(); // no matching stat, reflects non-reassigment joins
@@ -6071,6 +6078,9 @@ private void Scrambler(List<TeamScore> teamScores) {
     if (!perMode.EnableScrambler) {
         DebugScrambler("Enable Scrambler is False, no scramble this round");
         return;
+    } else if (fGameVersion == GameVersion.BF4) {
+        ConsoleWarn("Scrambler not supported for BF4 yet!");
+        return;
     }
 
     int current = fServerInfo.CurrentRound + 1; // zero based index
@@ -7756,7 +7766,11 @@ public void FetchLoop() {
                 requests = 1; // reset
                 since = DateTime.Now;
             }
-
+            
+            if (fGameVersion == GameVersion.BF4 && !isTagRequest) {
+                DebugFetch("overview stats fetch not supported for BF4 yet!", 5);
+                continue;
+            }
             String requestType = (isTagRequest) ? "clanTag" : "overview";
             if (fIsCacheEnabled) {
                 SendCacheRequest(name, requestType);
@@ -7866,6 +7880,10 @@ private void SendBattlelogRequest(String name, String requestType) {
 
 
 public bool IsCacheEnabled(bool verbose) {
+    if (fGameVersion == GameVersion.BF4) {
+        ConsoleWarn("BattlelogCache is not supported for BF4 yet!");
+        return false;
+    }
     List<MatchCommand> registered = this.GetRegisteredCommands();
     foreach (MatchCommand command in registered) {
         if (command.RegisteredClassname.CompareTo("CBattlelogCache") == 0 && command.RegisteredMethodName.CompareTo("PlayerLookup") == 0) {
@@ -8224,37 +8242,56 @@ private List<String> GetSimplifiedModes() {
         List<CMap> raw = this.GetMapDefines();
         foreach (CMap m in raw) {
             String simple = null;
-            switch (m.GameMode) {
-                case "Conquest Large":
-                case "Assault64":
-                    simple = "Conquest Large";
-                    break;
-                case "Conquest Small": // Fix for Issue #34
-                case "Assault":
-                case "Assault #2":
-                case "Conquest Domination":
-                case "Scavenger":
-                    simple = "Conq Small, Dom, Scav";
-                    break;
-                case "TDM":
-                case "TDM Close Quarters":
-                    simple = "Team Deathmatch";
-                    break;
-                case "Tank Superiority":
-                case "Air Superiority":
-                    simple = "Superiority";
-                    break;
-                case "Rush":
-                case "CTF":
-                case "Squad Deathmatch":
-                case "Gun Master":
-                case "Squad Rush":
-                    simple = m.GameMode;
-                    break;
-                default:
-                    simple = "Unknown or New Mode";
-                    break;
-                
+            if (fGameVersion == GameVersion.BF3) {
+                switch (m.GameMode) {
+                    case "Conquest Large":
+                    case "Assault64":
+                        simple = "Conquest Large";
+                        break;
+                    case "Conquest Small": // Fix for Issue #34
+                    case "Assault":
+                    case "Assault #2":
+                    case "Conquest Domination":
+                    case "Scavenger":
+                        simple = "Conq Small, Dom, Scav";
+                        break;
+                    case "TDM":
+                    case "TDM Close Quarters":
+                        simple = "Team Deathmatch";
+                        break;
+                    case "Tank Superiority":
+                    case "Air Superiority":
+                        simple = "Superiority";
+                        break;
+                    case "Rush":
+                    case "CTF":
+                    case "Squad Deathmatch":
+                    case "Gun Master":
+                    case "Squad Rush":
+                        simple = m.GameMode;
+                        break;
+                    default:
+                        simple = "Unknown or New Mode";
+                        break;
+                }
+            } else if (fGameVersion == GameVersion.BF4) {
+                switch (m.GameMode) {
+                    case "Conquest Large":
+                    case "Conquest Small":
+                    case "Domination":
+                    case "Defuse":
+                    case "Obliteration":
+                    case "Rush":
+                    case "Squad Deathmatch":
+                    case "Team Deathmatch":
+                        simple = m.GameMode;
+                        break;
+                    default:
+                        simple = "Unknown or New Mode";
+                        break;
+                } 
+            } else {
+                simple = "Unknown or New Mode";
             }
             if (fModeToSimple.ContainsKey(m.PlayList)) {
                 if (fModeToSimple[m.PlayList] != simple) {
@@ -12021,6 +12058,32 @@ private void LogStatus(bool isFinal, int level) {
   } catch (Exception e) {
     ConsoleException(e);
   }
+}
+
+public void OnPluginLoadingEnv(List<string> lstPluginEnv) {
+    foreach (String env in lstPluginEnv)
+    {
+        ConsoleWrite("^9OnPluginLoadingEnv: " + env, 8); // TODO - remove, for debugging
+    }
+    switch (lstPluginEnv[1])
+    {
+        case "BF3": fGameVersion = GameVersion.BF3; break;
+        case "BF4": fGameVersion = GameVersion.BF4; break;
+        default: break;
+    }
+    ConsoleWrite("^1Game Version = " + lstPluginEnv[1], 0);
+    /*
+    Version PRoConVersion = new Version(lstPluginEnv[0]);
+    this.m_strPRoConVersion = PRoConVersion.ToString();
+    this.m_strServerGameType = lstPluginEnv[1].ToLower();
+    this.m_strGameMod = lstPluginEnv[2];
+    this.m_strServerVersion = lstPluginEnv[3];
+    this.m_strSandboxEnabled = lstPluginEnv[4];
+
+    if (this.m_strServerGameType == "bf3") {
+        this.m_iTimeDivider = 1000;
+    }
+    */
 }
 
 } // end MULTIbalancer
