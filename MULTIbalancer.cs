@@ -143,7 +143,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
     public class PerModeSettings {
         public PerModeSettings() {}
         
-        public PerModeSettings(String simplifiedModeName) {
+        public PerModeSettings(String simplifiedModeName, bool isBF4) {
             DetermineStrongPlayersBy = DefineStrong.RoundScore;
             PercentOfTopOfTeamIsStrong = 50;
             DisperseEvenlyByRank = 0;
@@ -162,7 +162,9 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             
             switch (simplifiedModeName) {
                 case "Conq Small, Dom, Scav":
-                    MaxPlayers = 32;
+                case "Conquest Small": // BF4
+                case "Domination": // BF4
+                    MaxPlayers = (isBF4 && simplifiedModeName == "Domination") ? 20 : 32;
                     CheckTeamStackingAfterFirstMinutes = 10;
                     MaxUnstackingSwapsPerRound = 2;
                     NumberOfSwapsPerGroup = 2;
@@ -220,7 +222,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     SecondsToCheckForNewStage = 10;
                     break;
                 case "Squad Deathmatch":
-                    MaxPlayers = 16;
+                    MaxPlayers = (isBF4) ? 20 : 16;
                     CheckTeamStackingAfterFirstMinutes = 0;
                     MaxUnstackingSwapsPerRound = 0;
                     NumberOfSwapsPerGroup = 0;
@@ -244,7 +246,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     DefinitionOfLatePhaseFromEnd = 50; // assuming 250 tickets typical
                     break;
                 case "Team Deathmatch":
-                    MaxPlayers = 64;
+                    MaxPlayers = (isBF4) ? 20 : 64;
                     CheckTeamStackingAfterFirstMinutes = 5;
                     MaxUnstackingSwapsPerRound = 4;
                     NumberOfSwapsPerGroup = 2;
@@ -282,6 +284,30 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxUnstackingTicketDifference = 0;
                     DefinitionOfHighPopulationForPlayers = 12;
                     DefinitionOfLowPopulationForPlayers = 6;
+                    DefinitionOfEarlyPhaseFromStart = 0;
+                    DefinitionOfLatePhaseFromEnd = 0;
+                    break;
+                case "Defuse": // BF4
+                    MaxPlayers = 10;
+                    CheckTeamStackingAfterFirstMinutes = 2;
+                    MaxUnstackingSwapsPerRound = 2;
+                    NumberOfSwapsPerGroup = 2;
+                    DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
+                    MaxUnstackingTicketDifference = 0;
+                    DefinitionOfHighPopulationForPlayers = 8;
+                    DefinitionOfLowPopulationForPlayers = 4;
+                    DefinitionOfEarlyPhaseFromStart = 0;
+                    DefinitionOfLatePhaseFromEnd = 0;
+                    break;
+                case "Obliteration": // BF4
+                    MaxPlayers = 32;
+                    CheckTeamStackingAfterFirstMinutes = 2;
+                    MaxUnstackingSwapsPerRound = 2;
+                    NumberOfSwapsPerGroup = 2;
+                    DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
+                    MaxUnstackingTicketDifference = 0;
+                    DefinitionOfHighPopulationForPlayers = 24;
+                    DefinitionOfLowPopulationForPlayers = 8;
                     DefinitionOfEarlyPhaseFromStart = 0;
                     DefinitionOfLatePhaseFromEnd = 0;
                     break;
@@ -1820,7 +1846,7 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         foreach (String sm in simpleModes) {
             PerModeSettings oneSet = null;
             if (!fPerMode.ContainsKey(sm)) {
-                oneSet = new PerModeSettings(sm);
+                oneSet = new PerModeSettings(sm, fGameVersion == GameVersion.BF4);
                 fPerMode[sm] = oneSet;
             } else {
                 oneSet = fPerMode[sm];
@@ -2100,7 +2126,7 @@ public void SetPluginVariable(String strVariable, String strValue) {
                 perModeSetting = Regex.Replace(perModeSetting, @"(?:AsTickets|AsMinutes)", String.Empty);
                 
                 if (!fPerMode.ContainsKey(mode)) {
-                    fPerMode[mode] = new PerModeSettings(mode);
+                    fPerMode[mode] = new PerModeSettings(mode, fGameVersion == GameVersion.BF4);
                 }
                 PerModeSettings pms = fPerMode[mode];
                 
@@ -2265,7 +2291,7 @@ private bool ValidateSettings(String strVariable, String strValue) {
 
         foreach (String mode in fPerMode.Keys) {
             PerModeSettings perMode = fPerMode[mode];
-            PerModeSettings def = new PerModeSettings(mode); // defaults for this mode
+            PerModeSettings def = new PerModeSettings(mode, fGameVersion == GameVersion.BF4); // defaults for this mode
 
             def.MaxPlayers = Math.Min(def.MaxPlayers, MaximumServerSize);
             def.NumberOfSwapsPerGroup = Math.Min(def.NumberOfSwapsPerGroup, perMode.MaxUnstackingSwapsPerRound);
@@ -2415,7 +2441,7 @@ private void ResetSettings() {
     foreach (String sm in simpleModes) {
         PerModeSettings oneSet = null;
         if (!fPerMode.ContainsKey(sm)) {
-            oneSet = new PerModeSettings(sm);
+            oneSet = new PerModeSettings(sm, fGameVersion == GameVersion.BF4);
             fPerMode[sm] = oneSet;
         }
     }
@@ -10567,7 +10593,7 @@ private void UpgradePreV1Settings() {
         foreach (String sm in simpleModes) {
             PerModeSettings oneSet = null;
             if (fPerMode.TryGetValue(sm, out oneSet) && oneSet != null) {
-                PerModeSettings def = new PerModeSettings(sm);
+                PerModeSettings def = new PerModeSettings(sm, fGameVersion == GameVersion.BF4);
                 oneSet.DelaySecondsBetweenSwapGroups = def.DelaySecondsBetweenSwapGroups;
                 oneSet.MaxUnstackingSwapsPerRound = def.MaxUnstackingSwapsPerRound;
                 oneSet.NumberOfSwapsPerGroup = def.NumberOfSwapsPerGroup;
