@@ -2910,6 +2910,26 @@ private void CommandToLog(string cmd) {
             if (!String.IsNullOrEmpty(rCodes)) ConsoleDump(rCodes);
             return;
         }
+
+        // Undocumented command: test BF3 fetch
+        Match testF3 = Regex.Match(cmd, @"^test f3 ([^\s]+)", RegexOptions.IgnoreCase);
+        if (testF3.Success) {
+            ConsoleDump("Testing BF3 Clantag fetch:");
+            PlayerModel dummy = new PlayerModel(testF3.Groups[1].Value, 1);
+            SendBattlelogRequest(dummy.Name, "clanTag", dummy);
+            ConsoleDump("Status = " + dummy.TagFetchStatus.State);
+            return;
+        }
+
+        // Undocumented command: test BF4 fetch
+        Match testF4 = Regex.Match(cmd, @"^test f4 ([^\s]+)", RegexOptions.IgnoreCase);
+        if (testF4.Success) {
+            ConsoleDump("Testing BF4 Clantag fetch:");
+            PlayerModel dummy = new PlayerModel(testF4.Groups[1].Value, 1);
+            SendBattlelogRequestBF4(dummy.Name, "clanTag", dummy);
+            ConsoleDump("Status = " + dummy.TagFetchStatus.State);
+            return;
+        }
         
         // Undocumented command: test scrambler
         if (Regex.Match(cmd, @"^test scrambler", RegexOptions.IgnoreCase).Success) {
@@ -7768,14 +7788,18 @@ public void FetchLoop() {
             }
             
             if (fGameVersion == GameVersion.BF4 && !isTagRequest) {
-                DebugFetch("overview stats fetch not supported for BF4 yet!", 5);
+                DebugFetch("^b" + name + "^n: overview stats fetch not supported for BF4 yet!", 5);
                 continue;
             }
             String requestType = (isTagRequest) ? "clanTag" : "overview";
             if (fIsCacheEnabled) {
                 SendCacheRequest(name, requestType);
             } else {
-                SendBattlelogRequest(name, requestType);
+                if (fGameVersion == GameVersion.BF4) {
+                    SendBattlelogRequestBF4(name, requestType, null);
+                } else {
+                    SendBattlelogRequest(name, requestType, null);
+                }
             }
         }
     } catch (Exception e) {
@@ -7785,12 +7809,12 @@ public void FetchLoop() {
     }
 }
 
-private void SendBattlelogRequest(String name, String requestType) {
+private void SendBattlelogRequest(String name, String requestType, PlayerModel player) {
     try {
         String result = String.Empty;
         String err = String.Empty;
 
-        PlayerModel player = GetPlayer(name);
+        if (player == null) player = GetPlayer(name);
         if (player == null) return;
         FetchInfo status = (requestType == "clanTag") ? player.TagFetchStatus : player.StatsFetchStatus;
         status.State = FetchState.Requesting;
@@ -7827,13 +7851,13 @@ private void SendBattlelogRequest(String name, String requestType) {
 
         if (requestType == "clanTag") {
             // Extract the player tag
-            Match tag = Regex.Match(result, player.PersonaId + @"[/'"">\s]+\[\s*([a-zA-Z0-9]+)\s*\]\s*" + name, RegexOptions.IgnoreCase | RegexOptions.Singleline); // Fixed #9
+            Match tag = Regex.Match(result, player.PersonaId + @"/pc/[/'"">\s]+\[\s*([a-zA-Z0-9]+)\s*\]\s*" + name, RegexOptions.IgnoreCase | RegexOptions.Singleline); // Fixed #9
             //Match tag = Regex.Match(result, @"\[\s*([a-zA-Z0-9]+)\s*\]\s*" + name, RegexOptions.IgnoreCase | RegexOptions.Singleline);
             if (tag.Success) {
                 Hashtable data = new Hashtable();
                 data["clanTag"] = tag.Groups[1].Value;
                 SetTag(player, data); // sets status.State
-                DebugFetch("^Battlelog tag updated: ^b" + player.FullName);
+                DebugFetch("^4Battlelog tag updated: ^b" + player.FullName);
             } else {
                 // No tag
                 player.TagVerified = true;
@@ -7878,6 +7902,139 @@ private void SendBattlelogRequest(String name, String requestType) {
     }
 }
 
+private void SendBattlelogRequestBF4(String name, String requestType, PlayerModel player) {
+    try {
+        String result = String.Empty;
+        String err = String.Empty;
+
+        if (player == null) player = GetPlayer(name);
+        if (player == null) return;
+
+        FetchInfo status = (requestType == "clanTag") ? player.TagFetchStatus : player.StatsFetchStatus;
+        status.State = FetchState.Requesting;
+        status.Since = DateTime.Now;
+        status.RequestType = requestType;
+        DebugFetch("Fetching from Battlelog BF4 " + requestType + "(^b" + name + "^n)");
+
+        if (String.IsNullOrEmpty(player.PersonaId)) {
+            // Get the main page
+            bool ok = false;
+            status.State = FetchState.Failed;
+            if (!fIsEnabled) return;
+            ok = FetchWebPage(ref result, "http://battlelog.battlefield.com/bf4/user/" + name);
+            if (!fIsEnabled) return;
+
+            if (!ok) return;
+
+            // Extract the personaId
+            MatchCollection pid = Regex.Matches(result, @"bf4/soldier/" + name + @"/stats/(\d+)(['""]|/\s*['""]|/[^/'""]+)", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+            foreach (Match match in pid) {
+                if (match.Success && !Regex.Match(match.Groups[2].Value.Trim(), @"(ps3|xbox)", RegexOptions.IgnoreCase).Success) {
+                    player.PersonaId = match.Groups[1].Value.Trim();
+                    break;
+                }
+            }
+
+            if (String.IsNullOrEmpty(player.PersonaId)) {
+                DebugFetch("Request for ^b" + name +"^n failed, could not find persona-id!");
+                status.State = FetchState.Failed;
+                return;
+            }
+        }
+
+        if (requestType == "clanTag") {
+            // Get the stats page
+            bool ok = false;
+            status.State = FetchState.Failed;
+            if (!fIsEnabled) return;
+            String bf4furl = "http://battlelog.battlefield.com/bf4/warsawoverviewpopulate/" + player.PersonaId + "/1/";
+            ok = FetchWebPage(ref result, bf4furl);
+            if (!fIsEnabled) return;
+            if (!ok) return;
+
+            // Get tag from json
+            Hashtable jsonBF4 = (Hashtable)JSON.JsonDecode(result);
+
+            // verify we got a success message
+            if (!CheckSuccess(jsonBF4, out err)) {
+                DebugFetch("Request " + status.RequestType + "(^b" + name + "^n): " + err);
+                return;
+            }
+
+            // verify there is data structure
+            Hashtable data = null;
+            if (!jsonBF4.ContainsKey("data") || (data = (Hashtable)jsonBF4["data"]) == null) {
+                DebugFetch("Request BF4 " + status.RequestType + "(^b" + name + "^n): JSON response does not contain a data field (^4" + bf4furl + "^0)");
+                return;
+            }
+
+            // verify there is viewedPersonaInfo structure, okay if null!
+            Hashtable info = null;
+            if (!data.ContainsKey("viewedPersonaInfo") || (info = (Hashtable)data["viewedPersonaInfo"]) == null) {
+                if (DebugLevel >= 7) DebugFetch("Request BF4" + status.RequestType + "(^b" + name + "^n): JSON response data does not contain viewedPersonaInfo (^4" + bf4furl + "^0)");
+                // No tag
+                player.Tag = String.Empty;
+                player.TagVerified = true;
+                status.State = FetchState.Succeeded;
+                DebugFetch("^4Battlelog says ^b" + player.Name + "^n has no BF4 tag (no viewedPersonaInfo)");
+                return;
+            }
+
+            // Extract the player tag
+            String bf4Tag = String.Empty;
+            if (!info.ContainsKey("tag") || String.IsNullOrEmpty(bf4Tag = (String)info["tag"])) {
+                // No tag
+                player.Tag = String.Empty;
+                player.TagVerified = true;
+                status.State = FetchState.Succeeded;
+                DebugFetch("^4Battlelog says ^b" + player.Name + "^n has no BF4 tag");
+            } else {
+                Hashtable tmp = new Hashtable();
+                tmp["clanTag"] = bf4Tag;
+                SetTag(player, tmp); // sets status.State
+                DebugFetch("^4Battlelog BF4 tag updated: ^b" + player.FullName);
+            }
+        } else if (requestType == "overview") {
+            DebugFetch("Stats fetch not supported for BF4 yet: " + player.Name);
+        /*
+            status.State = FetchState.Failed;
+            if (!fIsEnabled || WhichBattlelogStats == BattlelogStats.ClanTagOnly) return;
+            String furl = "http://battlelog.battlefield.com/bf3/overviewPopulateStats/" + player.PersonaId + "/bf3-us-assault/1/";
+            if (FetchWebPage(ref result, furl)) {
+                if (!fIsEnabled) return;
+
+                Hashtable json = (Hashtable)JSON.JsonDecode(result);
+
+                // verify we got a success message
+                if (!CheckSuccess(json, out err)) {
+                    DebugFetch("Request " + status.RequestType + "(^b" + name + "^n): " + err);
+                    return;
+                }
+
+                // verify there is data structure
+                Hashtable data = null;
+                if (!json.ContainsKey("data") || (data = (Hashtable)json["data"]) == null) {
+                    DebugFetch("Request " + status.RequestType + "(^b" + name + "^n): JSON response does not contain a data field (^4" + furl + "^0)");
+                    return;
+                }
+
+                // verify there is stats structure
+                Hashtable stats = null;
+                if (!data.ContainsKey("overviewStats") || (stats = (Hashtable)data["overviewStats"]) == null) {
+                    DebugFetch("Request " + status.RequestType + "(^b" + name + "^n): JSON response data does not contain overviewStats (^4" + furl + "^0)");
+                    return;
+                }
+
+                // extract the fields from the stats
+                SetStats(player, stats); // sets status.State
+            }
+        */
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+}
 
 public bool IsCacheEnabled(bool verbose) {
     if (fGameVersion == GameVersion.BF4) {
