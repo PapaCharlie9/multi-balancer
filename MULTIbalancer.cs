@@ -170,7 +170,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     NumberOfSwapsPerGroup = 2;
                     DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
                     MaxUnstackingTicketDifference = 100;
-                    DefinitionOfHighPopulationForPlayers = 24;
+                    DefinitionOfHighPopulationForPlayers = (isBF4 && simplifiedModeName == "Domination") ? 16 :24;
                     DefinitionOfLowPopulationForPlayers = 8;
                     DefinitionOfEarlyPhaseFromStart = 50; // assuming 200 tickets typical
                     DefinitionOfLatePhaseFromEnd = 50; // assuming 200 tickets typical
@@ -252,8 +252,8 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     NumberOfSwapsPerGroup = 2;
                     DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
                     MaxUnstackingTicketDifference = 50;
-                    DefinitionOfHighPopulationForPlayers = 48;
-                    DefinitionOfLowPopulationForPlayers = 16;
+                    DefinitionOfHighPopulationForPlayers = (isBF4) ? 16 : 48;
+                    DefinitionOfLowPopulationForPlayers = (isBF4) ? 8 : 16;
                     DefinitionOfEarlyPhaseFromStart = 20; // assuming 100 tickets typical
                     DefinitionOfLatePhaseFromEnd = 20; // assuming 100 tickets typical
                     break;
@@ -1568,7 +1568,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.6.1";
+    return "1.0.6.2";
 }
 
 public String GetPluginAuthor() {
@@ -3717,7 +3717,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
         double attacker = 0;
         double defender = 0;
         double[] oldTickets = new double[]{0, fTickets[1], fTickets[2]};
-        if (fServerInfo.TeamScores == null)  return;
+        if (fServerInfo.TeamScores == null || fServerInfo.TeamScores.Count == 0)  return;
         foreach (TeamScore ts in fServerInfo.TeamScores) {
             if (ts.TeamID >= fTickets.Length) break;
             fTickets[ts.TeamID] = ts.Score;
@@ -3725,7 +3725,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
             if (ts.Score < minTickets) minTickets = ts.Score;
         }
 
-        if (isRush) {
+        if (isRush && fServerInfo.TeamScores.Count >= 2) {
             attacker = fServerInfo.TeamScores[0].Score;
             defender = fServerInfo.TeamScores[1].Score;
             if (fStageInProgress) {
@@ -6040,11 +6040,11 @@ private void SetStats(PlayerModel player, Hashtable stats) {
     propValues["timePlayed"] = -1;
     propValues["kills"] = -1;
     propValues["scorePerMinute"] = -1;
+    propValues["deaths"] = -1;
     propValues["rsDeaths"] = -1;
     propValues["rsKills"] = -1;
     propValues["rsScore"] = -1;
     propValues["rsTimePlayed"] = -1;
-    propValues["deaths"] = -1;
     
     foreach (DictionaryEntry entry in stats) {
         try {
@@ -6093,7 +6093,8 @@ private void SetStats(PlayerModel player, Hashtable stats) {
     player.StatsFetchStatus.State = FetchState.Succeeded;
     player.StatsVerified = true;
     String msg = type + " [bKDR:" + player.KDR.ToString("F2") + ", bSPM:" + player.SPM.ToString("F0") + ", bKPM:" + player.KPM.ToString("F1") + "]";
-    DebugFetch("^4Player stats updated ^0^b" + player.Name + "^n, " + msg);
+    String ver = (fGameVersion == GameVersion.BF4) ? "BF4" : "BF3";
+    DebugFetch("^4Player " + ver + " stats updated ^0^b" + player.Name + "^n, " + msg);
 }
 
 
@@ -7813,10 +7814,6 @@ public void FetchLoop() {
                 since = DateTime.Now;
             }
             
-            if (fGameVersion == GameVersion.BF4 && !isTagRequest) {
-                DebugFetch("^b" + name + "^n: overview stats fetch not supported for BF4 yet!", 5);
-                continue;
-            }
             String requestType = (isTagRequest) ? "clanTag" : "overview";
             if (fIsCacheEnabled) {
                 SendCacheRequest(name, requestType);
@@ -8022,11 +8019,10 @@ private void SendBattlelogRequestBF4(String name, String requestType, PlayerMode
                 DebugFetch("^4Battlelog BF4 tag updated: ^b" + player.FullName);
             }
         } else if (requestType == "overview") {
-            DebugFetch("Stats fetch not supported for BF4 yet: " + player.Name);
-        /*
+            //DebugFetch("Stats fetch not supported for BF4 yet: " + player.Name);
             status.State = FetchState.Failed;
             if (!fIsEnabled || WhichBattlelogStats == BattlelogStats.ClanTagOnly) return;
-            String furl = "http://battlelog.battlefield.com/bf3/overviewPopulateStats/" + player.PersonaId + "/bf3-us-assault/1/";
+            String furl = "http://battlelog.battlefield.com/bf4/warsawoverviewpopulate/" + player.PersonaId + "/1/";
             if (FetchWebPage(ref result, furl)) {
                 if (!fIsEnabled) return;
 
@@ -8055,7 +8051,6 @@ private void SendBattlelogRequestBF4(String name, String requestType, PlayerMode
                 // extract the fields from the stats
                 SetStats(player, stats); // sets status.State
             }
-        */
         }
     } catch (Exception e) {
         ConsoleException(e);
