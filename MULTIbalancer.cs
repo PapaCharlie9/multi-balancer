@@ -1568,7 +1568,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.6.0";
+    return "1.0.6.1";
 }
 
 public String GetPluginAuthor() {
@@ -3225,8 +3225,8 @@ public void OnPluginEnable() {
     fRoundOverTimestamp = DateTime.MinValue;
     fRoundStartTimestamp = DateTime.Now;
 
-    // Determine BF3 vs. BF4?
-    fMaxSquadSize = 4; // TODO
+    // Determine BF3 vs. BF4
+    fMaxSquadSize = (fGameVersion == GameVersion.BF4) ? 5 : 4;
 
     ConsoleWrite("^b^2Enabled!^0^n Version = " + GetPluginVersion(), 0);
     DebugWrite("^b^3State = " + fPluginState, 6);
