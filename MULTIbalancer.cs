@@ -308,8 +308,8 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxUnstackingTicketDifference = 0;
                     DefinitionOfHighPopulationForPlayers = 24;
                     DefinitionOfLowPopulationForPlayers = 8;
-                    DefinitionOfEarlyPhaseFromStart = 0;
-                    DefinitionOfLatePhaseFromEnd = 0;
+                    DefinitionOfEarlyPhaseFromStart = 1;
+                    DefinitionOfLatePhaseFromEnd = 1;
                     break;
                 case "Unknown or New Mode":
                 default:
@@ -1270,7 +1270,7 @@ public MULTIbalancer() {
     KeepFriendsInSameTeam = false;
     DivideBy = DivideByChoices.None;
     ClanTagToDivideBy = String.Empty;
-    DelaySeconds = 30;
+    DelaySeconds = 50;
 
     /* ===== SECTION 5 - Messages ===== */
     
@@ -1568,7 +1568,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.6.2";
+    return "1.0.6.3";
 }
 
 public String GetPluginAuthor() {
@@ -6125,10 +6125,13 @@ private void Scrambler(List<TeamScore> teamScores) {
     if (!perMode.EnableScrambler) {
         DebugScrambler("Enable Scrambler is False, no scramble this round");
         return;
-    } else if (fGameVersion == GameVersion.BF4) {
+    }
+    /*
+    else if (fGameVersion == GameVersion.BF4) {
         ConsoleWarn("Scrambler not supported for BF4 yet!");
         return;
     }
+    */
 
     int current = fServerInfo.CurrentRound + 1; // zero based index
     if (OnlyOnNewMaps && current < fServerInfo.TotalRounds) {
@@ -12241,7 +12244,7 @@ private void LogStatus(bool isFinal, int level) {
 public void OnPluginLoadingEnv(List<string> lstPluginEnv) {
     foreach (String env in lstPluginEnv)
     {
-        ConsoleWrite("^9OnPluginLoadingEnv: " + env, 8); // TODO - remove, for debugging
+        DebugWrite("^9OnPluginLoadingEnv: " + env, 8);
     }
     switch (lstPluginEnv[1])
     {
