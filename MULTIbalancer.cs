@@ -117,6 +117,8 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     public static String[] TEAM_NAMES = new String[] { "None", "US", "RU" };
 
+    public static String[] BF4_TEAM_NAMES = new String[] { "None", "T1:(US or RU)", "T2:(CN or RU)"};
+
     public static String[] RUSH_NAMES = new String[] { "None", "Attacking", "Defending" };
 
     public static String[] SQUAD_NAMES = new String[] { "None",
@@ -1174,8 +1176,8 @@ public MULTIbalancer() {
     fStageInProgress = false;
     fHost = String.Empty;
     fPort = String.Empty;
-    fRushMap3Stages = new List<String>(new String[5]{"MP_007", "XP4_Quake", "XP5_002", "MP_012", "XP4_Rubble"});
-    fRushMap5Stages = new List<String>(new String[4]{"MP_013", "XP3_Valley", "MP_017", "XP5_001"});
+    fRushMap3Stages = new List<String>(new String[6]{"MP_007", "XP4_Quake", "XP5_002", "MP_012", "XP4_Rubble", "MP_Damage"});
+    fRushMap5Stages = new List<String>(new String[6]{"MP_013", "XP3_Valley", "MP_017", "XP5_001", "MP_Prison", "MP_Siege"});
     fGroupAssignments = new int[5]{0,0,0,0,0};
     fDispersalGroups = new List<String>[5]{null, new List<String>(), new List<String>(), new List<String>(), new List<String>()};
     fNeedPlayerListUpdate = false;
@@ -1568,7 +1570,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.6.3";
+    return "1.0.7.0";
 }
 
 public String GetPluginAuthor() {
@@ -2231,7 +2233,7 @@ private bool ValidateSettings(String strVariable, String strValue) {
         /* ===== SECTION 1 - Settings ===== */
 
         if (strVariable.Contains("Debug Level")) {ValidateIntRange(ref DebugLevel, "Debug Level", 0, 9, 2, false);}
-        else if (strVariable.Contains("Maximum Server Size")) {ValidateIntRange(ref MaximumServerSize, "Maximum Server Size", 8, 64, 64, false);}
+        else if (strVariable.Contains("Maximum Server Size")) {ValidateIntRange(ref MaximumServerSize, "Maximum Server Size", 8, 70, 64, false);}
         else if (strVariable.Contains("Maximum Request Rate")) {ValidateIntRange(ref MaximumRequestRate, "Maximum Request Rate", 1, 15, 10, true);} // in 20 seconds
         else if (strVariable.Contains("Wait Timeout")) {ValidateDoubleRange(ref WaitTimeout, "Wait Timeout", 15, 90, 30, false);}
         else if (strVariable.Contains("Unlimited Team Switching During First Minutes Of Round")) {ValidateDouble(ref UnlimitedTeamSwitchingDuringFirstMinutesOfRound, "Unlimited Team Switching During First Minutes Of Round", 5.0);}
@@ -4700,7 +4702,7 @@ private void BalanceAndUnstack(String name) {
         // We don't want to send strong players to the team with the highest score!
         if ((a1 > a2 && winningTeam == 1)
         ||  (a2 > a1 && winningTeam == 2)) {
-            if (DebugLevel >= 7) DebugBalance("Team with highest ticket loss rate is the winning team, do not unstack: " + a1.ToString("F1") + " vs " + a2.ToString("F1") + ", winning team is " + TEAM_NAMES[winningTeam]);
+            if (DebugLevel >= 7) DebugBalance("Team with highest ticket loss rate is the winning team, do not unstack: " + a1.ToString("F1") + " vs " + a2.ToString("F1") + ", winning team is " + TeamName(winningTeam));
             IncrementTotal();
             return;
         }
@@ -6721,7 +6723,7 @@ private void ScramblerLoop () {
                                     sr.Roster.Add(xtra);
                                     targetSquadTable[xtra.Squad] = sr;
                                 }
-                                DebugScrambler("Adding new joining player ^b" + xtra.FullName + "^n to " + TEAM_NAMES[toTeamId] + " team");
+                                DebugScrambler("Adding new joining player ^b" + xtra.FullName + "^n to " + TeamName(toTeamId) + " team");
                                 target.Add(xtra);
                                 lock (fExtrasLock) {
                                     if (fExtraNames.Contains(ename)) fExtraNames.Remove(ename);
@@ -9146,7 +9148,7 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] tea
         // Pick smallest one
         targetTeam = 0;
         allEqual = true;
-        int minSuspects = 64;
+        int minSuspects = 70;
         for (int i = 1; i < usualSuspects.Length; ++i) {
             if (!isSQDM && i > 2) continue;
             if (allEqual && usualSuspects[i] == minSuspects) {
@@ -9212,7 +9214,7 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] tea
         // Pick smallest one
         targetTeam = 0;
         allEqual = true;
-        int minRanks = 64;
+        int minRanks = 70;
         for (int i = 1; i < rankers.Length; ++i) {
             if (!isSQDM && i > 2) continue;
             if (allEqual && rankers[i] == minRanks) {
@@ -9461,7 +9463,7 @@ private String GetTeamName(int team) {
         return RUSH_NAMES[team];
     }
     if (team >= TEAM_NAMES.Length) return "None";
-    return TEAM_NAMES[team];
+    return TeamName(team);
 }
 
 private void ListPlayersLoop() {
@@ -10410,7 +10412,7 @@ void ApplyWizardSettings() {
     ConsoleWrite("Applying Wizard settings ...", 0);
 
     // Validate the numbers
-    ValidateIntRange(ref MaximumPlayersForMode, "Maximum Players For Mode", 8, 64, 64, false);
+    ValidateIntRange(ref MaximumPlayersForMode, "Maximum Players For Mode", 8, 70, 64, false);
     ValidateIntRange(ref LowestMaximumTicketsForMode, "Lowest Maximum Tickets For Mode", 20, 10000, 300, false);
     ValidateIntRange(ref HighestMaximumTicketsForMode, "Highest Maximum Tickets For Mode", 20, 10000, 400, false);
     if (HighestMaximumTicketsForMode < LowestMaximumTicketsForMode) {
@@ -10437,7 +10439,7 @@ void ApplyWizardSettings() {
             ConsoleWrite("Set ^bMax Players^n to " + perMode.MaxPlayers, 0);
 
             // Set the Population ranges
-            if (MaximumPlayersForMode == 64) {
+            if (MaximumPlayersForMode >= 64) {
                 perMode.DefinitionOfHighPopulationForPlayers = 48;
                 perMode.DefinitionOfLowPopulationForPlayers = 16;
             } else if (MaximumPlayersForMode >= 56) {
@@ -11870,7 +11872,7 @@ private double GetAverageTicketLossRate(int team, bool verbose) {
         double actual = Math.Max(1.0, copy.Count);
         rate = (rate / actual) * 60.0; // loss per minute
         if (verbose) {
-            if (debug != null) DebugWrite("^7" + TEAM_NAMES[team] + " (" + copy.Count + ") = " + debug + "]", 8);
+            if (debug != null) DebugWrite("^7" + TeamName(team) + " (" + copy.Count + ") = " + debug + "]", 8);
         }
     } catch (Exception e) {
         ConsoleException(e);
@@ -11930,6 +11932,15 @@ private void CheckRoundEndingDuration() {
 
 
 /* === NEW_NEW_NEW === */
+
+public String TeamName(int teamId) {
+    if (fGameVersion == GameVersion.BF4) {
+        // TODO
+        return BF4_TEAM_NAMES[teamId];
+    }
+    // else BF3
+    return TEAM_NAMES[teamId];
+}
 
 
 
@@ -12513,7 +12524,7 @@ static class MULTIbalancerUtils {
 #region HTML_DOC
     public const String HTML_DOC = @"
 <h1>Multi-Balancer &amp; Unstacker, including SQDM</h1>
-<p>For BF3, this plugin does live round team balancing and unstacking for all game modes, including Squad Deathmatch (SQDM).</p>
+<p>For BF3 and BF4, this plugin does live round team balancing and unstacking for all game modes, including Squad Deathmatch (SQDM).</p>
 
 <h3>Acknowledgments</h3>
 <p>This plugin would not have been possible without the help and support of these individuals and communities:<br></br>
@@ -12523,6 +12534,15 @@ static class MULTIbalancerUtils {
 <p>This plugin is free to use, forever. Support is provided on a voluntary basic, when time is available, by the author and the user community. Use at your own risk, no guarantees are made or implied (complete notice text is in the source code). Some of the code in this plugin (Battlelog and BattlelogCache code, plugin framework, other odds &amp; ends) was directly derived from Insane Limits by micovery. Inspiration for the plugin settings came from TrueBalancer by Panther and all of the members of the design discussion group, some of whom are listed above in the acknowledgments.</p>
 
 <p><b>Section 7 of settings is intentionally not defined.</b></p>
+
+<h4>BF4 Update</h4>
+<p>The following features do not yet work for BF4:
+<ul>
+<li><b>Official mode</b>: this plugin <b>WILL NOT WORK</b> on Official mode servers -- due to admin.movePlayer being disabled on Official mode.</li>
+<li><b>Reassignment moves</b>: reassignment moves would break the new way that <i>Join on Friend</i> works, so this is disabled for BF4 until I can figure out away around the problem.</li>
+<li><b>Battlelog Cache</b>: needs to be updated to BF4.</li>
+<li><b>Yell settings</b>: yell is currently disabled for BF4, as of patch R7.</li>
+</ul></p>
 
 <h2>Description</h2>
 <p>This plugin performs several automated operations:
@@ -12620,7 +12640,7 @@ static class MULTIbalancerUtils {
 
 <p><b>Debug Level</b>: Number from 0 to 9, default 2. Sets the amount of debug messages sent to plugin.log. Status messages for the state of the plugin may be seen at level 4 or higher. Complete details for operation of the plugin may be seen at level 7 or higher. When a problem with the plugin needs to be diagnosed, level 7 will often be required. Setting the level to 0 turns off all logging messages.</p>
 
-<p><b>Maximum Server Size</b>: Number from 8 to 64, default 64. Maximum number of slots on your game server, regardless of game mode.</p>
+<p><b>Maximum Server Size</b>: Number from 8 to 70, default 64. Maximum number of slots on your game server, regardless of game mode.</p>
 
 <p><b>Enable Battlelog Requests</b>: True or False, default True. Enables making requests to Battlelog and uses BattlelogCache if available. Used to obtain clan tag for players and optionally, overview stats SPM, KDR, and KPM.</p>
 
