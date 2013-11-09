@@ -12535,11 +12535,11 @@ static class MULTIbalancerUtils {
 
 <p><b>Section 7 of settings is intentionally not defined.</b></p>
 
-<h4>BF4 Update</h4>
+<h3>BF4 Update</h3>
 <p>The following features do not yet work for BF4:
 <ul>
 <li><b>Official mode</b>: this plugin <b>WILL NOT WORK</b> on Official mode servers -- due to admin.movePlayer being disabled on Official mode.</li>
-<li><b>Reassignment moves</b>: reassignment moves would break the new way that <i>Join on Friend</i> works, so this is disabled for BF4 until I can figure out away around the problem.</li>
+<li><b>Reassignment moves</b>: reassignment moves would break the new way that <i>Join on Friend</i> works for BF4, so this is disabled for BF4 until I can figure out a way around the problem.</li>
 <li><b>Battlelog Cache</b>: needs to be updated to BF4.</li>
 <li><b>Yell settings</b>: yell is currently disabled for BF4, as of patch R7.</li>
 </ul></p>
