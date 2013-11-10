@@ -1572,7 +1572,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.7.0";
+    return "1.0.7.1";
 }
 
 public String GetPluginAuthor() {
@@ -3467,7 +3467,7 @@ public override void OnPlayerMovedByAdmin(string soldierName, int destinationTea
                     // Do updates as needed
                     bool interruptedMBMove = (player != null && player.LastMoveFrom != 0);
                     if (!interruptedMBMove) {
-                        DebugWrite("^4^bADMIN^n moved player (REVERSED) ^b" + soldierName + "^n, " + GetPluginName() + " will respect this move", 2);
+                        DebugWrite("^4^bADMIN^n moved player (REVERSED) ^b" + soldierName + "^n, " + GetPluginName() + " will respect this move", 4);
                     } else {
                         ConsoleDebug("Interrupted move (REVERSED) ^b" + soldierName + "^n, updating to correct");
                     }
