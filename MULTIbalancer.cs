@@ -117,7 +117,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     public static String[] TEAM_NAMES = new String[] { "None", "US", "RU" };
 
-    public static String[] BF4_TEAM_NAMES = new String[] { "None", "T1:(US or RU)", "T2:(CN or RU)"};
+    public static String[] BF4_TEAM_NAMES = new String[] { "None", "T1:US/RU", "T2:CN/RU"};
 
     public static String[] RUSH_NAMES = new String[] { "None", "Attacking", "Defending" };
 
@@ -12778,7 +12778,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 <table border='0'>
 <tr><td>%name%</td><td>player name</td></tr>
 <tr><td>%tag%</td><td>player clan tag</td></tr>
-<tr><td>%fromTeam%</td><td>team the player is currently on, as 'US' or 'RU', or 'Alpha', 'Bravo', 'Charlie', or 'Delta' for SQDM</td></tr>
+<tr><td>%fromTeam%</td><td>team the player is currently on, as 'US' or 'RU', or 'Alpha', 'Bravo', 'Charlie', or 'Delta' for SQDM, or 'T1:US/RU' or 'T2:CN/RU' for BF4.</td></tr>
 <tr><td>%toTeam%</td><td>team the plugin will move the player to, same team name substitutions as for %fromTeam%</td></tr>
 <tr><td>%reason%</td><td>ONLY APPLIES TO BAD TEAM SWITCH: reason for switching the player back, may contain other replacements</td></tr>
 </table></p>
