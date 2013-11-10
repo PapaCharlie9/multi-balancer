@@ -59,6 +59,8 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
 {
     /* Enums */
 
+    public enum GameVersion { BF3, BF4 };
+
     public enum MessageType { Warning, Error, Exception, Normal, Debug };
     
     public enum PresetItems { Standard, Aggressive, Passive, Intensify, Retain, BalanceOnly, UnstackOnly, None };
@@ -115,6 +117,8 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     public static String[] TEAM_NAMES = new String[] { "None", "US", "RU" };
 
+    public static String[] BF4_TEAM_NAMES = new String[] { "None", "T1:US/RU", "T2:CN/RU"};
+
     public static String[] RUSH_NAMES = new String[] { "None", "Attacking", "Defending" };
 
     public static String[] SQUAD_NAMES = new String[] { "None",
@@ -141,7 +145,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
     public class PerModeSettings {
         public PerModeSettings() {}
         
-        public PerModeSettings(String simplifiedModeName) {
+        public PerModeSettings(String simplifiedModeName, bool isBF4) {
             DetermineStrongPlayersBy = DefineStrong.RoundScore;
             PercentOfTopOfTeamIsStrong = 50;
             DisperseEvenlyByRank = 0;
@@ -160,13 +164,15 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             
             switch (simplifiedModeName) {
                 case "Conq Small, Dom, Scav":
-                    MaxPlayers = 32;
+                case "Conquest Small": // BF4
+                case "Domination": // BF4
+                    MaxPlayers = (isBF4 && simplifiedModeName == "Domination") ? 20 : 32;
                     CheckTeamStackingAfterFirstMinutes = 10;
                     MaxUnstackingSwapsPerRound = 2;
                     NumberOfSwapsPerGroup = 2;
                     DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
                     MaxUnstackingTicketDifference = 100;
-                    DefinitionOfHighPopulationForPlayers = 24;
+                    DefinitionOfHighPopulationForPlayers = (isBF4 && simplifiedModeName == "Domination") ? 16 :24;
                     DefinitionOfLowPopulationForPlayers = 8;
                     DefinitionOfEarlyPhaseFromStart = 50; // assuming 200 tickets typical
                     DefinitionOfLatePhaseFromEnd = 50; // assuming 200 tickets typical
@@ -218,7 +224,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     SecondsToCheckForNewStage = 10;
                     break;
                 case "Squad Deathmatch":
-                    MaxPlayers = 16;
+                    MaxPlayers = (isBF4) ? 20 : 16;
                     CheckTeamStackingAfterFirstMinutes = 0;
                     MaxUnstackingSwapsPerRound = 0;
                     NumberOfSwapsPerGroup = 0;
@@ -242,14 +248,14 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     DefinitionOfLatePhaseFromEnd = 50; // assuming 250 tickets typical
                     break;
                 case "Team Deathmatch":
-                    MaxPlayers = 64;
+                    MaxPlayers = (isBF4) ? 20 : 64;
                     CheckTeamStackingAfterFirstMinutes = 5;
                     MaxUnstackingSwapsPerRound = 4;
                     NumberOfSwapsPerGroup = 2;
                     DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
                     MaxUnstackingTicketDifference = 50;
-                    DefinitionOfHighPopulationForPlayers = 48;
-                    DefinitionOfLowPopulationForPlayers = 16;
+                    DefinitionOfHighPopulationForPlayers = (isBF4) ? 16 : 48;
+                    DefinitionOfLowPopulationForPlayers = (isBF4) ? 8 : 16;
                     DefinitionOfEarlyPhaseFromStart = 20; // assuming 100 tickets typical
                     DefinitionOfLatePhaseFromEnd = 20; // assuming 100 tickets typical
                     break;
@@ -282,6 +288,30 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     DefinitionOfLowPopulationForPlayers = 6;
                     DefinitionOfEarlyPhaseFromStart = 0;
                     DefinitionOfLatePhaseFromEnd = 0;
+                    break;
+                case "Defuse": // BF4
+                    MaxPlayers = 10;
+                    CheckTeamStackingAfterFirstMinutes = 2;
+                    MaxUnstackingSwapsPerRound = 2;
+                    NumberOfSwapsPerGroup = 2;
+                    DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
+                    MaxUnstackingTicketDifference = 0;
+                    DefinitionOfHighPopulationForPlayers = 8;
+                    DefinitionOfLowPopulationForPlayers = 4;
+                    DefinitionOfEarlyPhaseFromStart = 0;
+                    DefinitionOfLatePhaseFromEnd = 0;
+                    break;
+                case "Obliteration": // BF4
+                    MaxPlayers = 32;
+                    CheckTeamStackingAfterFirstMinutes = 2;
+                    MaxUnstackingSwapsPerRound = 2;
+                    NumberOfSwapsPerGroup = 2;
+                    DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
+                    MaxUnstackingTicketDifference = 0;
+                    DefinitionOfHighPopulationForPlayers = 24;
+                    DefinitionOfLowPopulationForPlayers = 8;
+                    DefinitionOfEarlyPhaseFromStart = 1;
+                    DefinitionOfLatePhaseFromEnd = 1;
                     break;
                 case "Unknown or New Mode":
                 default:
@@ -854,6 +884,10 @@ private Histogram fTicketLossHistogram = null;
 private double fTotalRoundEndingSeconds = 0;
 private double fTotalRoundEndingRounds = 0;
 
+// BF4
+private int fMaxSquadSize = 4;
+private GameVersion fGameVersion = GameVersion.BF3;
+
 // Data model
 private List<String> fAllPlayers = null;
 private Dictionary<String, PlayerModel> fKnownPlayers = null;
@@ -895,6 +929,7 @@ private bool fStageInProgress = false;
 private Dictionary<int,List<String>> fFriends;
 private List<String> fAllFriends;
 private List<DelayedRequest> fTimerRequestList = null;
+private DateTime fLastValidationTimestamp;
 
 // Operational statistics
 private int fReassignedRound = 0;
@@ -1107,6 +1142,7 @@ public MULTIbalancer() {
     fRoundOverTimestamp = DateTime.MinValue;
     fListPlayersTimestamp = DateTime.MinValue;
     fFullUnstackSwapTimestamp = DateTime.MinValue;
+    fLastValidationTimestamp = DateTime.MinValue;
     fListPlayersQ = new Queue<DelayedRequest>();
 
     fPendingTeamChange = new Dictionary<String,int>();
@@ -1142,8 +1178,8 @@ public MULTIbalancer() {
     fStageInProgress = false;
     fHost = String.Empty;
     fPort = String.Empty;
-    fRushMap3Stages = new List<String>(new String[5]{"MP_007", "XP4_Quake", "XP5_002", "MP_012", "XP4_Rubble"});
-    fRushMap5Stages = new List<String>(new String[4]{"MP_013", "XP3_Valley", "MP_017", "XP5_001"});
+    fRushMap3Stages = new List<String>(new String[6]{"MP_007", "XP4_Quake", "XP5_002", "MP_012", "XP4_Rubble", "MP_Damage"});
+    fRushMap5Stages = new List<String>(new String[6]{"MP_013", "XP3_Valley", "MP_017", "XP5_001", "MP_Prison", "MP_Siege"});
     fGroupAssignments = new int[5]{0,0,0,0,0};
     fDispersalGroups = new List<String>[5]{null, new List<String>(), new List<String>(), new List<String>(), new List<String>()};
     fNeedPlayerListUpdate = false;
@@ -1238,7 +1274,7 @@ public MULTIbalancer() {
     KeepFriendsInSameTeam = false;
     DivideBy = DivideByChoices.None;
     ClanTagToDivideBy = String.Empty;
-    DelaySeconds = 30;
+    DelaySeconds = 50;
 
     /* ===== SECTION 5 - Messages ===== */
     
@@ -1536,7 +1572,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.5.0";
+    return "1.0.7.0";
 }
 
 public String GetPluginAuthor() {
@@ -1814,7 +1850,7 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         foreach (String sm in simpleModes) {
             PerModeSettings oneSet = null;
             if (!fPerMode.ContainsKey(sm)) {
-                oneSet = new PerModeSettings(sm);
+                oneSet = new PerModeSettings(sm, fGameVersion == GameVersion.BF4);
                 fPerMode[sm] = oneSet;
             } else {
                 oneSet = fPerMode[sm];
@@ -2094,7 +2130,7 @@ public void SetPluginVariable(String strVariable, String strValue) {
                 perModeSetting = Regex.Replace(perModeSetting, @"(?:AsTickets|AsMinutes)", String.Empty);
                 
                 if (!fPerMode.ContainsKey(mode)) {
-                    fPerMode[mode] = new PerModeSettings(mode);
+                    fPerMode[mode] = new PerModeSettings(mode, fGameVersion == GameVersion.BF4);
                 }
                 PerModeSettings pms = fPerMode[mode];
                 
@@ -2199,7 +2235,7 @@ private bool ValidateSettings(String strVariable, String strValue) {
         /* ===== SECTION 1 - Settings ===== */
 
         if (strVariable.Contains("Debug Level")) {ValidateIntRange(ref DebugLevel, "Debug Level", 0, 9, 2, false);}
-        else if (strVariable.Contains("Maximum Server Size")) {ValidateIntRange(ref MaximumServerSize, "Maximum Server Size", 8, 64, 64, false);}
+        else if (strVariable.Contains("Maximum Server Size")) {ValidateIntRange(ref MaximumServerSize, "Maximum Server Size", 8, 70, 64, false);}
         else if (strVariable.Contains("Maximum Request Rate")) {ValidateIntRange(ref MaximumRequestRate, "Maximum Request Rate", 1, 15, 10, true);} // in 20 seconds
         else if (strVariable.Contains("Wait Timeout")) {ValidateDoubleRange(ref WaitTimeout, "Wait Timeout", 15, 90, 30, false);}
         else if (strVariable.Contains("Unlimited Team Switching During First Minutes Of Round")) {ValidateDouble(ref UnlimitedTeamSwitchingDuringFirstMinutesOfRound, "Unlimited Team Switching During First Minutes Of Round", 5.0);}
@@ -2259,7 +2295,7 @@ private bool ValidateSettings(String strVariable, String strValue) {
 
         foreach (String mode in fPerMode.Keys) {
             PerModeSettings perMode = fPerMode[mode];
-            PerModeSettings def = new PerModeSettings(mode); // defaults for this mode
+            PerModeSettings def = new PerModeSettings(mode, fGameVersion == GameVersion.BF4); // defaults for this mode
 
             def.MaxPlayers = Math.Min(def.MaxPlayers, MaximumServerSize);
             def.NumberOfSwapsPerGroup = Math.Min(def.NumberOfSwapsPerGroup, perMode.MaxUnstackingSwapsPerRound);
@@ -2409,7 +2445,7 @@ private void ResetSettings() {
     foreach (String sm in simpleModes) {
         PerModeSettings oneSet = null;
         if (!fPerMode.ContainsKey(sm)) {
-            oneSet = new PerModeSettings(sm);
+            oneSet = new PerModeSettings(sm, fGameVersion == GameVersion.BF4);
             fPerMode[sm] = oneSet;
         }
     }
@@ -2554,7 +2590,7 @@ private void CommandToLog(string cmd) {
                 ConsoleDump(item);
             }
             ConsoleDump(" ");
-            for (int i = 1; i <= 4; ++i) {
+            for (int i = 1; i <= 4; ++i) { // 1 to 4 teams
                 if (fDispersalGroups[i].Count > 0) {
                     msg = "Dispersal Group " + i + " (" + fDispersalGroups[i].Count + "): " + String.Join(", ", fDispersalGroups[i].ToArray());
                     ConsoleDump(msg);
@@ -2562,7 +2598,7 @@ private void CommandToLog(string cmd) {
             }
             ConsoleDump(" ");
             msg = "Group assignments: ";
-            for (int i = 1; i <= 4; ++i) {
+            for (int i = 1; i <= 4; ++i) { // 1 to 4 teams
                 msg = msg + fGroupAssignments[i];
                 if (i < 4) msg = msg + "/";
             }
@@ -2904,6 +2940,26 @@ private void CommandToLog(string cmd) {
             if (!String.IsNullOrEmpty(rCodes)) ConsoleDump(rCodes);
             return;
         }
+
+        // Undocumented command: test BF3 fetch
+        Match testF3 = Regex.Match(cmd, @"^test f3 ([^\s]+)", RegexOptions.IgnoreCase);
+        if (testF3.Success) {
+            ConsoleDump("Testing BF3 Clantag fetch:");
+            PlayerModel dummy = new PlayerModel(testF3.Groups[1].Value, 1);
+            SendBattlelogRequest(dummy.Name, "clanTag", dummy);
+            ConsoleDump("Status = " + dummy.TagFetchStatus.State);
+            return;
+        }
+
+        // Undocumented command: test BF4 fetch
+        Match testF4 = Regex.Match(cmd, @"^test f4 ([^\s]+)", RegexOptions.IgnoreCase);
+        if (testF4.Success) {
+            ConsoleDump("Testing BF4 Clantag fetch:");
+            PlayerModel dummy = new PlayerModel(testF4.Groups[1].Value, 1);
+            SendBattlelogRequestBF4(dummy.Name, "clanTag", dummy);
+            ConsoleDump("Status = " + dummy.TagFetchStatus.State);
+            return;
+        }
         
         // Undocumented command: test scrambler
         if (Regex.Match(cmd, @"^test scrambler", RegexOptions.IgnoreCase).Success) {
@@ -3173,6 +3229,9 @@ public void OnPluginEnable() {
     fRoundOverTimestamp = DateTime.MinValue;
     fRoundStartTimestamp = DateTime.Now;
 
+    // Determine BF3 vs. BF4
+    fMaxSquadSize = (fGameVersion == GameVersion.BF4) ? 5 : 4;
+
     ConsoleWrite("^b^2Enabled!^0^n Version = " + GetPluginVersion(), 0);
     DebugWrite("^b^3State = " + fPluginState, 6);
     DebugWrite("^b^3Game state = " + fGameState, 6);
@@ -3305,6 +3364,10 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
             int diff = 0;
             bool mustMove = false; // don't have a player model yet, can't determine if must move
             int reassignTo = ToTeam(soldierName, teamId, true, out diff, ref mustMove);
+            if (fGameVersion == GameVersion.BF4) {
+                DebugWrite("^4New player^0: ^b" + soldierName + "^n not reassigned, reassignment disabled for BF4 ... ", 5);
+                reassignTo = 0; 
+            }
             if ((reassignTo == 0 || reassignTo == teamId) && !fWhileScrambling) {
                 // New player was going to the right team anyway
                 IncrementTotal(); // no matching stat, reflects non-reassigment joins
@@ -3520,7 +3583,7 @@ public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subs
         Check if server crashed or Blaze dumped players or model invalid for too long.
         Detected by: last recorded server uptime is greater than zero and less than new uptime,
         or a player model timed out while still being on the all players list,
-        or got a version command response, which is used in connection initialization for Procon,
+        or got an OnLogin callback, which is used in connection initialization for Procon,
         or the current list of players is more than CRASH_COUNT_HEURISTIC players less than the last
         recorded count, or the last known player count is greater than the maximum server size,
         or more than 3 minutes have elapsed since a move/reassign was started.
@@ -3658,7 +3721,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
         double attacker = 0;
         double defender = 0;
         double[] oldTickets = new double[]{0, fTickets[1], fTickets[2]};
-        if (fServerInfo.TeamScores == null)  return;
+        if (fServerInfo.TeamScores == null || fServerInfo.TeamScores.Count == 0)  return;
         foreach (TeamScore ts in fServerInfo.TeamScores) {
             if (ts.TeamID >= fTickets.Length) break;
             fTickets[ts.TeamID] = ts.Score;
@@ -3666,7 +3729,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
             if (ts.Score < minTickets) minTickets = ts.Score;
         }
 
-        if (isRush) {
+        if (isRush && fServerInfo.TeamScores.Count >= 2) {
             attacker = fServerInfo.TeamScores[0].Score;
             defender = fServerInfo.TeamScores[1].Score;
             if (fStageInProgress) {
@@ -4313,7 +4376,7 @@ private void BalanceAndUnstack(String name) {
 
     // Special exemption if tag not verified and first/partial round
     if (!player.TagVerified && player.Rounds <= 1) {
-        if (DebugLevel >= 7) DebugBalance("Skipping ^b" + player.Name + "^n, clan tag not verified yet"); // 8
+        if (DebugLevel >= 7) DebugBalance("Skipping ^b" + player.Name + "^n, clan tag not verified yet");
         // Don't count this as an excemption
         // Don't increment the total
         return;
@@ -4641,7 +4704,7 @@ private void BalanceAndUnstack(String name) {
         // We don't want to send strong players to the team with the highest score!
         if ((a1 > a2 && winningTeam == 1)
         ||  (a2 > a1 && winningTeam == 2)) {
-            if (DebugLevel >= 7) DebugBalance("Team with highest ticket loss rate is the winning team, do not unstack: " + a1.ToString("F1") + " vs " + a2.ToString("F1") + ", winning team is " + TEAM_NAMES[winningTeam]);
+            if (DebugLevel >= 7) DebugBalance("Team with highest ticket loss rate is the winning team, do not unstack: " + a1.ToString("F1") + " vs " + a2.ToString("F1") + ", winning team is " + TeamName(winningTeam));
             IncrementTotal();
             return;
         }
@@ -4955,6 +5018,15 @@ private void UpdatePlayerTeam(String name, int team) {
 }
 
 private void ValidateModel(List<CPlayerInfo> players) {
+    if (fLastValidationTimestamp != DateTime.MinValue) {
+        TimeSpan elapsed = DateTime.Now.Subtract(fLastValidationTimestamp);
+        if (elapsed.TotalSeconds < 90.0) {
+            DebugWrite("Skipping revalidation: too soon, only " + elapsed.TotalSeconds.ToString("F0") + " seconds since last ValidateModel", 4);
+            return;
+        }
+    }
+    fLastValidationTimestamp = DateTime.Now;
+
     DebugWrite("Revalidating all players and teams", 3);
 
     // forget the active list, might be incorrect
@@ -5981,11 +6053,11 @@ private void SetStats(PlayerModel player, Hashtable stats) {
     propValues["timePlayed"] = -1;
     propValues["kills"] = -1;
     propValues["scorePerMinute"] = -1;
+    propValues["deaths"] = -1;
     propValues["rsDeaths"] = -1;
     propValues["rsKills"] = -1;
     propValues["rsScore"] = -1;
     propValues["rsTimePlayed"] = -1;
-    propValues["deaths"] = -1;
     
     foreach (DictionaryEntry entry in stats) {
         try {
@@ -6034,7 +6106,8 @@ private void SetStats(PlayerModel player, Hashtable stats) {
     player.StatsFetchStatus.State = FetchState.Succeeded;
     player.StatsVerified = true;
     String msg = type + " [bKDR:" + player.KDR.ToString("F2") + ", bSPM:" + player.SPM.ToString("F0") + ", bKPM:" + player.KPM.ToString("F1") + "]";
-    DebugFetch("^4Player stats updated ^0^b" + player.Name + "^n, " + msg);
+    String ver = (fGameVersion == GameVersion.BF4) ? "BF4" : "BF3";
+    DebugFetch("^4Player " + ver + " stats updated ^0^b" + player.Name + "^n, " + msg);
 }
 
 
@@ -6066,6 +6139,12 @@ private void Scrambler(List<TeamScore> teamScores) {
         DebugScrambler("Enable Scrambler is False, no scramble this round");
         return;
     }
+    /*
+    else if (fGameVersion == GameVersion.BF4) {
+        ConsoleWarn("Scrambler not supported for BF4 yet!");
+        return;
+    }
+    */
 
     int current = fServerInfo.CurrentRound + 1; // zero based index
     if (OnlyOnNewMaps && current < fServerInfo.TotalRounds) {
@@ -6648,14 +6727,14 @@ private void ScramblerLoop () {
                                 if (xtra == null) continue;
                                 SquadRoster sr = null;
                                 if (targetSquadTable.TryGetValue(xtra.Squad, out sr)) {
-                                    if (sr.Roster.Count >= 4) continue;
+                                    if (sr.Roster.Count >= fMaxSquadSize) continue;
                                     sr.Roster.Add(xtra);
                                 } else {
                                     sr = new SquadRoster(xtra.Squad);
                                     sr.Roster.Add(xtra);
                                     targetSquadTable[xtra.Squad] = sr;
                                 }
-                                DebugScrambler("Adding new joining player ^b" + xtra.FullName + "^n to " + TEAM_NAMES[toTeamId] + " team");
+                                DebugScrambler("Adding new joining player ^b" + xtra.FullName + "^n to " + TeamName(toTeamId) + " team");
                                 target.Add(xtra);
                                 lock (fExtrasLock) {
                                     if (fExtraNames.Contains(ename)) fExtraNames.Remove(ename);
@@ -6808,7 +6887,7 @@ private void ScramblerLoop () {
                     }
                 }
                 
-                // Assert that no squad has more than 4 players
+                // Assert that no squad has more than fMaxSquadSize players
                 Dictionary<int,int> playerCount = new Dictionary<int,int>();
                 foreach (PlayerModel clone in usScrambled) {
                     int num = 0;
@@ -6823,8 +6902,8 @@ private void ScramblerLoop () {
                     playerCount[clone.Squad] = num;
                 }
                 foreach (int squadId in playerCount.Keys) {
-                    if (playerCount[squadId] > 4) {
-                        ConsoleDebug("ASSERT: " + GetTeamName(1) + "/" + SQUAD_NAMES[squadId] + " has > 4 players! = " + playerCount[squadId]);
+                    if (playerCount[squadId] > fMaxSquadSize) {
+                        ConsoleDebug("ASSERT: " + GetTeamName(1) + "/" + SQUAD_NAMES[squadId] + " has > " + fMaxSquadSize + " players! = " + playerCount[squadId]);
                     }
                 }
                 playerCount.Clear();
@@ -6841,8 +6920,8 @@ private void ScramblerLoop () {
                     playerCount[clone.Squad] = num;
                 }
                 foreach (int squadId in playerCount.Keys) {
-                    if (playerCount[squadId] > 4) {
-                        ConsoleDebug("ASSERT: " + GetTeamName(2) + "/" + SQUAD_NAMES[squadId] + " has > 4 players! = " + playerCount[squadId]);
+                    if (playerCount[squadId] > fMaxSquadSize) {
+                        ConsoleDebug("ASSERT: " + GetTeamName(2) + "/" + SQUAD_NAMES[squadId] + " has > " + fMaxSquadSize + " players! = " + playerCount[squadId]);
                     }
                 }
                 playerCount.Clear();
@@ -6952,8 +7031,7 @@ private void SwapSameClanTags(ref List<PlayerModel> usScrambled, ref List<Player
         // Calculate distribution between the two teams
         foreach (PlayerModel clone in usScrambled) {
             String tagOrFriendex = ExtractTagOrFriendex(clone);
-            if (String.IsNullOrEmpty(tagOrFriendex)) {
-            }
+            if (String.IsNullOrEmpty(tagOrFriendex)) continue;
             int[] teamCounts = null;
             if (matesDistribution.TryGetValue(tagOrFriendex, out teamCounts) && teamCounts != null) {
                 teamCounts[1] = teamCounts[1] + 1;
@@ -7309,8 +7387,8 @@ private ScrambleStatus ScrambleTeams(List<PlayerModel> usOrig, List<PlayerModel>
             if (allocated.TryGetValue(key, out num)) {
                 num = num + 1;
             }
-            if (num > 4) {
-                DebugScrambler("WARNING: team " + nextList + ", squad " + clone.ScrambledSquad + " has more than 4 players!");
+            if (num > fMaxSquadSize) {
+                DebugScrambler("WARNING: team " + nextList + ", squad " + clone.ScrambledSquad + " has more than " + fMaxSquadSize + " players!");
             } else {
                 allocated[key] = num;
             }
@@ -7377,7 +7455,7 @@ private void RestoreSquads(List<PlayerModel> allCopy, Dictionary<int,int> alloca
             // If the original squad is full, pick one that isn't
             if (allocated != null) {
                 int key = (1000 * clone.Team) + toSquad;
-                while (allocated.ContainsKey(key) && allocated[key] >= 4) {
+                while (allocated.ContainsKey(key) && allocated[key] >= fMaxSquadSize) {
                     ++toSquad;
                     if (toSquad >= SQUAD_NAMES.Length) {
                         break;
@@ -7407,7 +7485,7 @@ private void RestoreSquads(List<PlayerModel> allCopy, Dictionary<int,int> alloca
 private SquadRoster AddPlayerToSquadRoster(Dictionary<int,SquadRoster> squads, PlayerModel player, int key, int squadId, bool ignoreSize) {
     SquadRoster squad = null;
     if (squads.TryGetValue(key, out squad)) {
-        if (ignoreSize || squad.Roster.Count < 4) {
+        if (ignoreSize || squad.Roster.Count < fMaxSquadSize) {
             squad.Roster.Add(player);
         }
     } else {
@@ -7555,7 +7633,7 @@ private void AssignFillerToTeam(PlayerModel filler, int toTeamId, List<PlayerMod
     SquadRoster toSquad = null;
     foreach (int key in targetSquadTable.Keys) {
         toSquad = targetSquadTable[key];
-        if (toSquad.Roster.Count == 4) continue;
+        if (toSquad.Roster.Count == fMaxSquadSize) continue;
         toSquadId = key;
         break;
     }
@@ -7751,12 +7829,16 @@ public void FetchLoop() {
                 requests = 1; // reset
                 since = DateTime.Now;
             }
-
+            
             String requestType = (isTagRequest) ? "clanTag" : "overview";
             if (fIsCacheEnabled) {
                 SendCacheRequest(name, requestType);
             } else {
-                SendBattlelogRequest(name, requestType);
+                if (fGameVersion == GameVersion.BF4) {
+                    SendBattlelogRequestBF4(name, requestType, null);
+                } else {
+                    SendBattlelogRequest(name, requestType, null);
+                }
             }
         }
     } catch (Exception e) {
@@ -7766,12 +7848,12 @@ public void FetchLoop() {
     }
 }
 
-private void SendBattlelogRequest(String name, String requestType) {
+private void SendBattlelogRequest(String name, String requestType, PlayerModel player) {
     try {
         String result = String.Empty;
         String err = String.Empty;
 
-        PlayerModel player = GetPlayer(name);
+        if (player == null) player = GetPlayer(name);
         if (player == null) return;
         FetchInfo status = (requestType == "clanTag") ? player.TagFetchStatus : player.StatsFetchStatus;
         status.State = FetchState.Requesting;
@@ -7808,13 +7890,13 @@ private void SendBattlelogRequest(String name, String requestType) {
 
         if (requestType == "clanTag") {
             // Extract the player tag
-            Match tag = Regex.Match(result, player.PersonaId + @"[/'"">\s]+\[\s*([a-zA-Z0-9]+)\s*\]\s*" + name, RegexOptions.IgnoreCase | RegexOptions.Singleline); // Fixed #9
+            Match tag = Regex.Match(result, player.PersonaId + @"/pc/[/'"">\s]+\[\s*([a-zA-Z0-9]+)\s*\]\s*" + name, RegexOptions.IgnoreCase | RegexOptions.Singleline); // Fixed #9
             //Match tag = Regex.Match(result, @"\[\s*([a-zA-Z0-9]+)\s*\]\s*" + name, RegexOptions.IgnoreCase | RegexOptions.Singleline);
             if (tag.Success) {
                 Hashtable data = new Hashtable();
                 data["clanTag"] = tag.Groups[1].Value;
                 SetTag(player, data); // sets status.State
-                DebugFetch("^Battlelog tag updated: ^b" + player.FullName);
+                DebugFetch("^4Battlelog tag updated: ^b" + player.FullName);
             } else {
                 // No tag
                 player.TagVerified = true;
@@ -7859,8 +7941,143 @@ private void SendBattlelogRequest(String name, String requestType) {
     }
 }
 
+private void SendBattlelogRequestBF4(String name, String requestType, PlayerModel player) {
+    try {
+        String result = String.Empty;
+        String err = String.Empty;
+
+        if (player == null) player = GetPlayer(name);
+        if (player == null) return;
+
+        FetchInfo status = (requestType == "clanTag") ? player.TagFetchStatus : player.StatsFetchStatus;
+        status.State = FetchState.Requesting;
+        status.Since = DateTime.Now;
+        status.RequestType = requestType;
+        DebugFetch("Fetching from Battlelog BF4 " + requestType + "(^b" + name + "^n)");
+
+        if (String.IsNullOrEmpty(player.PersonaId)) {
+            // Get the main page
+            bool ok = false;
+            status.State = FetchState.Failed;
+            if (!fIsEnabled) return;
+            ok = FetchWebPage(ref result, "http://battlelog.battlefield.com/bf4/user/" + name);
+            if (!fIsEnabled) return;
+
+            if (!ok) return;
+
+            // Extract the personaId
+            MatchCollection pid = Regex.Matches(result, @"bf4/soldier/" + name + @"/stats/(\d+)(['""]|/\s*['""]|/[^/'""]+)", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+            foreach (Match match in pid) {
+                if (match.Success && !Regex.Match(match.Groups[2].Value.Trim(), @"(ps3|xbox)", RegexOptions.IgnoreCase).Success) {
+                    player.PersonaId = match.Groups[1].Value.Trim();
+                    break;
+                }
+            }
+
+            if (String.IsNullOrEmpty(player.PersonaId)) {
+                DebugFetch("Request for ^b" + name +"^n failed, could not find persona-id!");
+                status.State = FetchState.Failed;
+                return;
+            }
+        }
+
+        if (requestType == "clanTag") {
+            // Get the stats page
+            bool ok = false;
+            status.State = FetchState.Failed;
+            if (!fIsEnabled) return;
+            String bf4furl = "http://battlelog.battlefield.com/bf4/warsawoverviewpopulate/" + player.PersonaId + "/1/";
+            ok = FetchWebPage(ref result, bf4furl);
+            if (!fIsEnabled) return;
+            if (!ok) return;
+
+            // Get tag from json
+            Hashtable jsonBF4 = (Hashtable)JSON.JsonDecode(result);
+
+            // verify we got a success message
+            if (!CheckSuccess(jsonBF4, out err)) {
+                DebugFetch("Request " + status.RequestType + "(^b" + name + "^n): " + err);
+                return;
+            }
+
+            // verify there is data structure
+            Hashtable data = null;
+            if (!jsonBF4.ContainsKey("data") || (data = (Hashtable)jsonBF4["data"]) == null) {
+                DebugFetch("Request BF4 " + status.RequestType + "(^b" + name + "^n): JSON response does not contain a data field (^4" + bf4furl + "^0)");
+                return;
+            }
+
+            // verify there is viewedPersonaInfo structure, okay if null!
+            Hashtable info = null;
+            if (!data.ContainsKey("viewedPersonaInfo") || (info = (Hashtable)data["viewedPersonaInfo"]) == null) {
+                if (DebugLevel >= 7) DebugFetch("Request BF4" + status.RequestType + "(^b" + name + "^n): JSON response data does not contain viewedPersonaInfo (^4" + bf4furl + "^0)");
+                // No tag
+                player.Tag = String.Empty;
+                player.TagVerified = true;
+                status.State = FetchState.Succeeded;
+                DebugFetch("^4Battlelog says ^b" + player.Name + "^n has no BF4 tag (no viewedPersonaInfo)");
+                return;
+            }
+
+            // Extract the player tag
+            String bf4Tag = String.Empty;
+            if (!info.ContainsKey("tag") || String.IsNullOrEmpty(bf4Tag = (String)info["tag"])) {
+                // No tag
+                player.Tag = String.Empty;
+                player.TagVerified = true;
+                status.State = FetchState.Succeeded;
+                DebugFetch("^4Battlelog says ^b" + player.Name + "^n has no BF4 tag");
+            } else {
+                Hashtable tmp = new Hashtable();
+                tmp["clanTag"] = bf4Tag;
+                SetTag(player, tmp); // sets status.State
+                DebugFetch("^4Battlelog BF4 tag updated: ^b" + player.FullName);
+            }
+        } else if (requestType == "overview") {
+            //DebugFetch("Stats fetch not supported for BF4 yet: " + player.Name);
+            status.State = FetchState.Failed;
+            if (!fIsEnabled || WhichBattlelogStats == BattlelogStats.ClanTagOnly) return;
+            String furl = "http://battlelog.battlefield.com/bf4/warsawoverviewpopulate/" + player.PersonaId + "/1/";
+            if (FetchWebPage(ref result, furl)) {
+                if (!fIsEnabled) return;
+
+                Hashtable json = (Hashtable)JSON.JsonDecode(result);
+
+                // verify we got a success message
+                if (!CheckSuccess(json, out err)) {
+                    DebugFetch("Request " + status.RequestType + "(^b" + name + "^n): " + err);
+                    return;
+                }
+
+                // verify there is data structure
+                Hashtable data = null;
+                if (!json.ContainsKey("data") || (data = (Hashtable)json["data"]) == null) {
+                    DebugFetch("Request " + status.RequestType + "(^b" + name + "^n): JSON response does not contain a data field (^4" + furl + "^0)");
+                    return;
+                }
+
+                // verify there is stats structure
+                Hashtable stats = null;
+                if (!data.ContainsKey("overviewStats") || (stats = (Hashtable)data["overviewStats"]) == null) {
+                    DebugFetch("Request " + status.RequestType + "(^b" + name + "^n): JSON response data does not contain overviewStats (^4" + furl + "^0)");
+                    return;
+                }
+
+                // extract the fields from the stats
+                SetStats(player, stats); // sets status.State
+            }
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+}
 
 public bool IsCacheEnabled(bool verbose) {
+    if (fGameVersion == GameVersion.BF4) {
+        ConsoleWarn("BattlelogCache is not supported for BF4 yet!");
+        return false;
+    }
     List<MatchCommand> registered = this.GetRegisteredCommands();
     foreach (MatchCommand command in registered) {
         if (command.RegisteredClassname.CompareTo("CBattlelogCache") == 0 && command.RegisteredMethodName.CompareTo("PlayerLookup") == 0) {
@@ -8219,37 +8436,56 @@ private List<String> GetSimplifiedModes() {
         List<CMap> raw = this.GetMapDefines();
         foreach (CMap m in raw) {
             String simple = null;
-            switch (m.GameMode) {
-                case "Conquest Large":
-                case "Assault64":
-                    simple = "Conquest Large";
-                    break;
-                case "Conquest Small": // Fix for Issue #34
-                case "Assault":
-                case "Assault #2":
-                case "Conquest Domination":
-                case "Scavenger":
-                    simple = "Conq Small, Dom, Scav";
-                    break;
-                case "TDM":
-                case "TDM Close Quarters":
-                    simple = "Team Deathmatch";
-                    break;
-                case "Tank Superiority":
-                case "Air Superiority":
-                    simple = "Superiority";
-                    break;
-                case "Rush":
-                case "CTF":
-                case "Squad Deathmatch":
-                case "Gun Master":
-                case "Squad Rush":
-                    simple = m.GameMode;
-                    break;
-                default:
-                    simple = "Unknown or New Mode";
-                    break;
-                
+            if (fGameVersion == GameVersion.BF3) {
+                switch (m.GameMode) {
+                    case "Conquest Large":
+                    case "Assault64":
+                        simple = "Conquest Large";
+                        break;
+                    case "Conquest Small": // Fix for Issue #34
+                    case "Assault":
+                    case "Assault #2":
+                    case "Conquest Domination":
+                    case "Scavenger":
+                        simple = "Conq Small, Dom, Scav";
+                        break;
+                    case "TDM":
+                    case "TDM Close Quarters":
+                        simple = "Team Deathmatch";
+                        break;
+                    case "Tank Superiority":
+                    case "Air Superiority":
+                        simple = "Superiority";
+                        break;
+                    case "Rush":
+                    case "CTF":
+                    case "Squad Deathmatch":
+                    case "Gun Master":
+                    case "Squad Rush":
+                        simple = m.GameMode;
+                        break;
+                    default:
+                        simple = "Unknown or New Mode";
+                        break;
+                }
+            } else if (fGameVersion == GameVersion.BF4) {
+                switch (m.GameMode) {
+                    case "Conquest Large":
+                    case "Conquest Small":
+                    case "Domination":
+                    case "Defuse":
+                    case "Obliteration":
+                    case "Rush":
+                    case "Squad Deathmatch":
+                    case "Team Deathmatch":
+                        simple = m.GameMode;
+                        break;
+                    default:
+                        simple = "Unknown or New Mode";
+                        break;
+                } 
+            } else {
+                simple = "Unknown or New Mode";
             }
             if (fModeToSimple.ContainsKey(m.PlayList)) {
                 if (fModeToSimple[m.PlayList] != simple) {
@@ -8923,7 +9159,7 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] tea
         // Pick smallest one
         targetTeam = 0;
         allEqual = true;
-        int minSuspects = 64;
+        int minSuspects = 70;
         for (int i = 1; i < usualSuspects.Length; ++i) {
             if (!isSQDM && i > 2) continue;
             if (allEqual && usualSuspects[i] == minSuspects) {
@@ -8989,7 +9225,7 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] tea
         // Pick smallest one
         targetTeam = 0;
         allEqual = true;
-        int minRanks = 64;
+        int minRanks = 70;
         for (int i = 1; i < rankers.Length; ++i) {
             if (!isSQDM && i > 2) continue;
             if (allEqual && rankers[i] == minRanks) {
@@ -9036,7 +9272,7 @@ private int ToSquad(String name, int team) {
             squads[i] = squads[i] + 1;
         }
 
-        // Find the biggest squad less than 4 (that isn't locked -- TBD)
+        // Find the biggest squad less than fMaxSquadSize (that isn't locked -- TODO)
         int squad = 0;
         int best = 0;
         int atZero = 0;
@@ -9048,7 +9284,7 @@ private int ToSquad(String name, int team) {
                 continue;
             }
             highOccupied = squadNum;
-            if (n >= 4) continue;
+            if (n >= fMaxSquadSize) continue;
             if (n > best) {
                 squad = squadNum;
                 best = n;
@@ -9238,7 +9474,7 @@ private String GetTeamName(int team) {
         return RUSH_NAMES[team];
     }
     if (team >= TEAM_NAMES.Length) return "None";
-    return TEAM_NAMES[team];
+    return TeamName(team);
 }
 
 private void ListPlayersLoop() {
@@ -10187,7 +10423,7 @@ void ApplyWizardSettings() {
     ConsoleWrite("Applying Wizard settings ...", 0);
 
     // Validate the numbers
-    ValidateIntRange(ref MaximumPlayersForMode, "Maximum Players For Mode", 8, 64, 64, false);
+    ValidateIntRange(ref MaximumPlayersForMode, "Maximum Players For Mode", 8, 70, 64, false);
     ValidateIntRange(ref LowestMaximumTicketsForMode, "Lowest Maximum Tickets For Mode", 20, 10000, 300, false);
     ValidateIntRange(ref HighestMaximumTicketsForMode, "Highest Maximum Tickets For Mode", 20, 10000, 400, false);
     if (HighestMaximumTicketsForMode < LowestMaximumTicketsForMode) {
@@ -10214,7 +10450,7 @@ void ApplyWizardSettings() {
             ConsoleWrite("Set ^bMax Players^n to " + perMode.MaxPlayers, 0);
 
             // Set the Population ranges
-            if (MaximumPlayersForMode == 64) {
+            if (MaximumPlayersForMode >= 64) {
                 perMode.DefinitionOfHighPopulationForPlayers = 48;
                 perMode.DefinitionOfLowPopulationForPlayers = 16;
             } else if (MaximumPlayersForMode >= 56) {
@@ -10368,7 +10604,7 @@ private void UpgradePreV1Settings() {
         foreach (String sm in simpleModes) {
             PerModeSettings oneSet = null;
             if (fPerMode.TryGetValue(sm, out oneSet) && oneSet != null) {
-                PerModeSettings def = new PerModeSettings(sm);
+                PerModeSettings def = new PerModeSettings(sm, fGameVersion == GameVersion.BF4);
                 oneSet.DelaySecondsBetweenSwapGroups = def.DelaySecondsBetweenSwapGroups;
                 oneSet.MaxUnstackingSwapsPerRound = def.MaxUnstackingSwapsPerRound;
                 oneSet.NumberOfSwapsPerGroup = def.NumberOfSwapsPerGroup;
@@ -10745,7 +10981,7 @@ private void UpdatePlayerFriends(PlayerModel friend) {
             || subList.Contains(tag)
             || subList.Contains(guid)) {
                 friend.Friendex = key;
-                if (DebugLevel >= 7) ConsoleDebug("UpdatePlayerFriends: (^b" + friend.Name + ", " + tag + ", ^n" + guid + ") in " + key + ": " + String.Join(", ", subList.ToArray())); // 8
+                if (DebugLevel >= 8) ConsoleDebug("UpdatePlayerFriends: (^b" + friend.Name + ", " + tag + ", ^n" + guid + ") in " + key + ": " + String.Join(", ", subList.ToArray()));
                 break;
             }
         } catch (Exception e) {
@@ -11435,7 +11671,7 @@ private bool CheckWhitelist(PlayerModel player, uint flags) {
             continue;
         }
         if (tokens[0] == player.Name || tokens[0] == xt || tokens[0] == guid) {
-            if (DebugLevel >= 7) { // 8
+            if (DebugLevel >= 7) {
                 DebugWrite("^b" + player.Name + ", " + xt + ", ^n" + player.Whitelist.ToString("X") + ", " + guid, 7);
                 DebugWrite("WL: " + String.Join(", ", tokens.ToArray()), 7);
                 String fs = String.Empty;
@@ -11647,7 +11883,7 @@ private double GetAverageTicketLossRate(int team, bool verbose) {
         double actual = Math.Max(1.0, copy.Count);
         rate = (rate / actual) * 60.0; // loss per minute
         if (verbose) {
-            if (debug != null) DebugWrite("^7" + TEAM_NAMES[team] + " (" + copy.Count + ") = " + debug + "]", 8);
+            if (debug != null) DebugWrite("^7" + TeamName(team) + " (" + copy.Count + ") = " + debug + "]", 8);
         }
     } catch (Exception e) {
         ConsoleException(e);
@@ -11707,6 +11943,15 @@ private void CheckRoundEndingDuration() {
 
 
 /* === NEW_NEW_NEW === */
+
+public String TeamName(int teamId) {
+    if (fGameVersion == GameVersion.BF4) {
+        // TODO
+        return BF4_TEAM_NAMES[teamId];
+    }
+    // else BF3
+    return TEAM_NAMES[teamId];
+}
 
 
 
@@ -12018,6 +12263,32 @@ private void LogStatus(bool isFinal, int level) {
   }
 }
 
+public void OnPluginLoadingEnv(List<string> lstPluginEnv) {
+    foreach (String env in lstPluginEnv)
+    {
+        DebugWrite("^9OnPluginLoadingEnv: " + env, 8);
+    }
+    switch (lstPluginEnv[1])
+    {
+        case "BF3": fGameVersion = GameVersion.BF3; break;
+        case "BF4": fGameVersion = GameVersion.BF4; break;
+        default: break;
+    }
+    ConsoleWrite("^1Game Version = " + lstPluginEnv[1], 0);
+    /*
+    Version PRoConVersion = new Version(lstPluginEnv[0]);
+    this.m_strPRoConVersion = PRoConVersion.ToString();
+    this.m_strServerGameType = lstPluginEnv[1].ToLower();
+    this.m_strGameMod = lstPluginEnv[2];
+    this.m_strServerVersion = lstPluginEnv[3];
+    this.m_strSandboxEnabled = lstPluginEnv[4];
+
+    if (this.m_strServerGameType == "bf3") {
+        this.m_iTimeDivider = 1000;
+    }
+    */
+}
+
 } // end MULTIbalancer
 
 
@@ -12264,7 +12535,7 @@ static class MULTIbalancerUtils {
 #region HTML_DOC
     public const String HTML_DOC = @"
 <h1>Multi-Balancer &amp; Unstacker, including SQDM</h1>
-<p>For BF3, this plugin does live round team balancing and unstacking for all game modes, including Squad Deathmatch (SQDM).</p>
+<p>For BF3 and BF4, this plugin does live round team balancing and unstacking for all game modes, including Squad Deathmatch (SQDM).</p>
 
 <h3>Acknowledgments</h3>
 <p>This plugin would not have been possible without the help and support of these individuals and communities:<br></br>
@@ -12274,6 +12545,15 @@ static class MULTIbalancerUtils {
 <p>This plugin is free to use, forever. Support is provided on a voluntary basic, when time is available, by the author and the user community. Use at your own risk, no guarantees are made or implied (complete notice text is in the source code). Some of the code in this plugin (Battlelog and BattlelogCache code, plugin framework, other odds &amp; ends) was directly derived from Insane Limits by micovery. Inspiration for the plugin settings came from TrueBalancer by Panther and all of the members of the design discussion group, some of whom are listed above in the acknowledgments.</p>
 
 <p><b>Section 7 of settings is intentionally not defined.</b></p>
+
+<h3>BF4 Update</h3>
+<p>The following features do not yet work for BF4:
+<ul>
+<li><b>Official mode</b>: this plugin <b>WILL NOT WORK</b> on Official mode servers -- due to admin.movePlayer being disabled on Official mode.</li>
+<li><b>Reassignment moves</b>: reassignment moves would break the new way that <i>Join on Friend</i> works for BF4, so this is disabled for BF4 until I can figure out a way around the problem.</li>
+<li><b>Battlelog Cache</b>: needs to be updated to BF4.</li>
+<li><b>Yell settings</b>: yell is currently disabled for BF4, as of patch R7.</li>
+</ul></p>
 
 <h2>Description</h2>
 <p>This plugin performs several automated operations:
@@ -12371,7 +12651,7 @@ static class MULTIbalancerUtils {
 
 <p><b>Debug Level</b>: Number from 0 to 9, default 2. Sets the amount of debug messages sent to plugin.log. Status messages for the state of the plugin may be seen at level 4 or higher. Complete details for operation of the plugin may be seen at level 7 or higher. When a problem with the plugin needs to be diagnosed, level 7 will often be required. Setting the level to 0 turns off all logging messages.</p>
 
-<p><b>Maximum Server Size</b>: Number from 8 to 64, default 64. Maximum number of slots on your game server, regardless of game mode.</p>
+<p><b>Maximum Server Size</b>: Number from 8 to 70, default 64. Maximum number of slots on your game server, regardless of game mode.</p>
 
 <p><b>Enable Battlelog Requests</b>: True or False, default True. Enables making requests to Battlelog and uses BattlelogCache if available. Used to obtain clan tag for players and optionally, overview stats SPM, KDR, and KPM.</p>
 
@@ -12387,7 +12667,7 @@ static class MULTIbalancerUtils {
 
 <p><b>Enable In-Game Commands</b>: True or False, default True. Enable <b>@mb</b> in-game commands. Most commands allow admins to change settings in the plugin without needing to leave the game. See the plugin thread for details or type <b>@mb help</b> in-game.</p>
 
-<p><b>Enable Ticket Loss Rate Logging</b>: True or False, default False. If set to True and the current game mode is one of the Conquest types, including Scavenger and Domination, a comma separated value (CSV) log file will be created for each map/mode/round. Look for files that end with <b>tlr.csv</b> in your procon/Logs/<i>ip_port</i> folder. The log will be updated approximately every 5 seconds with ticket loss information and unstacking moves.</p>
+<p><b>Enable Ticket Loss Rate Logging</b>: True or False, default False. If set to True and the current game mode is one of the Conquest types, including Scavenger and Domination, a comma separated value (CSV) log file will be created for each map/mode/round. Look for files that end with <b>tlr.csv</b> in your procon/Logs/<i>ip_port</i> folder. The log will be updated approximately every 5 seconds with ticket loss information and unstacking moves. You must disable the security sandbox for Plugins if you set the <b>Enable Ticket Loss Rate Logging</b> feature to True.</p>
 
 <p><b>Enable Whitelisting Of Reserved Slots List</b>: True or False, default True. Treats the reserved slots list as if it were added to the specified <b>Whitelist</b>.</p>
 
@@ -12498,7 +12778,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 <table border='0'>
 <tr><td>%name%</td><td>player name</td></tr>
 <tr><td>%tag%</td><td>player clan tag</td></tr>
-<tr><td>%fromTeam%</td><td>team the player is currently on, as 'US' or 'RU', or 'Alpha', 'Bravo', 'Charlie', or 'Delta' for SQDM</td></tr>
+<tr><td>%fromTeam%</td><td>team the player is currently on, as 'US' or 'RU', or 'Alpha', 'Bravo', 'Charlie', or 'Delta' for SQDM, or 'T1:US/RU' or 'T2:CN/RU' for BF4.</td></tr>
 <tr><td>%toTeam%</td><td>team the plugin will move the player to, same team name substitutions as for %fromTeam%</td></tr>
 <tr><td>%reason%</td><td>ONLY APPLIES TO BAD TEAM SWITCH: reason for switching the player back, may contain other replacements</td></tr>
 </table></p>
