@@ -12826,14 +12826,18 @@ For each phase, there are three unstacking settings for server population: Low, 
 <h3>8 - Settings for ... (each game mode)</h3>
 <p>These are the per-mode settings, used to define population and phase levels for a round and other settings specific to a game mode. Some modes have settings that no other modes have, other modes have fewer settings than most other modes. Each section is structured similarly. One common section is described in detail below and applies to several modes. Modes that have unique settings are then listed separately. The game modes are grouped as follows:
 <table border='0'>
-<tr><td>Conq Small, Dom, Scav</td><td>Conquest Small, Conquest Assault Small #1 and #2, Conquest Domination, and Scavenger</td></tr>
-<tr><td>Conquest Large</td><td>Conquest Large and Conquest Assault Large</td></tr>
-<tr><td>CTF</td><td>Capture The Flag, uses minutes to define phase instead of tickets</td></tr>
-<tr><td>Gun Master</td><td>Only has a few settings</td></tr>
+<tr><td>Conq Small, Dom, Scav</td><td>BF3: Conquest Small, Conquest Assault Small #1 and #2, Conquest Domination, and Scavenger</td></tr>
+<tr><td>Conquest Large</td><td>Conquest Large and BF3:Conquest Assault Large</td></tr>
+<tr><td>Conquest Small</td><td>BF4: same as BF3 Conq Small, Dom, Scav</td></tr>
+<tr><td>CTF</td><td>BF3: Capture The Flag, uses minutes to define phase instead of tickets</td></tr>
+<tr><td>Defuse</td><td>BF4: standard settings</td></tr>
+<tr><td>Domination</td><td>BF4: same as BF3 Conq Small, Dom, Scav</td></tr>
+<tr><td>Gun Master</td><td>BF3: Only has a few settings</td></tr>
+<tr><td>Obliteration</td><td>BF4: TBD</td></tr>
 <tr><td>Rush</td><td>Has unique settings shared with Squad Rush and no other modes</td></tr>
 <tr><td>Squad Deathmatch</td><td>Standard settings, similar to Conquest, except that unstacking is disabled (default 0)</td></tr>
-<tr><td>Squad Rush</td><td>Has unique settings shared with Rush and no other modes</td></tr>
-<tr><td>Superiority</td><td>Air and Tank Superiority</td></tr>
+<tr><td>Squad Rush</td><td>BF3: Has unique settings shared with Rush and no other modes</td></tr>
+<tr><td>Superiority</td><td>BF3: Air and Tank Superiority</td></tr>
 <tr><td>Team Deathmatch</td><td>TDM and TDM Close Quarters, standard settings, similar to Conquest</td></tr>
 <tr><td>Unknown or New Mode</td><td>Generic settings for any new mode that gets introduced before this plugin gets updated</td></tr>
 </table></p>
