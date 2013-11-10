@@ -929,6 +929,7 @@ private bool fStageInProgress = false;
 private Dictionary<int,List<String>> fFriends;
 private List<String> fAllFriends;
 private List<DelayedRequest> fTimerRequestList = null;
+private DateTime fLastValidationTimestamp;
 
 // Operational statistics
 private int fReassignedRound = 0;
@@ -1141,6 +1142,7 @@ public MULTIbalancer() {
     fRoundOverTimestamp = DateTime.MinValue;
     fListPlayersTimestamp = DateTime.MinValue;
     fFullUnstackSwapTimestamp = DateTime.MinValue;
+    fLastValidationTimestamp = DateTime.MinValue;
     fListPlayersQ = new Queue<DelayedRequest>();
 
     fPendingTeamChange = new Dictionary<String,int>();
@@ -3581,7 +3583,7 @@ public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subs
         Check if server crashed or Blaze dumped players or model invalid for too long.
         Detected by: last recorded server uptime is greater than zero and less than new uptime,
         or a player model timed out while still being on the all players list,
-        or got a version command response, which is used in connection initialization for Procon,
+        or got an OnLogin callback, which is used in connection initialization for Procon,
         or the current list of players is more than CRASH_COUNT_HEURISTIC players less than the last
         recorded count, or the last known player count is greater than the maximum server size,
         or more than 3 minutes have elapsed since a move/reassign was started.
@@ -5016,6 +5018,15 @@ private void UpdatePlayerTeam(String name, int team) {
 }
 
 private void ValidateModel(List<CPlayerInfo> players) {
+    if (fLastValidationTimestamp != DateTime.MinValue) {
+        TimeSpan elapsed = DateTime.Now.Subtract(fLastValidationTimestamp);
+        if (elapsed.TotalSeconds < 90.0) {
+            DebugWrite("Skipping revalidation: too soon, only " + elapsed.TotalSeconds.ToString("F0") + " seconds since last ValidateModel", 4);
+            return;
+        }
+    }
+    fLastValidationTimestamp = DateTime.Now;
+
     DebugWrite("Revalidating all players and teams", 3);
 
     // forget the active list, might be incorrect
