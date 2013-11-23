@@ -2526,7 +2526,7 @@ private void CommandToLog(string cmd) {
             return;
         }
 
-        m = Regex.Match(cmd, @"^gen\s+((?:cs|cl|ctf|gm|r|sqdm|sr|s|tdm|u)|[1234569])", RegexOptions.IgnoreCase);
+        m = Regex.Match(cmd, @"^gen\s+((?:cs|cl|ctf|gm|r|sqdm|sr|s|tdm|u|dom|ob|def)|[1234569])", RegexOptions.IgnoreCase);
         if (m.Success) {
             String what = m.Groups[1].Value;
             int section = 8;
@@ -2537,7 +2537,12 @@ private void CommandToLog(string cmd) {
             String sm = section.ToString() + " -";
             if (section == 8) {
                 switch (what) {
-                    case "cs": sm = "for Conq Small, Dom, Scav"; break;
+                    case "cs": 
+                        if (fGameVersion == GameVersion.BF4)
+                            sm = "for Conquest Small";
+                        else
+                            sm = "for Conq Small, Dom, Scav";
+                        break;
                     case "cl": sm = "for Conquest Large"; break;
                     case "ctf": sm = "for CTF"; break;
                     case "gm": sm = "for Gun Master"; break;
@@ -2547,6 +2552,9 @@ private void CommandToLog(string cmd) {
                     case "s": sm = "for Superiority"; break;
                     case "tdm": sm = "for Team Deathmatch"; break;
                     case "u": sm = "for Unknown or New Mode"; break;
+                    case "def": sm = "for Defuse"; break; //bf4
+                    case "dom": sm = "for Domination"; break; // bf4
+                    case "ob": sm = "for Obliteration"; break; // bf4
                     default: ConsoleDump("Unknown mode: " + what); return;
                 }
             }
