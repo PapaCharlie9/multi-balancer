@@ -2473,7 +2473,7 @@ private void CommandToLog(string cmd) {
                     double enabledForMinutes = DateTime.Now.Subtract(fEnabledTimestamp).TotalMinutes;
                     if ((enabledForMinutes > MinutesAfterJoining) 
                     && (joinedMinutesAgo > MinutesAfterJoining)
-                    && !p.TagVerified) {
+                    && (!p.TagVerified || p.TagFetchStatus.State == FetchState.Failed || p.TagFetchStatus.State == FetchState.Aborted)) {
                         failures.Add(name);
                     }
                 }
@@ -2639,6 +2639,34 @@ private void CommandToLog(string cmd) {
 
         if (Regex.Match(cmd, @"^rage", RegexOptions.IgnoreCase).Success) {
             ConsoleDump("Rage stats: " + fGrandRageQuits + " rage of " + fGrandTotalQuits + " total, this round " + fRageQuits + " rage of " + fTotalQuits + " total"); 
+            return;
+        }
+
+        if (Regex.Match(cmd, @"^refetch", RegexOptions.IgnoreCase).Success) {
+            List<String> fetch = new List<String>();
+            lock (fAllPlayers) {
+                foreach (String name in fAllPlayers) {
+                    PlayerModel p = GetPlayer(name);
+                    if (p == null) continue;
+                    if (p.TagFetchStatus.State == FetchState.InQueue || p.TagFetchStatus.State == FetchState.Requesting) continue;
+                    if (p.StatsFetchStatus.State == FetchState.InQueue || p.StatsFetchStatus.State == FetchState.Requesting) continue;
+                    fetch.Add(name);
+                }
+            }
+
+            if (fetch.Count == 0) {
+                ConsoleDump("No active players need info, nothing to refetch!");
+                return;
+            }
+
+            ConsoleDump("^bRefetching Battlelog info for: " + String.Join(", ", fetch.ToArray()));
+
+            foreach (String name in fetch) {
+                PlayerModel p = GetPlayer(name);
+                p.TagFetchStatus.State = FetchState.New;
+                p.StatsFetchStatus.State = FetchState.New;
+                AddPlayerFetch(name);
+            }
             return;
         }
         
@@ -2997,6 +3025,7 @@ private void CommandToLog(string cmd) {
             ConsoleDump("^1^bmodes^n^0: Examine the known game modes");
             ConsoleDump("^1^bmoved^n^0: Examine which players were moved, how many times total and how long ago");
             ConsoleDump("^1^brage^n^0: Examine rage quit statistics");
+            ConsoleDump("^1^brefetch^n^0: Refetch Battlelog info for all active players");
             ConsoleDump("^1^brefresh^n^0: Force refresh of player list");
             ConsoleDump("^1^breset settings^n^0: Reset all plugin settings to default, except for ^bWhitelist^n and ^bDisperse Evenly List^n");
             ConsoleDump("^1^bscrambled^n^0: Examine list of players before and after last successful scramble");
@@ -6023,6 +6052,7 @@ private Speed GetBalanceSpeed(PerModeSettings perMode) {
 private void SetTag(PlayerModel player, Hashtable data) {
     if (data == null) {
         player.TagFetchStatus.State = FetchState.Failed;
+        player.TagVerified = true;
         ConsoleDebug("SetTag ^b" + player.Name + "^n data = null");
         return;
     }
@@ -7762,6 +7792,8 @@ private void RemovePlayerFetch(String name) {
         if (fPriorityFetchQ.Contains(name)) {
             player.TagFetchStatus.State = FetchState.Aborted;
             player.StatsFetchStatus.State = FetchState.Aborted;
+            player.TagVerified = false;
+            player.StatsVerified = false;
         }
     }
 }
@@ -7838,6 +7870,12 @@ public void FetchLoop() {
                     SendBattlelogRequestBF4(name, requestType, null);
                 } else {
                     SendBattlelogRequest(name, requestType, null);
+                }
+                PlayerModel pm = GetPlayer(name);
+                if (isTagRequest) {
+                    if (pm.TagFetchStatus.State != FetchState.Succeeded) pm.TagVerified = true;
+                } else {
+                    if (pm.StatsFetchStatus.State != FetchState.Succeeded) pm.StatsVerified = true;
                 }
             }
         }
@@ -8011,7 +8049,7 @@ private void SendBattlelogRequestBF4(String name, String requestType, PlayerMode
             // verify there is viewedPersonaInfo structure, okay if null!
             Hashtable info = null;
             if (!data.ContainsKey("viewedPersonaInfo") || (info = (Hashtable)data["viewedPersonaInfo"]) == null) {
-                if (DebugLevel >= 7) DebugFetch("Request BF4" + status.RequestType + "(^b" + name + "^n): JSON response data does not contain viewedPersonaInfo (^4" + bf4furl + "^0)");
+                if (DebugLevel >= 7) DebugFetch("Request BF4" + status.RequestType + "(^b" + name + "^n): JSON response data does not contain viewedPersonaInfo");
                 // No tag
                 player.Tag = String.Empty;
                 player.TagVerified = true;
@@ -8032,7 +8070,7 @@ private void SendBattlelogRequestBF4(String name, String requestType, PlayerMode
                 Hashtable tmp = new Hashtable();
                 tmp["clanTag"] = bf4Tag;
                 SetTag(player, tmp); // sets status.State
-                DebugFetch("^4Battlelog BF4 tag updated: ^b" + player.FullName);
+                DebugFetch("^4Battlelog BF4 tag updated: ^b^1" + player.FullName);
             }
         } else if (requestType == "overview") {
             //DebugFetch("Stats fetch not supported for BF4 yet: " + player.Name);
@@ -9527,7 +9565,7 @@ private String ExtractTag(PlayerModel m) {
     if (m == null) return String.Empty;
 
     String tag = m.Tag;
-    if (m.TagVerified && String.IsNullOrEmpty(tag)) {
+    if (String.IsNullOrEmpty(tag)) {
         // Maybe they are using [_-=]XXX[=-_]PlayerName[_-=]XXX[=-_] format
         Match tm = Regex.Match(m.Name, @"^[=_\-]*([^=_\-]{2,4})[=_\-]");
         if (tm.Success) {
