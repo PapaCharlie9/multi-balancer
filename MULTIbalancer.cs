@@ -117,7 +117,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     public static String[] TEAM_NAMES = new String[] { "None", "US", "RU" };
 
-    public static String[] BF4_TEAM_NAMES = new String[] { "None", "T1:US/RU", "T2:CN/RU"};
+    public static String[] BF4_TEAM_NAMES = new String[] { "None", "T1", "T2"};
 
     public static String[] RUSH_NAMES = new String[] { "None", "Attacking", "Defending" };
 
