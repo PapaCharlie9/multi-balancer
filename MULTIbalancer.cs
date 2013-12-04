@@ -2656,10 +2656,12 @@ private void CommandToLog(string cmd) {
                 foreach (String name in fAllPlayers) {
                     PlayerModel p = GetPlayer(name);
                     if (p == null) continue;
+                    /*
                     if (!p.TagVerified) {
                         fetch.Add(name);
                         continue;
                     }
+                    */
                     if ((p.TagFetchStatus.State == FetchState.InQueue || p.TagFetchStatus.State == FetchState.Requesting)
                         && (p.StatsFetchStatus.State == FetchState.InQueue || p.StatsFetchStatus.State == FetchState.Requesting)) continue;
                     fetch.Add(name);
