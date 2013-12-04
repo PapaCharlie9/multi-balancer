@@ -2667,7 +2667,7 @@ private void CommandToLog(string cmd) {
                 return;
             }
 
-            ConsoleDump("^bRefetching Battlelog info for: " + String.Join(", ", fetch.ToArray()));
+            ConsoleDump("^bRefetching Battlelog info for " + fetch.Count + " players");
 
             foreach (String name in fetch) {
                 PlayerModel p = GetPlayer(name);
@@ -2980,20 +2980,34 @@ private void CommandToLog(string cmd) {
         // Undocumented command: test BF3 fetch
         Match testF3 = Regex.Match(cmd, @"^test f3 ([^\s]+)", RegexOptions.IgnoreCase);
         if (testF3.Success) {
-            ConsoleDump("Testing BF3 Clantag fetch:");
-            PlayerModel dummy = new PlayerModel(testF3.Groups[1].Value, 1);
-            SendBattlelogRequest(dummy.Name, "clanTag", dummy);
-            ConsoleDump("Status = " + dummy.TagFetchStatus.State);
+            int oldLevel = DebugLevel;
+            DebugLevel = 7;
+            try {
+                ConsoleDump("Testing BF3 Clantag fetch:");
+                PlayerModel dummy = new PlayerModel(testF3.Groups[1].Value, 1);
+                SendBattlelogRequest(dummy.Name, "clanTag", dummy);
+                ConsoleDump("Status = " + dummy.TagFetchStatus.State);
+            } catch (Exception e) {
+                ConsoleException(e);
+            }
+            DebugLevel = oldLevel;
             return;
         }
 
         // Undocumented command: test BF4 fetch
         Match testF4 = Regex.Match(cmd, @"^test f4 ([^\s]+)", RegexOptions.IgnoreCase);
         if (testF4.Success) {
-            ConsoleDump("Testing BF4 Clantag fetch:");
-            PlayerModel dummy = new PlayerModel(testF4.Groups[1].Value, 1);
-            SendBattlelogRequestBF4(dummy.Name, "clanTag", dummy);
-            ConsoleDump("Status = " + dummy.TagFetchStatus.State);
+            int oldLevel = DebugLevel;
+            DebugLevel = 7;
+            try {
+                ConsoleDump("Testing BF4 Clantag fetch:");
+                PlayerModel dummy = new PlayerModel(testF4.Groups[1].Value, 1);
+                SendBattlelogRequestBF4(dummy.Name, "clanTag", dummy);
+                ConsoleDump("Status = " + dummy.TagFetchStatus.State);
+            } catch (Exception e) {
+                ConsoleException(e);
+            }
+            DebugLevel = oldLevel;
             return;
         }
         
@@ -8349,7 +8363,7 @@ private bool FetchWebPage(ref String result, String url) {
         DebugFetch("^2^bTIME^n took " + DateTime.Now.Subtract(since).TotalSeconds.ToString("F2") + " secs, url: " + url);
 
         if (Regex.Match(result, @"that\s+page\s+doesn't\s+exist", RegexOptions.IgnoreCase | RegexOptions.Singleline).Success) {
-            DebugFetch("^b" + url + "^n does not exist");
+            DebugFetch("^b" + url + "^n does not exist", 3);
             result = String.Empty;
             return false;
         }
@@ -8357,13 +8371,13 @@ private bool FetchWebPage(ref String result, String url) {
         ret = true;
     } catch (WebException e) {
         if (e.Status.Equals(WebExceptionStatus.Timeout)) {
-            if (DebugLevel >= 3) DebugFetch("EXCEPTION: HTTP request timed-out");
+            if (DebugLevel >= 3) DebugFetch("EXCEPTION: HTTP request timed-out", 3);
         } else {
-            if (DebugLevel >= 3) DebugFetch("EXCEPTION: " + e.Message);
+            if (DebugLevel >= 3) DebugFetch("EXCEPTION: " + e.Message, 3);
         }
         ret = false;
     } catch (Exception ae) {
-        if (DebugLevel >= 3) DebugFetch("EXCEPTION: " + ae.Message);
+        if (DebugLevel >= 3) DebugFetch("EXCEPTION: " + ae.Message, 3);
         ret = false;
     }
     return ret;
@@ -8525,6 +8539,9 @@ private List<String> GetSimplifiedModes() {
                     case "Squad Deathmatch":
                     case "Team Deathmatch":
                         simple = m.GameMode;
+                        break;
+                    case "Air Superiority":
+                        simple = "Superiority";
                         break;
                     default:
                         simple = "Unknown or New Mode";
