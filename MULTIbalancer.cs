@@ -1572,7 +1572,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.8.0";
+    return "1.0.8.1";
 }
 
 public String GetPluginAuthor() {
@@ -2679,6 +2679,7 @@ private void CommandToLog(string cmd) {
                 PlayerModel p = GetPlayer(name);
                 p.TagFetchStatus.State = FetchState.New;
                 p.StatsFetchStatus.State = FetchState.New;
+                p.TagVerified = false;
                 AddPlayerFetch(name);
             }
             return;
