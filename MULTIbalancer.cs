@@ -3008,9 +3008,17 @@ private void CommandToLog(string cmd) {
             DebugLevel = 7;
             try {
                 ConsoleDump("Testing BF4 Clantag fetch:");
-                PlayerModel dummy = new PlayerModel(testF4.Groups[1].Value, 1);
+                String tn = testF4.Groups[1].Value;
+                PlayerModel dummy = GetPlayer(tn);
+                if (dummy == null) {
+                    ConsoleDump("Player ^b" + tn + "^n seems to have left the server");
+                    dummy = new PlayerModel(tn, 1);
+                } else {
+                    ConsoleDump("Player ^b" + tn + "^n, TagVerified: " + dummy.TagVerified + ", TagFetchStatus: " + dummy.TagFetchStatus.State + ", PersonaId: " + dummy.PersonaId);
+                }
                 SendBattlelogRequestBF4(dummy.Name, "clanTag", dummy);
                 ConsoleDump("Status = " + dummy.TagFetchStatus.State);
+                dummy.TagVerified = (dummy.TagFetchStatus.State != FetchState.Failed);
             } catch (Exception e) {
                 ConsoleException(e);
             }
@@ -3642,21 +3650,30 @@ public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subs
         Detected by: last recorded server uptime is greater than zero and less than new uptime,
         or a player model timed out while still being on the all players list,
         or got an OnLogin callback, which is used in connection initialization for Procon,
+        or the refresh command was used,
         or the current list of players is more than CRASH_COUNT_HEURISTIC players less than the last
-        recorded count, or the last known player count is greater than the maximum server size,
+        recorded count, or the last known player count is greater than the maximum server size 
+        (adjusted for BF4, to allow for 2 commanders above max player count),
         or more than 3 minutes have elapsed since a move/reassign was started.
         Since these detections are not completely reliable, do a minimal  amount of recovery,
         don't do a full reset
         */
+        int adjMaxSize = (fGameVersion == GameVersion.BF4) ? (MaximumServerSize+2) : MaximumServerSize;
         if (fServerCrashed 
         || fGotLogin
         || fRefreshCommand 
         || (fServerCrashed = (this.TotalPlayerCount >= 16 
             && this.TotalPlayerCount > players.Count 
             && (this.TotalPlayerCount - players.Count) >= Math.Min(CRASH_COUNT_HEURISTIC, this.TotalPlayerCount))) 
-        || this.TotalPlayerCount > MaximumServerSize
+        || this.TotalPlayerCount > adjMaxSize
         || (fTimeOutOfJoint > 0 && GetTimeInRoundMinutes() - fTimeOutOfJoint > 3.0))  {
-            ValidateModel(players);
+            String revWhy = String.Empty;
+            if (fServerCrashed) revWhy += "Crash ";
+            if (fGotLogin) revWhy += "Login ";
+            if (fRefreshCommand) revWhy += "Refresh ";
+            if (this.TotalPlayerCount > adjMaxSize) revWhy += "MaximumServerSize(" + this.TotalPlayerCount + ">" + MaximumServerSize + ") ";
+            if (fTimeOutOfJoint > 0 && (GetTimeInRoundMinutes() - fTimeOutOfJoint) > 3.0) revWhy += "MoveTimeTooLong";
+            ValidateModel(players, revWhy);
             fServerCrashed = false;
             fGotLogin = false;
             fRefreshCommand = false;
@@ -5075,7 +5092,7 @@ private void UpdatePlayerTeam(String name, int team) {
     }
 }
 
-private void ValidateModel(List<CPlayerInfo> players) {
+private void ValidateModel(List<CPlayerInfo> players, String revWhy) {
     if (fLastValidationTimestamp != DateTime.MinValue) {
         TimeSpan elapsed = DateTime.Now.Subtract(fLastValidationTimestamp);
         if (elapsed.TotalSeconds < 90.0) {
@@ -5085,7 +5102,7 @@ private void ValidateModel(List<CPlayerInfo> players) {
     }
     fLastValidationTimestamp = DateTime.Now;
 
-    DebugWrite("Revalidating all players and teams", 3);
+    DebugWrite("Revalidating all players and teams: " + revWhy, 3);
 
     // forget the active list, might be incorrect
     lock (fAllPlayers) {
@@ -12610,8 +12627,6 @@ static class MULTIbalancerUtils {
     public const String HTML_DOC = @"
 <h1>Multi-Balancer &amp; Unstacker, including SQDM</h1>
 <p>For BF3 and BF4, this plugin does live round team balancing and unstacking for all game modes, including Squad Deathmatch (SQDM).</p>
-
-<p><b>REFETCH PATCH 0.1</b></p>
 
 <h3>Acknowledgments</h3>
 <p>This plugin would not have been possible without the help and support of these individuals and communities:<br></br>
