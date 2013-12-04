@@ -244,8 +244,8 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxUnstackingTicketDifference = 125;
                     DefinitionOfHighPopulationForPlayers = 16;
                     DefinitionOfLowPopulationForPlayers = 8;
-                    DefinitionOfEarlyPhaseFromStart = 50; // assuming 250 tickets typical
-                    DefinitionOfLatePhaseFromEnd = 50; // assuming 250 tickets typical
+                    DefinitionOfEarlyPhaseFromStart = 25; // assuming 100 tickets typical
+                    DefinitionOfLatePhaseFromEnd = 25; // assuming 100 tickets typical
                     break;
                 case "Team Deathmatch":
                     MaxPlayers = (isBF4) ? 20 : 64;
@@ -1572,7 +1572,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.7.1";
+    return "1.0.8.0";
 }
 
 public String GetPluginAuthor() {
@@ -8370,14 +8370,18 @@ private bool FetchWebPage(ref String result, String url) {
 
         ret = true;
     } catch (WebException e) {
+        if (DebugLevel >= 3 && DebugLevel < 7) DebugFetch("FAILED for url: " + url, 3);
         if (e.Status.Equals(WebExceptionStatus.Timeout)) {
-            if (DebugLevel >= 3) DebugFetch("EXCEPTION: HTTP request timed-out", 3);
+            if (DebugLevel >= 3) DebugFetch("WEB EXCEPTION: HTTP request timed-out", 3);
         } else {
-            if (DebugLevel >= 3) DebugFetch("EXCEPTION: " + e.Message, 3);
+            if (DebugLevel >= 3) DebugFetch("WEB EXCEPTION: " + e.Message, 3);
         }
+        DebugWrite("Full exception: " + e.ToString(), 7);
         ret = false;
     } catch (Exception ae) {
+        if (DebugLevel >= 3 && DebugLevel < 7) DebugFetch("FAILED for url: " + url, 3);
         if (DebugLevel >= 3) DebugFetch("EXCEPTION: " + ae.Message, 3);
+        DebugWrite("Full exception: " + ae.ToString(), 7);
         ret = false;
     }
     return ret;
@@ -12900,7 +12904,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 <tr><td>Rush</td><td>Has unique settings shared with Squad Rush and no other modes</td></tr>
 <tr><td>Squad Deathmatch</td><td>Standard settings, similar to Conquest, except that unstacking is disabled (default 0)</td></tr>
 <tr><td>Squad Rush</td><td>BF3: Has unique settings shared with Rush and no other modes</td></tr>
-<tr><td>Superiority</td><td>BF3: Air and Tank Superiority</td></tr>
+<tr><td>Superiority</td><td>Air and Tank Superiority</td></tr>
 <tr><td>Team Deathmatch</td><td>TDM and TDM Close Quarters, standard settings, similar to Conquest</td></tr>
 <tr><td>Unknown or New Mode</td><td>Generic settings for any new mode that gets introduced before this plugin gets updated</td></tr>
 </table></p>
