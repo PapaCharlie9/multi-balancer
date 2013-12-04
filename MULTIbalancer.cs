@@ -1572,7 +1572,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.8.0";
+    return "1.0.9.0";
 }
 
 public String GetPluginAuthor() {
@@ -2464,8 +2464,8 @@ private void CommandToLog(string cmd) {
         ConsoleDump("Command: " + cmd);
 
         if (Regex.Match(cmd, @"^bad\s+tags?", RegexOptions.IgnoreCase).Success) {
+            List<String> failures = new List<String>();
             lock (fKnownPlayers) {
-                List<String> failures = new List<String>();
                 foreach (String name in fKnownPlayers.Keys) {
                     PlayerModel p = fKnownPlayers[name];
 
@@ -2477,18 +2477,34 @@ private void CommandToLog(string cmd) {
                         failures.Add(name);
                     }
                 }
-                if (failures.Count == 0) {
-                    ConsoleDump("^bNo clan tag fetch failures to report");
-                } else {
-                    ConsoleDump("^bUnable to fetch clan tags for: " + String.Join(", ", failures.ToArray()));
+            }
+            if (failures.Count == 0) {
+                ConsoleDump("^bNo clan tag fetch failures to report");
+            } else {
+                String tmp = String.Join(", ", failures.ToArray());
+                // Limit string to less than 256
+                if (tmp.Length > 230) {
+                    tmp = tmp.Substring(0, 230) + " ...";
                 }
+                tmp = tmp + " (" + failures.Count + " total)";
+                ConsoleDump("^bUnable to fetch clan tags for: " + tmp);
+                int aborted = 0;
+                int failed = 0;
+                foreach (String pn in failures) {
+                    PlayerModel p = GetPlayer(pn);
+                    if (p == null) continue;
+                    if (p.TagFetchStatus.State == FetchState.Aborted) ++aborted;
+                    if (p.TagFetchStatus.State == FetchState.Failed) ++failed;
+                }
+                ConsoleDump("^bClan tag fetches aborted: " + aborted);
+                ConsoleDump("^bClan tag fetches failed: " + failed);
             }
             return;
         }
 
         if (Regex.Match(cmd, @"^bad\s+stats?", RegexOptions.IgnoreCase).Success) {
+            List<String> failures = new List<String>();
             lock (fKnownPlayers) {
-                List<String> failures = new List<String>();
                 foreach (String name in fKnownPlayers.Keys) {
                     PlayerModel p = fKnownPlayers[name];
 
@@ -2501,11 +2517,27 @@ private void CommandToLog(string cmd) {
                         failures.Add(name);
                     }
                 }
-                if (failures.Count == 0) {
-                    ConsoleDump("^bNo stats fetch failures to report");
-                } else {
-                    ConsoleDump("^bUnable to fetch stats for: " + String.Join(", ", failures.ToArray()));
+            }
+            if (failures.Count == 0) {
+                ConsoleDump("^bNo stats fetch failures to report");
+            } else {
+                String tmp = String.Join(", ", failures.ToArray());
+                // Limit string to less than 256
+                if (tmp.Length > 230) {
+                    tmp = tmp.Substring(0, 230) + " ...";
                 }
+                tmp = tmp + " (" + failures.Count + " total)";
+                ConsoleDump("^bUnable to fetch stats for: " + tmp);
+                int aborted = 0;
+                int failed = 0;
+                foreach (String pn in failures) {
+                    PlayerModel p = GetPlayer(pn);
+                    if (p == null) continue;
+                    if (p.TagFetchStatus.State == FetchState.Aborted) ++aborted;
+                    if (p.TagFetchStatus.State == FetchState.Failed) ++failed;
+                }
+                ConsoleDump("^bClan tag fetches aborted: " + aborted);
+                ConsoleDump("^bClan tag fetches failed: " + failed);
             }
             return;
         }
@@ -2679,6 +2711,7 @@ private void CommandToLog(string cmd) {
                 PlayerModel p = GetPlayer(name);
                 p.TagFetchStatus.State = FetchState.New;
                 p.StatsFetchStatus.State = FetchState.New;
+                p.TagVerified = false;
                 AddPlayerFetch(name);
             }
             return;
@@ -2983,7 +3016,7 @@ private void CommandToLog(string cmd) {
             return;
         }
 
-        // Undocumented command: test BF3 fetch
+        // test BF3 fetch
         Match testF3 = Regex.Match(cmd, @"^test f3 ([^\s]+)", RegexOptions.IgnoreCase);
         if (testF3.Success) {
             int oldLevel = DebugLevel;
@@ -3000,16 +3033,24 @@ private void CommandToLog(string cmd) {
             return;
         }
 
-        // Undocumented command: test BF4 fetch
+        // test BF4 fetch
         Match testF4 = Regex.Match(cmd, @"^test f4 ([^\s]+)", RegexOptions.IgnoreCase);
         if (testF4.Success) {
             int oldLevel = DebugLevel;
             DebugLevel = 7;
             try {
                 ConsoleDump("Testing BF4 Clantag fetch:");
-                PlayerModel dummy = new PlayerModel(testF4.Groups[1].Value, 1);
+                String tn = testF4.Groups[1].Value;
+                PlayerModel dummy = GetPlayer(tn);
+                if (dummy == null) {
+                    ConsoleDump("Player ^b" + tn + "^n seems to have left the server");
+                    dummy = new PlayerModel(tn, 1);
+                } else {
+                    ConsoleDump("Player ^b" + tn + "^n, TagVerified: " + dummy.TagVerified + ", TagFetchStatus: " + dummy.TagFetchStatus.State + ", PersonaId: " + dummy.PersonaId);
+                }
                 SendBattlelogRequestBF4(dummy.Name, "clanTag", dummy);
                 ConsoleDump("Status = " + dummy.TagFetchStatus.State);
+                dummy.TagVerified = (dummy.TagFetchStatus.State != FetchState.Failed);
             } catch (Exception e) {
                 ConsoleException(e);
             }
@@ -3062,6 +3103,8 @@ private void CommandToLog(string cmd) {
             ConsoleDump("^1^bstatus^n^0: Examine full status log, as if Debug Level were 7");
             ConsoleDump("^1^bsubscribed^n^0: Examine all players who are subscribed to balancer chat messages");
             ConsoleDump("^1^btags^n^0: Examine list of players sorted by clan tags");
+            ConsoleDump("^1^btest f3^n ^iname^n^0: Test BF3 tag fetch");
+            ConsoleDump("^1^btest f4^n ^iname^n^0: Test BF4 tag fetch");
             ConsoleDump("^1^bwhitelist^n^0: Examine whitelist combined with reserved slots, by option codes");
             return;
         }
@@ -3641,21 +3684,30 @@ public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subs
         Detected by: last recorded server uptime is greater than zero and less than new uptime,
         or a player model timed out while still being on the all players list,
         or got an OnLogin callback, which is used in connection initialization for Procon,
+        or the refresh command was used,
         or the current list of players is more than CRASH_COUNT_HEURISTIC players less than the last
-        recorded count, or the last known player count is greater than the maximum server size,
+        recorded count, or the last known player count is greater than the maximum server size 
+        (adjusted for BF4, to allow for 2 commanders above max player count),
         or more than 3 minutes have elapsed since a move/reassign was started.
         Since these detections are not completely reliable, do a minimal  amount of recovery,
         don't do a full reset
         */
+        int adjMaxSize = (fGameVersion == GameVersion.BF4) ? (MaximumServerSize+2) : MaximumServerSize;
         if (fServerCrashed 
         || fGotLogin
         || fRefreshCommand 
         || (fServerCrashed = (this.TotalPlayerCount >= 16 
             && this.TotalPlayerCount > players.Count 
             && (this.TotalPlayerCount - players.Count) >= Math.Min(CRASH_COUNT_HEURISTIC, this.TotalPlayerCount))) 
-        || this.TotalPlayerCount > MaximumServerSize
+        || this.TotalPlayerCount > adjMaxSize
         || (fTimeOutOfJoint > 0 && GetTimeInRoundMinutes() - fTimeOutOfJoint > 3.0))  {
-            ValidateModel(players);
+            String revWhy = String.Empty;
+            if (fServerCrashed) revWhy += "Crash ";
+            if (fGotLogin) revWhy += "Login ";
+            if (fRefreshCommand) revWhy += "Refresh ";
+            if (this.TotalPlayerCount > adjMaxSize) revWhy += "MaximumServerSize(" + this.TotalPlayerCount + ">" + MaximumServerSize + ") ";
+            if (fTimeOutOfJoint > 0 && (GetTimeInRoundMinutes() - fTimeOutOfJoint) > 3.0) revWhy += "MoveTimeTooLong";
+            ValidateModel(players, revWhy);
             fServerCrashed = false;
             fGotLogin = false;
             fRefreshCommand = false;
@@ -5074,7 +5126,7 @@ private void UpdatePlayerTeam(String name, int team) {
     }
 }
 
-private void ValidateModel(List<CPlayerInfo> players) {
+private void ValidateModel(List<CPlayerInfo> players, String revWhy) {
     if (fLastValidationTimestamp != DateTime.MinValue) {
         TimeSpan elapsed = DateTime.Now.Subtract(fLastValidationTimestamp);
         if (elapsed.TotalSeconds < 90.0) {
@@ -5084,7 +5136,7 @@ private void ValidateModel(List<CPlayerInfo> players) {
     }
     fLastValidationTimestamp = DateTime.Now;
 
-    DebugWrite("Revalidating all players and teams", 3);
+    DebugWrite("Revalidating all players and teams: " + revWhy, 3);
 
     // forget the active list, might be incorrect
     lock (fAllPlayers) {
@@ -12609,8 +12661,6 @@ static class MULTIbalancerUtils {
     public const String HTML_DOC = @"
 <h1>Multi-Balancer &amp; Unstacker, including SQDM</h1>
 <p>For BF3 and BF4, this plugin does live round team balancing and unstacking for all game modes, including Squad Deathmatch (SQDM).</p>
-
-<p><b>REFETCH PATCH 0.1</b></p>
 
 <h3>Acknowledgments</h3>
 <p>This plugin would not have been possible without the help and support of these individuals and communities:<br></br>
