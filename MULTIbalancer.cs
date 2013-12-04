@@ -2656,8 +2656,14 @@ private void CommandToLog(string cmd) {
                 foreach (String name in fAllPlayers) {
                     PlayerModel p = GetPlayer(name);
                     if (p == null) continue;
-                    if (p.TagFetchStatus.State == FetchState.InQueue || p.TagFetchStatus.State == FetchState.Requesting) continue;
-                    if (p.StatsFetchStatus.State == FetchState.InQueue || p.StatsFetchStatus.State == FetchState.Requesting) continue;
+                    /*
+                    if (!p.TagVerified) {
+                        fetch.Add(name);
+                        continue;
+                    }
+                    */
+                    if ((p.TagFetchStatus.State == FetchState.InQueue || p.TagFetchStatus.State == FetchState.Requesting)
+                        && (p.StatsFetchStatus.State == FetchState.InQueue || p.StatsFetchStatus.State == FetchState.Requesting)) continue;
                     fetch.Add(name);
                 }
             }
@@ -12603,6 +12609,8 @@ static class MULTIbalancerUtils {
     public const String HTML_DOC = @"
 <h1>Multi-Balancer &amp; Unstacker, including SQDM</h1>
 <p>For BF3 and BF4, this plugin does live round team balancing and unstacking for all game modes, including Squad Deathmatch (SQDM).</p>
+
+<p><b>REFETCH PATCH 0.1</b></p>
 
 <h3>Acknowledgments</h3>
 <p>This plugin would not have been possible without the help and support of these individuals and communities:<br></br>
