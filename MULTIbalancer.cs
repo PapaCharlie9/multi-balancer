@@ -1572,7 +1572,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.8.1";
+    return "1.0.9.0";
 }
 
 public String GetPluginAuthor() {
@@ -2464,8 +2464,8 @@ private void CommandToLog(string cmd) {
         ConsoleDump("Command: " + cmd);
 
         if (Regex.Match(cmd, @"^bad\s+tags?", RegexOptions.IgnoreCase).Success) {
+            List<String> failures = new List<String>();
             lock (fKnownPlayers) {
-                List<String> failures = new List<String>();
                 foreach (String name in fKnownPlayers.Keys) {
                     PlayerModel p = fKnownPlayers[name];
 
@@ -2477,18 +2477,34 @@ private void CommandToLog(string cmd) {
                         failures.Add(name);
                     }
                 }
-                if (failures.Count == 0) {
-                    ConsoleDump("^bNo clan tag fetch failures to report");
-                } else {
-                    ConsoleDump("^bUnable to fetch clan tags for: " + String.Join(", ", failures.ToArray()));
+            }
+            if (failures.Count == 0) {
+                ConsoleDump("^bNo clan tag fetch failures to report");
+            } else {
+                String tmp = String.Join(", ", failures.ToArray());
+                // Limit string to less than 256
+                if (tmp.Length > 230) {
+                    tmp = tmp.Substring(0, 230) + " ...";
                 }
+                tmp = tmp + " (" + failures.Count + " total)";
+                ConsoleDump("^bUnable to fetch clan tags for: " + tmp);
+                int aborted = 0;
+                int failed = 0;
+                foreach (String pn in failures) {
+                    PlayerModel p = GetPlayer(pn);
+                    if (p == null) continue;
+                    if (p.TagFetchStatus.State == FetchState.Aborted) ++aborted;
+                    if (p.TagFetchStatus.State == FetchState.Failed) ++failed;
+                }
+                ConsoleDump("^bClan tag fetches aborted: " + aborted);
+                ConsoleDump("^bClan tag fetches failed: " + failed);
             }
             return;
         }
 
         if (Regex.Match(cmd, @"^bad\s+stats?", RegexOptions.IgnoreCase).Success) {
+            List<String> failures = new List<String>();
             lock (fKnownPlayers) {
-                List<String> failures = new List<String>();
                 foreach (String name in fKnownPlayers.Keys) {
                     PlayerModel p = fKnownPlayers[name];
 
@@ -2501,11 +2517,27 @@ private void CommandToLog(string cmd) {
                         failures.Add(name);
                     }
                 }
-                if (failures.Count == 0) {
-                    ConsoleDump("^bNo stats fetch failures to report");
-                } else {
-                    ConsoleDump("^bUnable to fetch stats for: " + String.Join(", ", failures.ToArray()));
+            }
+            if (failures.Count == 0) {
+                ConsoleDump("^bNo stats fetch failures to report");
+            } else {
+                String tmp = String.Join(", ", failures.ToArray());
+                // Limit string to less than 256
+                if (tmp.Length > 230) {
+                    tmp = tmp.Substring(0, 230) + " ...";
                 }
+                tmp = tmp + " (" + failures.Count + " total)";
+                ConsoleDump("^bUnable to fetch stats for: " + tmp);
+                int aborted = 0;
+                int failed = 0;
+                foreach (String pn in failures) {
+                    PlayerModel p = GetPlayer(pn);
+                    if (p == null) continue;
+                    if (p.TagFetchStatus.State == FetchState.Aborted) ++aborted;
+                    if (p.TagFetchStatus.State == FetchState.Failed) ++failed;
+                }
+                ConsoleDump("^bClan tag fetches aborted: " + aborted);
+                ConsoleDump("^bClan tag fetches failed: " + failed);
             }
             return;
         }
@@ -2984,7 +3016,7 @@ private void CommandToLog(string cmd) {
             return;
         }
 
-        // Undocumented command: test BF3 fetch
+        // test BF3 fetch
         Match testF3 = Regex.Match(cmd, @"^test f3 ([^\s]+)", RegexOptions.IgnoreCase);
         if (testF3.Success) {
             int oldLevel = DebugLevel;
@@ -3001,7 +3033,7 @@ private void CommandToLog(string cmd) {
             return;
         }
 
-        // Undocumented command: test BF4 fetch
+        // test BF4 fetch
         Match testF4 = Regex.Match(cmd, @"^test f4 ([^\s]+)", RegexOptions.IgnoreCase);
         if (testF4.Success) {
             int oldLevel = DebugLevel;
@@ -3071,6 +3103,8 @@ private void CommandToLog(string cmd) {
             ConsoleDump("^1^bstatus^n^0: Examine full status log, as if Debug Level were 7");
             ConsoleDump("^1^bsubscribed^n^0: Examine all players who are subscribed to balancer chat messages");
             ConsoleDump("^1^btags^n^0: Examine list of players sorted by clan tags");
+            ConsoleDump("^1^btest f3^n ^iname^n^0: Test BF3 tag fetch");
+            ConsoleDump("^1^btest f4^n ^iname^n^0: Test BF4 tag fetch");
             ConsoleDump("^1^bwhitelist^n^0: Examine whitelist combined with reserved slots, by option codes");
             return;
         }
