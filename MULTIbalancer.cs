@@ -117,7 +117,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     public static String[] TEAM_NAMES = new String[] { "None", "US", "RU" };
 
-    public static String[] BF4_TEAM_NAMES = new String[] { "None", "T1:US/RU", "T2:CN/RU"};
+    public static String[] BF4_TEAM_NAMES = new String[] { "None", "T1", "T2"};
 
     public static String[] RUSH_NAMES = new String[] { "None", "Attacking", "Defending" };
 
@@ -244,8 +244,8 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxUnstackingTicketDifference = 125;
                     DefinitionOfHighPopulationForPlayers = 16;
                     DefinitionOfLowPopulationForPlayers = 8;
-                    DefinitionOfEarlyPhaseFromStart = 50; // assuming 250 tickets typical
-                    DefinitionOfLatePhaseFromEnd = 50; // assuming 250 tickets typical
+                    DefinitionOfEarlyPhaseFromStart = 25; // assuming 100 tickets typical
+                    DefinitionOfLatePhaseFromEnd = 25; // assuming 100 tickets typical
                     break;
                 case "Team Deathmatch":
                     MaxPlayers = (isBF4) ? 20 : 64;
@@ -1572,7 +1572,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.7.0";
+    return "1.0.8.0";
 }
 
 public String GetPluginAuthor() {
@@ -2473,7 +2473,7 @@ private void CommandToLog(string cmd) {
                     double enabledForMinutes = DateTime.Now.Subtract(fEnabledTimestamp).TotalMinutes;
                     if ((enabledForMinutes > MinutesAfterJoining) 
                     && (joinedMinutesAgo > MinutesAfterJoining)
-                    && !p.TagVerified) {
+                    && (!p.TagVerified || p.TagFetchStatus.State == FetchState.Failed || p.TagFetchStatus.State == FetchState.Aborted)) {
                         failures.Add(name);
                     }
                 }
@@ -2526,7 +2526,7 @@ private void CommandToLog(string cmd) {
             return;
         }
 
-        m = Regex.Match(cmd, @"^gen\s+((?:cs|cl|ctf|gm|r|sqdm|sr|s|tdm|u)|[1234569])", RegexOptions.IgnoreCase);
+        m = Regex.Match(cmd, @"^gen\s+((?:cs|cl|ctf|gm|r|sqdm|sr|s|tdm|u|dom|ob|def)|[1234569])", RegexOptions.IgnoreCase);
         if (m.Success) {
             String what = m.Groups[1].Value;
             int section = 8;
@@ -2537,7 +2537,12 @@ private void CommandToLog(string cmd) {
             String sm = section.ToString() + " -";
             if (section == 8) {
                 switch (what) {
-                    case "cs": sm = "for Conq Small, Dom, Scav"; break;
+                    case "cs": 
+                        if (fGameVersion == GameVersion.BF4)
+                            sm = "for Conquest Small";
+                        else
+                            sm = "for Conq Small, Dom, Scav";
+                        break;
                     case "cl": sm = "for Conquest Large"; break;
                     case "ctf": sm = "for CTF"; break;
                     case "gm": sm = "for Gun Master"; break;
@@ -2547,6 +2552,9 @@ private void CommandToLog(string cmd) {
                     case "s": sm = "for Superiority"; break;
                     case "tdm": sm = "for Team Deathmatch"; break;
                     case "u": sm = "for Unknown or New Mode"; break;
+                    case "def": sm = "for Defuse"; break; //bf4
+                    case "dom": sm = "for Domination"; break; // bf4
+                    case "ob": sm = "for Obliteration"; break; // bf4
                     default: ConsoleDump("Unknown mode: " + what); return;
                 }
             }
@@ -2639,6 +2647,34 @@ private void CommandToLog(string cmd) {
 
         if (Regex.Match(cmd, @"^rage", RegexOptions.IgnoreCase).Success) {
             ConsoleDump("Rage stats: " + fGrandRageQuits + " rage of " + fGrandTotalQuits + " total, this round " + fRageQuits + " rage of " + fTotalQuits + " total"); 
+            return;
+        }
+
+        if (Regex.Match(cmd, @"^refetch", RegexOptions.IgnoreCase).Success) {
+            List<String> fetch = new List<String>();
+            lock (fAllPlayers) {
+                foreach (String name in fAllPlayers) {
+                    PlayerModel p = GetPlayer(name);
+                    if (p == null) continue;
+                    if (p.TagFetchStatus.State == FetchState.InQueue || p.TagFetchStatus.State == FetchState.Requesting) continue;
+                    if (p.StatsFetchStatus.State == FetchState.InQueue || p.StatsFetchStatus.State == FetchState.Requesting) continue;
+                    fetch.Add(name);
+                }
+            }
+
+            if (fetch.Count == 0) {
+                ConsoleDump("No active players need info, nothing to refetch!");
+                return;
+            }
+
+            ConsoleDump("^bRefetching Battlelog info for " + fetch.Count + " players");
+
+            foreach (String name in fetch) {
+                PlayerModel p = GetPlayer(name);
+                p.TagFetchStatus.State = FetchState.New;
+                p.StatsFetchStatus.State = FetchState.New;
+                AddPlayerFetch(name);
+            }
             return;
         }
         
@@ -2944,20 +2980,34 @@ private void CommandToLog(string cmd) {
         // Undocumented command: test BF3 fetch
         Match testF3 = Regex.Match(cmd, @"^test f3 ([^\s]+)", RegexOptions.IgnoreCase);
         if (testF3.Success) {
-            ConsoleDump("Testing BF3 Clantag fetch:");
-            PlayerModel dummy = new PlayerModel(testF3.Groups[1].Value, 1);
-            SendBattlelogRequest(dummy.Name, "clanTag", dummy);
-            ConsoleDump("Status = " + dummy.TagFetchStatus.State);
+            int oldLevel = DebugLevel;
+            DebugLevel = 7;
+            try {
+                ConsoleDump("Testing BF3 Clantag fetch:");
+                PlayerModel dummy = new PlayerModel(testF3.Groups[1].Value, 1);
+                SendBattlelogRequest(dummy.Name, "clanTag", dummy);
+                ConsoleDump("Status = " + dummy.TagFetchStatus.State);
+            } catch (Exception e) {
+                ConsoleException(e);
+            }
+            DebugLevel = oldLevel;
             return;
         }
 
         // Undocumented command: test BF4 fetch
         Match testF4 = Regex.Match(cmd, @"^test f4 ([^\s]+)", RegexOptions.IgnoreCase);
         if (testF4.Success) {
-            ConsoleDump("Testing BF4 Clantag fetch:");
-            PlayerModel dummy = new PlayerModel(testF4.Groups[1].Value, 1);
-            SendBattlelogRequestBF4(dummy.Name, "clanTag", dummy);
-            ConsoleDump("Status = " + dummy.TagFetchStatus.State);
+            int oldLevel = DebugLevel;
+            DebugLevel = 7;
+            try {
+                ConsoleDump("Testing BF4 Clantag fetch:");
+                PlayerModel dummy = new PlayerModel(testF4.Groups[1].Value, 1);
+                SendBattlelogRequestBF4(dummy.Name, "clanTag", dummy);
+                ConsoleDump("Status = " + dummy.TagFetchStatus.State);
+            } catch (Exception e) {
+                ConsoleException(e);
+            }
+            DebugLevel = oldLevel;
             return;
         }
         
@@ -2997,6 +3047,7 @@ private void CommandToLog(string cmd) {
             ConsoleDump("^1^bmodes^n^0: Examine the known game modes");
             ConsoleDump("^1^bmoved^n^0: Examine which players were moved, how many times total and how long ago");
             ConsoleDump("^1^brage^n^0: Examine rage quit statistics");
+            ConsoleDump("^1^brefetch^n^0: Refetch Battlelog info for all active players");
             ConsoleDump("^1^brefresh^n^0: Force refresh of player list");
             ConsoleDump("^1^breset settings^n^0: Reset all plugin settings to default, except for ^bWhitelist^n and ^bDisperse Evenly List^n");
             ConsoleDump("^1^bscrambled^n^0: Examine list of players before and after last successful scramble");
@@ -3467,7 +3518,7 @@ public override void OnPlayerMovedByAdmin(string soldierName, int destinationTea
                     // Do updates as needed
                     bool interruptedMBMove = (player != null && player.LastMoveFrom != 0);
                     if (!interruptedMBMove) {
-                        DebugWrite("^4^bADMIN^n moved player (REVERSED) ^b" + soldierName + "^n, " + GetPluginName() + " will respect this move", 2);
+                        DebugWrite("^4^bADMIN^n moved player (REVERSED) ^b" + soldierName + "^n, " + GetPluginName() + " will respect this move", 4);
                     } else {
                         ConsoleDebug("Interrupted move (REVERSED) ^b" + soldierName + "^n, updating to correct");
                     }
@@ -6023,6 +6074,7 @@ private Speed GetBalanceSpeed(PerModeSettings perMode) {
 private void SetTag(PlayerModel player, Hashtable data) {
     if (data == null) {
         player.TagFetchStatus.State = FetchState.Failed;
+        player.TagVerified = true;
         ConsoleDebug("SetTag ^b" + player.Name + "^n data = null");
         return;
     }
@@ -7762,6 +7814,8 @@ private void RemovePlayerFetch(String name) {
         if (fPriorityFetchQ.Contains(name)) {
             player.TagFetchStatus.State = FetchState.Aborted;
             player.StatsFetchStatus.State = FetchState.Aborted;
+            player.TagVerified = false;
+            player.StatsVerified = false;
         }
     }
 }
@@ -7838,6 +7892,12 @@ public void FetchLoop() {
                     SendBattlelogRequestBF4(name, requestType, null);
                 } else {
                     SendBattlelogRequest(name, requestType, null);
+                }
+                PlayerModel pm = GetPlayer(name);
+                if (isTagRequest) {
+                    if (pm.TagFetchStatus.State != FetchState.Succeeded) pm.TagVerified = true;
+                } else {
+                    if (pm.StatsFetchStatus.State != FetchState.Succeeded) pm.StatsVerified = true;
                 }
             }
         }
@@ -8011,7 +8071,7 @@ private void SendBattlelogRequestBF4(String name, String requestType, PlayerMode
             // verify there is viewedPersonaInfo structure, okay if null!
             Hashtable info = null;
             if (!data.ContainsKey("viewedPersonaInfo") || (info = (Hashtable)data["viewedPersonaInfo"]) == null) {
-                if (DebugLevel >= 7) DebugFetch("Request BF4" + status.RequestType + "(^b" + name + "^n): JSON response data does not contain viewedPersonaInfo (^4" + bf4furl + "^0)");
+                if (DebugLevel >= 7) DebugFetch("Request BF4" + status.RequestType + "(^b" + name + "^n): JSON response data does not contain viewedPersonaInfo");
                 // No tag
                 player.Tag = String.Empty;
                 player.TagVerified = true;
@@ -8032,7 +8092,7 @@ private void SendBattlelogRequestBF4(String name, String requestType, PlayerMode
                 Hashtable tmp = new Hashtable();
                 tmp["clanTag"] = bf4Tag;
                 SetTag(player, tmp); // sets status.State
-                DebugFetch("^4Battlelog BF4 tag updated: ^b" + player.FullName);
+                DebugFetch("^4Battlelog BF4 tag updated: ^b^1" + player.FullName);
             }
         } else if (requestType == "overview") {
             //DebugFetch("Stats fetch not supported for BF4 yet: " + player.Name);
@@ -8303,21 +8363,25 @@ private bool FetchWebPage(ref String result, String url) {
         DebugFetch("^2^bTIME^n took " + DateTime.Now.Subtract(since).TotalSeconds.ToString("F2") + " secs, url: " + url);
 
         if (Regex.Match(result, @"that\s+page\s+doesn't\s+exist", RegexOptions.IgnoreCase | RegexOptions.Singleline).Success) {
-            DebugFetch("^b" + url + "^n does not exist");
+            DebugFetch("^b" + url + "^n does not exist", 3);
             result = String.Empty;
             return false;
         }
 
         ret = true;
     } catch (WebException e) {
+        if (DebugLevel >= 3 && DebugLevel < 7) DebugFetch("FAILED for url: " + url, 3);
         if (e.Status.Equals(WebExceptionStatus.Timeout)) {
-            if (DebugLevel >= 3) DebugFetch("EXCEPTION: HTTP request timed-out");
+            if (DebugLevel >= 3) DebugFetch("WEB EXCEPTION: HTTP request timed-out", 3);
         } else {
-            if (DebugLevel >= 3) DebugFetch("EXCEPTION: " + e.Message);
+            if (DebugLevel >= 3) DebugFetch("WEB EXCEPTION: " + e.Message, 3);
         }
+        DebugWrite("Full exception: " + e.ToString(), 7);
         ret = false;
     } catch (Exception ae) {
-        if (DebugLevel >= 3) DebugFetch("EXCEPTION: " + ae.Message);
+        if (DebugLevel >= 3 && DebugLevel < 7) DebugFetch("FAILED for url: " + url, 3);
+        if (DebugLevel >= 3) DebugFetch("EXCEPTION: " + ae.Message, 3);
+        DebugWrite("Full exception: " + ae.ToString(), 7);
         ret = false;
     }
     return ret;
@@ -8479,6 +8543,9 @@ private List<String> GetSimplifiedModes() {
                     case "Squad Deathmatch":
                     case "Team Deathmatch":
                         simple = m.GameMode;
+                        break;
+                    case "Air Superiority":
+                        simple = "Superiority";
                         break;
                     default:
                         simple = "Unknown or New Mode";
@@ -9527,7 +9594,7 @@ private String ExtractTag(PlayerModel m) {
     if (m == null) return String.Empty;
 
     String tag = m.Tag;
-    if (m.TagVerified && String.IsNullOrEmpty(tag)) {
+    if (String.IsNullOrEmpty(tag)) {
         // Maybe they are using [_-=]XXX[=-_]PlayerName[_-=]XXX[=-_] format
         Match tm = Regex.Match(m.Name, @"^[=_\-]*([^=_\-]{2,4})[=_\-]");
         if (tm.Success) {
@@ -12826,13 +12893,17 @@ For each phase, there are three unstacking settings for server population: Low, 
 <h3>8 - Settings for ... (each game mode)</h3>
 <p>These are the per-mode settings, used to define population and phase levels for a round and other settings specific to a game mode. Some modes have settings that no other modes have, other modes have fewer settings than most other modes. Each section is structured similarly. One common section is described in detail below and applies to several modes. Modes that have unique settings are then listed separately. The game modes are grouped as follows:
 <table border='0'>
-<tr><td>Conq Small, Dom, Scav</td><td>Conquest Small, Conquest Assault Small #1 and #2, Conquest Domination, and Scavenger</td></tr>
-<tr><td>Conquest Large</td><td>Conquest Large and Conquest Assault Large</td></tr>
-<tr><td>CTF</td><td>Capture The Flag, uses minutes to define phase instead of tickets</td></tr>
-<tr><td>Gun Master</td><td>Only has a few settings</td></tr>
+<tr><td>Conq Small, Dom, Scav</td><td>BF3: Conquest Small, Conquest Assault Small #1 and #2, Conquest Domination, and Scavenger</td></tr>
+<tr><td>Conquest Large</td><td>Conquest Large and BF3:Conquest Assault Large</td></tr>
+<tr><td>Conquest Small</td><td>BF4: same as BF3 Conq Small, Dom, Scav</td></tr>
+<tr><td>CTF</td><td>BF3: Capture The Flag, uses minutes to define phase instead of tickets</td></tr>
+<tr><td>Defuse</td><td>BF4: standard settings</td></tr>
+<tr><td>Domination</td><td>BF4: same as BF3 Conq Small, Dom, Scav</td></tr>
+<tr><td>Gun Master</td><td>BF3: Only has a few settings</td></tr>
+<tr><td>Obliteration</td><td>BF4: TBD</td></tr>
 <tr><td>Rush</td><td>Has unique settings shared with Squad Rush and no other modes</td></tr>
 <tr><td>Squad Deathmatch</td><td>Standard settings, similar to Conquest, except that unstacking is disabled (default 0)</td></tr>
-<tr><td>Squad Rush</td><td>Has unique settings shared with Rush and no other modes</td></tr>
+<tr><td>Squad Rush</td><td>BF3: Has unique settings shared with Rush and no other modes</td></tr>
 <tr><td>Superiority</td><td>Air and Tank Superiority</td></tr>
 <tr><td>Team Deathmatch</td><td>TDM and TDM Close Quarters, standard settings, similar to Conquest</td></tr>
 <tr><td>Unknown or New Mode</td><td>Generic settings for any new mode that gets introduced before this plugin gets updated</td></tr>
