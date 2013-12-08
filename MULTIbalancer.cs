@@ -2482,9 +2482,9 @@ private void CommandToLog(string cmd) {
                 ConsoleDump("^bNo clan tag fetch failures to report");
             } else {
                 String tmp = String.Join(", ", failures.ToArray());
-                // Limit string to less than 256
-                if (tmp.Length > 230) {
-                    tmp = tmp.Substring(0, 230) + " ...";
+                // Limit string to less than 1000
+                if (tmp.Length > 1000) {
+                    tmp = tmp.Substring(0, 1000) + " ...";
                 }
                 tmp = tmp + " (" + failures.Count + " total)";
                 ConsoleDump("^bUnable to fetch clan tags for: " + tmp);
@@ -2522,9 +2522,9 @@ private void CommandToLog(string cmd) {
                 ConsoleDump("^bNo stats fetch failures to report");
             } else {
                 String tmp = String.Join(", ", failures.ToArray());
-                // Limit string to less than 256
-                if (tmp.Length > 230) {
-                    tmp = tmp.Substring(0, 230) + " ...";
+                // Limit string to less than 1000
+                if (tmp.Length > 1000) {
+                    tmp = tmp.Substring(0, 1000) + " ...";
                 }
                 tmp = tmp + " (" + failures.Count + " total)";
                 ConsoleDump("^bUnable to fetch stats for: " + tmp);
@@ -12057,7 +12057,10 @@ private void CheckRoundEndingDuration() {
     if (fRoundOverTimestamp == DateTime.MinValue) return;
     double secs = DateTime.Now.Subtract(fRoundOverTimestamp).TotalSeconds;
     if (secs < 30) {
-        ConsoleDebug("CheckRoundEndingDuration less than 30 seconds, skipping");
+        DebugWrite("Between round seconds less than 30 seconds (" + secs.ToString("F0") + "), skipping", 3);
+        return;
+    } else if (secs > 180) { // 3 mins
+        DebugWrite("Between round seconds greater than 180 seconds (" + secs.ToString("F0") + "), skipping", 3);
         return;
     }
     // Sum up for average
