@@ -845,6 +845,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
 // General
 private bool fIsEnabled;
 private bool fFinalizerActive = false;
+private bool fAborted = false;
 private Dictionary<String,String> fModeToSimple = null;
 private Dictionary<String,int> fPendingTeamChange = null;
 private Thread fMoveThread = null;
@@ -1079,6 +1080,7 @@ public MULTIbalancer() {
     /* Private members */
     fIsEnabled = false;
     fFinalizerActive = false;
+    fAborted = false;
     fPluginState = PluginState.Disabled;
     fGameState = GameState.Unknown;
     fServerInfo = null;
@@ -3358,11 +3360,12 @@ public void OnPluginDisable() {
 
         fEnabledTimestamp = DateTime.MinValue;
 
+        ConsoleWrite("^bDisabling, stopping threads ...^n", 0);
+
         StopThreads();
 
         Reset();
     
-        ConsoleWrite("^bDisabling, stopping threads ...^n", 0);
         fPluginState = PluginState.Disabled;
         fGameState = GameState.Unknown;
         DebugWrite("^b^3State = " + fPluginState, 6);
@@ -3370,6 +3373,7 @@ public void OnPluginDisable() {
     } catch (Exception e) {
         ConsoleException(e);
     }
+    ConsoleWrite("^1^bDisabled!", 0);
 }
 
 
@@ -5695,10 +5699,13 @@ public void MoveLoop() {
             // Move player
             StartMoveImmediate(move, false);
         }
+    } catch (ThreadAbortException) {
+        fAborted = true;
+        return;
     } catch (Exception e) {
         ConsoleException(e);
     } finally {
-        if (DebugLevel >= 6) ConsoleWrite("^bMoveLoop^n thread stopped", 6);
+        if (!fAborted) ConsoleWrite("^bMoveLoop^n thread stopped", 0);
     }
 }
 
@@ -5821,11 +5828,13 @@ private void Yell(String who, String what) {
 }
 
 private void ProconChat(String what) {
+    if (fAborted) return;
     if (EnableLoggingOnlyMode) what = "(SIMULATING) " + what;
     if (LogChat) ExecuteCommand("procon.protected.chat.write", GetPluginName() + " > All: " + what);
 }
 
 private void ProconChatPlayer(String who, String what) {
+    if (fAborted) return;
     if (EnableLoggingOnlyMode) what = "(SIMULATING) " + what;
     if (LogChat) ExecuteCommand("procon.protected.chat.write", GetPluginName() + " > " + who + ": " + what);
 }
@@ -7073,11 +7082,14 @@ private void ScramblerLoop () {
                 ConsoleException(e);
             }
         }
+    } catch (ThreadAbortException) {
+        fAborted = true;
+        return;
     } catch (Exception e) {
         ConsoleException(e);
     } finally {
         fWhileScrambling = false;
-        if (DebugLevel >= 6) ConsoleWrite("^bScramblerLoop^n thread stopped", 6);
+        if (!fAborted) ConsoleWrite("^bScramblerLoop^n thread stopped", 6);
     }
 }
 
@@ -7959,10 +7971,13 @@ public void FetchLoop() {
                 }
             }
         }
+    } catch (ThreadAbortException) {
+        fAborted = true;
+        return;
     } catch (Exception e) {
         ConsoleException(e);
     } finally {
-        if (DebugLevel >= 6) ConsoleWrite("^bFetchLoop^n thread stopped", 6);
+        if (!fAborted) ConsoleWrite("^bFetchLoop^n thread stopped", 0);
     }
 }
 
@@ -8230,7 +8245,7 @@ private void SendCacheRequest(String name, String requestType) {
         DebugFetch("Sending cache request " + requestType + "(^b" + name + "^n)");
 
         // Send request
-        if (!fIsEnabled) return;
+        if (!fIsEnabled || fAborted) return;
         this.ExecuteCommand("procon.protected.plugins.call", "CBattlelogCache", "PlayerLookup", JSON.JsonEncode(request));
     } catch (Exception e) {
         ConsoleException(e);
@@ -8490,7 +8505,7 @@ private String FormatMessage(String msg, MessageType type, int level) {
 
 public void LogWrite(String msg)
 {
-    if (fFinalizerActive) return;
+    if (fAborted) return;
     this.ExecuteCommand("procon.protected.pluginconsole.write", msg);
     if (EnableExternalLogging) {
         LogExternal(msg);
@@ -8545,6 +8560,7 @@ public void ConsoleDump(String msg)
 
 private void ServerCommand(params String[] args)
 {
+    if (fAborted) return;
     List<String> list = new List<String>();
     list.Add("procon.protected.send");
     list.AddRange(args);
@@ -8552,6 +8568,7 @@ private void ServerCommand(params String[] args)
 }
 
 private void TaskbarNotify(String title, String msg) {
+    if (fAborted) return;
     this.ExecuteCommand("procon.protected.notification.write", title, msg);
 }
 
@@ -9493,14 +9510,15 @@ private void StartThreads() {
 
 private void JoinWith(Thread thread, int secs)
 {
-    if (thread == null || !thread.IsAlive)
+    if (thread == null || !thread.IsAlive || fAborted)
         return;
 
-    if (DebugLevel >= 6) ConsoleWrite("Waiting for ^b" + thread.Name + "^n to finish", 6);
+    ConsoleWrite("Waiting for ^b" + thread.Name + "^n to finish", 0);
     thread.Join(secs*1000);
 }
 
 private void StopThreads() {
+    if (fAborted) return;
     try
     {
         Thread stopper = new Thread(new ThreadStart(delegate()
@@ -9541,7 +9559,7 @@ private void StopThreads() {
                 }
 
                 fFinalizerActive = false;
-                if (DebugLevel >= 6) ConsoleWrite("^1^bFinished disabling threads, ready to be enabled again!", 6);
+                ConsoleWrite("^1^bFinished disabling threads, ready to be enabled again!", 0);
             }));
 
         stopper.Name = "stopper";
@@ -9551,7 +9569,7 @@ private void StopThreads() {
     }
     catch (Exception e)
     {
-        if (DebugLevel >= 6) ConsoleException(e);
+        if (!fAborted) ConsoleException(e);
     }
 }
 
@@ -9639,10 +9657,13 @@ private void ListPlayersLoop() {
             // If there has been no event, ask for one
             if (request.LastUpdate == fListPlayersTimestamp) ServerCommand("admin.listPlayers", "all");
         }
+    } catch (ThreadAbortException) {
+        fAborted = true;
+        return;
     } catch (Exception e) {
         ConsoleException(e);
     } finally {
-        if (DebugLevel >= 6) ConsoleWrite("^bListPlayersLoop^n thread stopped", 6);
+        if (!fAborted) ConsoleWrite("^bListPlayersLoop^n thread stopped", 0);
     }
 }
 
@@ -11870,10 +11891,13 @@ private void TimerLoop() {
                 }
             }
         }
+    } catch (ThreadAbortException) {
+        fAborted = true;
+        return;
     } catch (Exception e) {
         ConsoleException(e);
     } finally {
-        if (DebugLevel >= 6) ConsoleWrite("^bTimerLoop^n thread stopped", 6);
+        if (!fAborted) ConsoleWrite("^bTimerLoop^n thread stopped", 0);
     }
 }
 
@@ -12247,17 +12271,22 @@ public void CheckForPluginUpdate() { // runs in one-shot thread
                 TaskbarNotify(GetPluginName() + ": new version available!", "Please download and install " + newVersion); 
             }
         }
+    } catch (ThreadAbortException) {
+        fAborted = true;
+        return;
 	} catch (Exception e) {
-		if (DebugLevel >= 8) ConsoleException(e);
+		if (!fAborted) ConsoleException(e);
 	} finally {
-        // Update check time
-        fLastVersionCheckTimestamp = DateTime.Now;
-        // Update traffic control
-        lock (fUpdateThreadLock) {
-            fUpdateThreadLock.MaxDelay = fUpdateThreadLock.MaxDelay - 1;
-            fUpdateThreadLock.LastUpdate = DateTime.MinValue;
+        if (!fAborted) {
+            // Update check time
+            fLastVersionCheckTimestamp = DateTime.Now;
+            // Update traffic control
+            lock (fUpdateThreadLock) {
+                fUpdateThreadLock.MaxDelay = fUpdateThreadLock.MaxDelay - 1;
+                fUpdateThreadLock.LastUpdate = DateTime.MinValue;
+            }
+            DebugWrite("Updater thread finished!", 3);
         }
-        DebugWrite("Updater thread finished!", 3);
     }
 }
 
