@@ -5698,7 +5698,7 @@ public void MoveLoop() {
     } catch (Exception e) {
         ConsoleException(e);
     } finally {
-        ConsoleWrite("^bMoveLoop^n thread stopped", 0);
+        if (DebugLevel >= 6) ConsoleWrite("^bMoveLoop^n thread stopped", 6);
     }
 }
 
@@ -7077,7 +7077,7 @@ private void ScramblerLoop () {
         ConsoleException(e);
     } finally {
         fWhileScrambling = false;
-        ConsoleWrite("^bScramblerLoop^n thread stopped", 0);
+        if (DebugLevel >= 6) ConsoleWrite("^bScramblerLoop^n thread stopped", 6);
     }
 }
 
@@ -7962,7 +7962,7 @@ public void FetchLoop() {
     } catch (Exception e) {
         ConsoleException(e);
     } finally {
-        ConsoleWrite("^bFetchLoop^n thread stopped", 0);
+        if (DebugLevel >= 6) ConsoleWrite("^bFetchLoop^n thread stopped", 6);
     }
 }
 
@@ -8490,6 +8490,7 @@ private String FormatMessage(String msg, MessageType type, int level) {
 
 public void LogWrite(String msg)
 {
+    if (fFinalizerActive) return;
     this.ExecuteCommand("procon.protected.pluginconsole.write", msg);
     if (EnableExternalLogging) {
         LogExternal(msg);
@@ -8518,6 +8519,11 @@ public void ConsoleError(String msg)
 
 public void ConsoleException(Exception e)
 {
+    if (e.GetType() == typeof(ThreadAbortException)
+      || e.GetType() == typeof(ThreadInterruptedException)
+      || e.GetType() == typeof(CannotUnloadAppDomainException)
+    )
+        return;
     if (DebugLevel >= 3) ConsoleWrite(e.ToString(), MessageType.Exception, 3);
 }
 
@@ -9490,7 +9496,7 @@ private void JoinWith(Thread thread, int secs)
     if (thread == null || !thread.IsAlive)
         return;
 
-    ConsoleWrite("Waiting for ^b" + thread.Name + "^n to finish", 0);
+    if (DebugLevel >= 6) ConsoleWrite("Waiting for ^b" + thread.Name + "^n to finish", 6);
     thread.Join(secs*1000);
 }
 
@@ -9535,7 +9541,7 @@ private void StopThreads() {
                 }
 
                 fFinalizerActive = false;
-                ConsoleWrite("^1^bFinished disabling threads, ready to be enabled again!", 0);
+                if (DebugLevel >= 6) ConsoleWrite("^1^bFinished disabling threads, ready to be enabled again!", 6);
             }));
 
         stopper.Name = "stopper";
@@ -9545,7 +9551,7 @@ private void StopThreads() {
     }
     catch (Exception e)
     {
-        ConsoleException(e);
+        if (DebugLevel >= 6) ConsoleException(e);
     }
 }
 
@@ -9636,7 +9642,7 @@ private void ListPlayersLoop() {
     } catch (Exception e) {
         ConsoleException(e);
     } finally {
-        ConsoleWrite("^bListPlayersLoop^n thread stopped", 0);
+        if (DebugLevel >= 6) ConsoleWrite("^bListPlayersLoop^n thread stopped", 6);
     }
 }
 
@@ -11867,7 +11873,7 @@ private void TimerLoop() {
     } catch (Exception e) {
         ConsoleException(e);
     } finally {
-        ConsoleWrite("^bTimerLoop^n thread stopped", 0);
+        if (DebugLevel >= 6) ConsoleWrite("^bTimerLoop^n thread stopped", 6);
     }
 }
 
