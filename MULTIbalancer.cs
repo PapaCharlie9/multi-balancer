@@ -9508,25 +9508,25 @@ private void StopThreads() {
                     lock (fMoveQ) {
                         Monitor.Pulse(fMoveQ);
                     }
-                    JoinWith(fMoveThread, 3);
+                    JoinWith(fMoveThread, 1);
                     fMoveThread = null;
-                    JoinWith(fListPlayersThread, 3);
+                    JoinWith(fListPlayersThread, 1);
                     fListPlayersThread = null;
                     lock (fPriorityFetchQ) {
                         Monitor.Pulse(fPriorityFetchQ);
                     }
-                    JoinWith(fFetchThread, 3);
+                    JoinWith(fFetchThread, 1);
                     fFetchThread = null;
                     lock (fScramblerLock) {
                         fScramblerLock.MaxDelay = 0;
                         Monitor.Pulse(fScramblerLock);
                     }
-                    JoinWith(fScramblerThread, 3);
+                    JoinWith(fScramblerThread, 1);
                     fScramblerThread = null;
                     lock (fTimerRequestList) {
                         Monitor.Pulse(fTimerRequestList);
                     }
-                    JoinWith(fTimerThread, 3); // checks for null
+                    JoinWith(fTimerThread, 1); // checks for null
                     fTimerThread = null;
                 }
                 catch (Exception e)
