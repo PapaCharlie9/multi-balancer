@@ -1572,7 +1572,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.9.0";
+    return "1.0.9.1";
 }
 
 public String GetPluginAuthor() {
@@ -9539,6 +9539,7 @@ private void StopThreads() {
             }));
 
         stopper.Name = "stopper";
+        stopper.IsBackground = true;
         stopper.Start();
 
     }
