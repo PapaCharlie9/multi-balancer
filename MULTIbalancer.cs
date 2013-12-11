@@ -85,7 +85,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     public enum FetchState {New, InQueue, Requesting, Aborted, Succeeded, Failed};
 
-    public enum Scope {SameTeam, SameSquad};
+    public enum Scope {SameTeam, SameSquad, Total, TeamOne, TeamTwo, TeamThree, TeamFour};
 
     public enum UnswitchChoice {Always, Never, LatePhaseOnly};
 
@@ -987,6 +987,7 @@ public String[] FriendsList;
 public List<String> fSettingFriendsList;
 public double SecondsUntilAdaptiveSpeedBecomesFast;
 public bool EnableInGameCommands;
+public int DisperseClanPlayersEvenlyWhenMoreThan;
 
 public bool OnWhitelist;
 public bool OnFriendsList;
@@ -1234,6 +1235,7 @@ public MULTIbalancer() {
     fSettingFriendsList = new List<String>();
     SecondsUntilAdaptiveSpeedBecomesFast = 3*60; // 3 minutes default
     EnableInGameCommands = true;
+    DisperseClanPlayersEvenlyWhenMoreThan = 0;
     
     /* ===== SECTION 2 - Exclusions ===== */
     
@@ -4276,17 +4278,25 @@ private void BalanceAndUnstack(String name) {
     bool lenient = false;
     int maxDispersalMoves = 2;
     bool isDisperseByRank = IsRankDispersal(player);
-    bool isDisperseByList = IsDispersal(player, false);
+    bool isDisperseByList = IsInDispersalList(player, false);
+    /* DCE
+    bool isDisperseByClanPop = false;
+    if (!isDisperseByList) {
+        isDisperseByClanPop = IsClanDispersal(player, false);
+        // Add to if test below || isDisperseByClanPop
+    }
+    */
     if (isDisperseByList) {
+        lenient = !perMode.EnableStrictDispersal; // the opposite of strict is lenient
         String dispersalMode = (lenient) ? "LENIENT MODE" : "STRICT MODE";
         DebugBalance("ON MUST MOVE LIST ^b" + player.FullName + "^n T:" + player.Team + ", disperse evenly enabled, " + dispersalMode);
         mustMove = true;
-        lenient = !perMode.EnableStrictDispersal; // the opposite of strict is lenient
         maxDispersalMoves = (lenient) ? 1 : 2;
     } else if (isDisperseByRank) {
-        DebugBalance("ON MUST MOVE LIST ^b" + name + "^n T:" + player.Team + ", Rank " + player.Rank + " >= " + perMode.DisperseEvenlyByRank);
-        mustMove = true;
         lenient = LenientRankDispersal;
+        String dispersalMode = (lenient) ? "LENIENT MODE" : "STRICT MODE";
+        DebugBalance("ON MUST MOVE LIST ^b" + name + "^n T:" + player.Team + ", Rank " + player.Rank + " >= " + perMode.DisperseEvenlyByRank + ", " + dispersalMode);
+        mustMove = true;
         maxDispersalMoves = (lenient) ? 1 : 2;
     } 
 
@@ -4490,7 +4500,7 @@ private void BalanceAndUnstack(String name) {
     // Special exemption if tag not verified and first/partial round
     if (!player.TagVerified && player.Rounds <= 1) {
         if (DebugLevel >= 7) DebugBalance("Skipping ^b" + player.Name + "^n, clan tag not verified yet");
-        // Don't count this as an excemption
+        // Don't count this as an exemption
         // Don't increment the total
         return;
     }
@@ -5243,7 +5253,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     // Check forbidden cases
     PerModeSettings perMode = GetPerModeSettings();
     bool isSQDM = IsSQDM();
-    bool isDispersal = IsDispersal(player, false);
+    bool isDispersal = IsInDispersalList(player, false);
     bool isRank = IsRankDispersal(player);
     bool forbidden = (((isDispersal || isRank) && Forbid(perMode, ForbidSwitchingAfterDispersal)) || (player.MovesByMBRound > 0 && !isSQDM && Forbid(perMode, ForbidSwitchingAfterAutobalance)));
 
@@ -6157,7 +6167,7 @@ private void SetTag(PlayerModel player, Hashtable data) {
     if (!String.IsNullOrEmpty(player.Tag)) DebugFetch("Set tag ^b" + player.Tag + "^n for ^b" + player.Name);
     UpdateFromWhitelist(player);
     UpdatePlayerFriends(player);
-    if (IsDispersal(player, false)) DebugFetch("^b" + player.FullName + "^n in Dispersal Group " + player.DispersalGroup);
+    if (IsInDispersalList(player, false)) DebugFetch("^b" + player.FullName + "^n in Dispersal Group " + player.DispersalGroup);
 }
 
 private void SetStats(PlayerModel player, Hashtable stats) {
@@ -6652,7 +6662,7 @@ private void ScramblerLoop () {
                         case DivideByChoices.DispersalGroup: {
                             int[] gCount = new int[3]{0,0,0};
                             foreach (PlayerModel p in sr.Roster) {
-                                if (IsDispersal(p, true)) {
+                                if (IsInDispersalList(p, true)) {
                                     if (p.DispersalGroup == 1 || p.DispersalGroup == 2) {
                                         gCount[p.DispersalGroup] = gCount[p.DispersalGroup] + 1;
                                     }
@@ -6895,7 +6905,7 @@ private void ScramblerLoop () {
                             if (filler == null) break;
 
                             // Check to make sure Dispersal isn't violated
-                            if (DivideBy == DivideByChoices.DispersalGroup && IsDispersal(filler, true) && filler.DispersalGroup != targetDispersalGroup) {
+                            if (DivideBy == DivideByChoices.DispersalGroup && IsInDispersalList(filler, true) && filler.DispersalGroup != targetDispersalGroup) {
                                 filler = null;
                                 continue;
                             }
@@ -9248,7 +9258,11 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] tea
     bool mostMoves = true;
 
     bool isDispersalByRank = IsRankDispersal(player);
-    bool isDispersalByList = IsDispersal(player, false);
+    bool isDispersalByList = IsInDispersalList(player, false);
+    /* DCE
+    bool isDispersalByClanPop = false;
+    if (!isDispersalByList) isDispersalByClanPop = IsClanDispersal(player, false);
+    */
 
     /* By Dispersal List */
 
@@ -9272,10 +9286,10 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] tea
                 if ((nTarget - nFrom) <= MaxDiff()) return targetTeam;
                 // Target team too big, don't move this player
                 if (DebugLevel >= 7) ConsoleDebug("ToTeamByDispersal lenient mode, target team " + GetTeamName(targetTeam) + " has too many players " + nTarget + "/" + nFrom + ", skipping dispersal by group of ^b" + player.FullName);
-                return 0;
+                targetTeam = 0;
+                goto clan;
             }
         }
-
         // Otherwise normal list dispersal
         mostMoves = true;
 
@@ -9283,7 +9297,7 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] tea
             foreach (PlayerModel p in teamListsById[teamId]) {
                 if (p.Name == player.Name) continue; // don't count this player
                 
-                if (IsDispersal(p, true)) {
+                if (IsInDispersalList(p, true)) {
                     usualSuspects[teamId] = usualSuspects[teamId] + 1;
                     grandTotal = grandTotal + 1;
 
@@ -9297,7 +9311,8 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] tea
 
         if (mostMoves && GetMoves(player) > 0) {
             DebugWrite("ToTeamByDispersal List: ^b" + player.Name + "^n moved more than other dispersals (" + GetMoves(player) + " times), skipping!", 5);
-            return -1;
+            targetTeam = -1;
+            goto clan;
         }
 
         String an = usualSuspects[1] + "/" + usualSuspects[2];
@@ -9332,15 +9347,89 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] tea
             if ((nTarget - nFrom) <= MaxDiff()) return targetTeam;
             // Target team too big, don't move this player
             if (DebugLevel >= 7) ConsoleDebug("ToTeamByDispersal lenient mode, target team " + GetTeamName(targetTeam) + " has too many players " + nTarget + "/" + nFrom + ", skipping dispersal by list of ^b" + player.FullName);
-            return 0;
+            targetTeam = 0;
+            goto clan;
         }
 
         if (allEqual) DebugWrite("^9ToTeamByDispersal: all equal list, skipping", 5);
         // otherwise fall through and try rank
     }
 
-    /* By Rank? */
+clan:
+    /* DCE
+    if (isDispersalByClanPop) {
+        int[] pops = new int[5]{0,0,0,0,0};
+        grandTotal = 0;
+        mostMoves = false;
 
+        int n = GetClanPopulation(player, 1);
+        pops[1] = n;
+        grandTotal = grandTotal + n;
+        n = GetClanPopulation(player, 2);
+        pops[2] = n;
+        grandTotal = grandTotal + n;
+        if (isSQDM) {
+            n = GetClanPopulation(player, 3);
+            pops[3] = n;
+            grandTotal = grandTotal + n;
+            n = GetClanPopulation(player, 4);
+            pops[4] = n;
+            grandTotal = grandTotal + n;
+        }
+
+        if  (grandTotal > DisperseClanPlayersEvenlyWhenMoreThan) {
+            if (GetMoves(player) > 0 && player.Team >= 1 && player.Team < teamListsById.Count) {
+                mostMoves = true;
+                foreach (PlayerModel p in teamListsById[player.Team]) {
+                    if (p.Name == player.Name) continue; // don't count this player
+                    // Make sure this player hasn't been moved more than any other dispersal player
+                    if (GetMoves(p) > GetMoves(player)) {
+                        mostMoves = false;
+                        break;
+                    }
+                } 
+            }
+            if (mostMoves) {
+                DebugWrite("ToTeamByDispersal Clan: ^b" + player.FullName + "^n moved more than other dispersals (" + GetMoves(player) + " times), skipping!", 5);
+                targetTeam = -1;
+                goto rank;
+            }
+
+            String a = pops[1] + "/" + pops[2];
+            if (isSQDM) a = a + "/" + pops[3] + "/" + pops[4];
+            DebugWrite("ToTeamByDispersal: analysis of ^b" + player.FullName + "^n dispersal of clan population > " + DisperseClanPlayersEvenlyWhenMoreThan + ": " + grandTotal  + " = " + a, 5);
+
+            // Pick smallest one
+            targetTeam = 0;
+            allEqual = true;
+            int minPop = 40;
+            for (int i = 1; i < pops.Length; ++i) {
+                if (!isSQDM && i > 2) continue;
+                if (allEqual && pops[i] == minPop) {
+                    allEqual = true;
+                } else if (pops[i] < minPop) {
+                    minPop = pops[i];
+                    targetTeam = i;
+                    if (i != 1) allEqual = false;
+                } else {
+                    if (i != 1) allEqual = false;
+                }
+            }
+
+            if (allEqual) {
+                DebugWrite("^9ToTeamByDispersal: all equal by clan population, skipping", 5);
+                targetTeam = 0; // don't disperse
+                goto rank;
+            } else {
+                return targetTeam;
+            }
+        }
+        // fall through
+    }
+    */
+
+    /* By Rank? */
+//rank:
     if (isDispersalByRank) {
         int[] rankers = new int[5]{0,0,0,0,0};
         grandTotal = 0;
@@ -10094,14 +10183,60 @@ private void CheckDeativateBalancer(String reason) {
     }
 }
 
-private bool IsDispersal(PlayerModel player, bool ignoreWhitelist) {
+/* DCE - Disperse Clan Evenly */
+private bool IsClanDispersal(PlayerModel player, bool ignoreWhitelist) {
+    if (player == null) return false;
+    PerModeSettings perMode = GetPerModeSettings();
+    if (!perMode.EnableDisperseEvenlyList) return false;
+    if (OnWhitelist && !ignoreWhitelist && CheckWhitelist(player, WL_DISPERSE)) return false;
+    bool disperse = false;
+    String extractedTag = ExtractTag(player);
+    if (!String.IsNullOrEmpty(extractedTag) && GetClanPopulation(player, 0) > DisperseClanPlayersEvenlyWhenMoreThan) { // 0 means all teams
+        disperse = true;
+    }
+    return disperse;
+}
+
+/* DCE */
+private int GetClanPopulation(PlayerModel player, int teamId) {
+    if (player == null) return 0;
+    Scope scope = Scope.Total;
+    switch (teamId) {
+        case 1:
+            scope = Scope.TeamOne;
+            break;
+        case 2:
+            scope = Scope.TeamTwo;
+            break;
+        case 3:
+            scope = Scope.TeamThree;
+            break;
+        case 4:
+            scope = Scope.TeamFour;
+            break;
+        default:
+            break;
+    }
+    return CountMatchingTags(player, scope);
+}
+
+
+private bool IsInDispersalList(PlayerModel player, bool ignoreWhitelist) {
     if (player == null) return false;
     player.DispersalGroup = 0;
     PerModeSettings perMode = GetPerModeSettings();
-    bool isDispersalByList = false;
     if (!perMode.EnableDisperseEvenlyList) return false;
+    bool isDispersalByList = false;
     String extractedTag = ExtractTag(player);
-    if (String.IsNullOrEmpty(extractedTag)) extractedTag = INVALID_NAME_TAG_GUID;
+    if (String.IsNullOrEmpty(extractedTag)) {
+        extractedTag = INVALID_NAME_TAG_GUID;
+    } else {
+        /* DCE - Disperse Clan Evenly
+        if (GetClanPopulation(player, 0) > DisperseClanPlayersEvenlyWhenMoreThan) { // 0 means all teams
+            return true;
+        } // otherwise fall thru
+        */
+    }
     String guid = (String.IsNullOrEmpty(player.EAGUID)) ? INVALID_NAME_TAG_GUID : player.EAGUID;
     if (fSettingDisperseEvenlyList.Count > 0) {
         if (fSettingDisperseEvenlyList.Contains(player.Name) 
@@ -10120,7 +10255,7 @@ private bool IsDispersal(PlayerModel player, bool ignoreWhitelist) {
             }
         }
     }
-    for (int i = 1; i <= 4; ++i) {
+    for (int i = 1; i <= 4; ++i) { // Up to 4 groups
         if (!isDispersalByList && fDispersalGroups[i].Count > 0) {
             fDispersalGroups[i] = new List<String>(fDispersalGroups[i]);
             if (fDispersalGroups[i].Contains(player.Name) 
@@ -10231,6 +10366,11 @@ private int CountMatchingTags(PlayerModel player, Scope scope) {
     int team = player.Team;
     int squad = player.Squad;
 
+    if (scope == Scope.TeamOne) { team =  1; }
+    else if (scope == Scope.TeamTwo) { team = 2; }
+    else if (scope == Scope.TeamThree) { team = 3; }
+    else if (scope == Scope.TeamFour) { team = 4; }
+
     List<PlayerModel> teamList = GetTeam(team);
     if (teamList == null) return 0;
 
@@ -10252,7 +10392,9 @@ private int CountMatchingTags(PlayerModel player, Scope scope) {
         sname = SQUAD_NAMES[squad];
     }
 
-    String loc = (scope == Scope.SameSquad) ? sname : GetTeamName(team);
+    String loc = sname;
+    if (scope == Scope.SameTeam || (scope >= Scope.TeamOne && scope <= Scope.TeamFour)) loc = GetTeamName(team);
+    else if (scope == Scope.Total) loc = "server";
 
     if (verified < 2) {
         if (DebugLevel >= 7) DebugBalance("Count for matching tags for player ^b" + player.Name + "^n in " + loc + ", not enough verified tags to find matches");
@@ -10957,7 +11099,7 @@ private void AssignGroups() {
         all.AddRange(fTeam3);
         all.AddRange(fTeam4);
         foreach (PlayerModel p in all) {
-            if (IsDispersal(p, true)) {
+            if (IsInDispersalList(p, true)) {
                 if (DebugLevel >= 6) ConsoleDebug("AssignGroups assigned ^b" + p.FullName + "^n to Group " + p.DispersalGroup);
             }
         }
@@ -11375,7 +11517,7 @@ private void InGameCommand(String msg, ChatScope scope, int team, int squad, Str
                     } else {
                         foreach (String nm in names) {
                             player = GetPlayer(nm);
-                            if (player != null && IsDispersal(player, true)) {
+                            if (player != null && IsInDispersalList(player, true)) {
                                 lines.Add("Duplicate name ^b" + nm + "^n, add failed!");
                                 SayLines(lines, name);
                                 return;
@@ -11478,7 +11620,7 @@ private void InGameCommand(String msg, ChatScope scope, int team, int squad, Str
                     } else {
                         foreach (String nm in names) {
                             player = GetPlayer(nm);
-                            if (player != null && !IsDispersal(player, true)) {
+                            if (player != null && !IsInDispersalList(player, true)) {
                                 lines.Add("Can't find name ^b" + nm + "^n, delete failed!");
                                 SayLines(lines, name);
                                 return;
@@ -11614,7 +11756,7 @@ private void InGameCommand(String msg, ChatScope scope, int team, int squad, Str
                     } else {
                         foreach (String nm in names) {
                             player = GetPlayer(nm);
-                            if (player != null && IsDispersal(player, true)) {
+                            if (player != null && IsInDispersalList(player, true)) {
                                 lines.Add("Duplicate name ^b" + nm + "^n, new failed!");
                                 SayLines(lines, name);
                                 return;
