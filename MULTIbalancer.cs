@@ -117,7 +117,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     public static String[] TEAM_NAMES = new String[] { "None", "US", "RU" };
 
-    public static String[] BF4_TEAM_NAMES = new String[] { "None", "T1", "T2"};
+    public static String[] BF4_TEAM_NAMES = new String[] { "US", "RU", "CN" }; // Indexed by faction code!
 
     public static String[] RUSH_NAMES = new String[] { "None", "Attacking", "Defending" };
 
@@ -139,6 +139,10 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
     public const uint WL_ALL = (WL_BALANCE | WL_UNSTACK | WL_SWITCH | WL_DISPERSE | WL_RANK);
 
     public const int MIN_SAMPLE_COUNT = 15;
+
+    public const int FACTION_US = 0;
+    public const int FACTION_RU = 1;
+    public const int FACTION_CN = 2;
 
     /* Classes */
 #region Classes
@@ -931,6 +935,7 @@ private Dictionary<int,List<String>> fFriends;
 private List<String> fAllFriends;
 private List<DelayedRequest> fTimerRequestList = null;
 private DateTime fLastValidationTimestamp;
+private int[] fFactionByTeam = null;
 
 // Operational statistics
 private int fReassignedRound = 0;
@@ -1196,6 +1201,7 @@ public MULTIbalancer() {
     fTimerRequestList = new List<DelayedRequest>();
     fAverageTicketLoss = new Queue<double>[3]{null, new Queue<double>(), new Queue<double>()};
     fTicketLossHistogram = new Histogram();
+    fFactionByTeam = new int[5]{-1,-1,-1,-1,-1};
     
     /* Settings */
 
@@ -3316,7 +3322,11 @@ public void OnPluginLoaded(String strHostName, String strPort, String strPRoConV
         "OnEndRound",
         "OnRunNextLevel",
         "OnResponseError",
-        "OnLogin"
+        "OnLogin",
+        "OnTeam1FactionOverride",
+        "OnTeam2FactionOverride",
+        "OnTeam3FactionOverride",
+        "OnTeam4FactionOverride"
     );
 }
 
@@ -4059,6 +4069,8 @@ public override void OnLevelLoaded(String mapFileName, String Gamemode, int roun
 
         fMaxTickets = -1; // flag to pay attention to next serverInfo
         ServerCommand("serverInfo");
+
+        if (fGameVersion == GameVersion.BF4) UpdateFactions();
     } catch (Exception e) {
         ConsoleException(e);
     }
@@ -4131,6 +4143,34 @@ public override void OnRunNextLevel() {
     if (!fIsEnabled) return;
     
     DebugWrite("^9^bGot OnRunNextLevel^n", 7);
+}
+
+public override void OnTeam1FactionOverride(int faction) {
+    //if (!fIsEnabled) return;
+    
+    DebugWrite("^9^bGot OnTeam1FactionOverride^n(" + faction + ")", 1);
+    fFactionByTeam[1] = faction;
+}
+
+public override void OnTeam2FactionOverride(int faction) {
+    if (!fIsEnabled) return;
+    
+    DebugWrite("^9^bGot OnTeam2FactionOverride^n(" + faction + ")", 7);
+    fFactionByTeam[2] = faction;
+}
+
+public override void OnTeam3FactionOverride(int faction) {
+    if (!fIsEnabled) return;
+    
+    DebugWrite("^9^bGot OnTeam3FactionOverride^n(" + faction + ")", 7);
+    fFactionByTeam[3] = faction;
+}
+
+public override void OnTeam4FactionOverride(int faction) {
+    if (!fIsEnabled) return;
+    
+    DebugWrite("^9^bGot OnTeam4FactionOverride^n(" + faction + ")", 7);
+    fFactionByTeam[4] = faction;
 }
 
 public override void OnResponseError(List<string> lstRequestWords, string strError) {
@@ -9712,7 +9752,7 @@ private String GetTeamName(int team) {
     } else if (IsRush() && team < RUSH_NAMES.Length) {
         return RUSH_NAMES[team];
     }
-    if (team >= TEAM_NAMES.Length) return "None";
+    if (fGameVersion == GameVersion.BF3 && team >= TEAM_NAMES.Length) return "None";
     return TeamName(team);
 }
 
@@ -12242,17 +12282,34 @@ private void CheckRoundEndingDuration() {
     DebugWrite("Between round seconds = " + secs.ToString("F0") + ", average of " + fTotalRoundEndingRounds + " rounds = " + (fTotalRoundEndingSeconds/fTotalRoundEndingRounds).ToString("F1"), 3);
 }
 
-
-/* === NEW_NEW_NEW === */
-
 public String TeamName(int teamId) {
     if (fGameVersion == GameVersion.BF4) {
-        // TODO
-        return BF4_TEAM_NAMES[teamId];
+        if (teamId < 0 || teamId >= fFactionByTeam.Length) {
+            return "T" + teamId;
+        }
+        int faction = fFactionByTeam[teamId];
+        if (faction < 0) {
+            return "None";
+        } else if (faction >= BF4_TEAM_NAMES.Length) {
+            return "T" + teamId;
+        }
+        return BF4_TEAM_NAMES[faction];
     }
     // else BF3
     return TEAM_NAMES[teamId];
 }
+
+private void UpdateFactions() {
+    ServerCommand("vars.team1FactionOverride");
+    ServerCommand("vars.team2FactionOverride");
+    ServerCommand("vars.team3FactionOverride");
+    ServerCommand("vars.team4FactionOverride");
+}
+
+
+/* === NEW_NEW_NEW === */
+
+
 
 
 
