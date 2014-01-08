@@ -4674,7 +4674,7 @@ private void BalanceAndUnstack(String name) {
         if (isSQDM) {
             ts = fTeam1.Count + "(A) vs " + fTeam2.Count + "(B) vs " + fTeam3.Count + "(C) vs " + fTeam4.Count + "(D)";
         } else {
-            ts = fTeam1.Count + "(US) vs " + fTeam2.Count + "(RU)";
+            ts = fTeam1.Count + "(" + GetTeamName(1) + ") vs " + fTeam2.Count + "(" + GetTeamName(2) + ")";
         }
         if (mustMove) {
             DebugBalance("Autobalancing because ^b" + name + "^n must be moved");
@@ -6398,19 +6398,19 @@ private void Scrambler(List<TeamScore> teamScores) {
             // ratio of difference from max
             if (a < b) {
                 ratio = (goal - a) / Math.Max(1, (goal - b)); 
-                DebugScrambler("Ratio US/RU: " + a + " vs " + b + " <- [" + goal + "]: " + (goal-a) + "/" + Math.Max(1, (goal-b)) + " = " + ratio.ToString("F2"));
+                DebugScrambler("Ratio T1/T2: " + a + " vs " + b + " <- [" + goal + "]: " + (goal-a) + "/" + Math.Max(1, (goal-b)) + " = " + ratio.ToString("F2"));
             } else {
                 ratio = (goal - b) / Math.Max(1, (goal - a));
-                DebugScrambler("Ratio RU/US: " + a + " vs " + b + " <- [" + goal + "]: " + (goal-b) + "/" + Math.Max(1, (goal-a)) + " = " + ratio.ToString("F2"));
+                DebugScrambler("Ratio T2/T1: " + a + " vs " + b + " <- [" + goal + "]: " + (goal-b) + "/" + Math.Max(1, (goal-a)) + " = " + ratio.ToString("F2"));
             }
         } else {
             // direct ratio
             if (a > b) {
                 ratio = a / Math.Max(1, b);
-                DebugScrambler("Ratio US/RU: " + a + " vs " + b + " -> [" + goal + "]: " + a + "/" + Math.Max(1, b) + " = " + ratio.ToString("F2"));
+                DebugScrambler("Ratio T1/T2: " + a + " vs " + b + " -> [" + goal + "]: " + a + "/" + Math.Max(1, b) + " = " + ratio.ToString("F2"));
             } else {
                 ratio = b / Math.Max(1, a);
-                DebugScrambler("Ratio RU/US: " + a + " vs " + b + " -> [" + goal + "]: " + b + "/" + Math.Max(1, a) + " = " + ratio.ToString("F2"));
+                DebugScrambler("Ratio T2/T2: " + a + " vs " + b + " -> [" + goal + "]: " + b + "/" + Math.Max(1, a) + " = " + ratio.ToString("F2"));
             }
         } 
         if ((ratio * 100) < OnlyOnFinalTicketPercentage) {
@@ -6533,7 +6533,7 @@ private void ScramblerLoop () {
                     kctiss = ", KeepClansTagsInSameTeam";
                     if (KeepFriendsInSameTeam) kctiss = kctiss + ", KeepFriendsInSameTeam";
                 }
-                DebugScrambler("Starting scramble of " + this.TotalPlayerCount + " players, winner was " + GetTeamName(fWinner));
+                DebugScrambler("Starting scramble of " + this.TotalPlayerCount + " players, winner was T" + fWinner + "(" + GetTeamName(fWinner) + ")");
                 DebugScrambler("Using (" + ScrambleBy + kst + kctiss + ", DivideBy = " + DivideBy + extra + ")");
                 if (!logOnly) last = DateTime.Now;
 
@@ -6726,7 +6726,7 @@ private void ScramblerLoop () {
                             break;
                     }
 
-                    String ot = (sr.Roster[0].Team == 1) ? "US" : "RU";
+                    String ot = (sr.Roster[0].Team == 1) ? "T1" : "T2";
                     DebugScrambler(ot + "/" + SQUAD_NAMES[sr.Squad] + "(" + sr.Roster.Count + ") " + ScrambleBy + ":" + sr.Metric.ToString("F1"));
 
                     switch (DivideBy) {
@@ -6769,7 +6769,7 @@ private void ScramblerLoop () {
 
                 DebugScrambler("After sorting:");
                 foreach (SquadRoster ds in all) {
-                    String oldt = (ds.Roster[0].Team == 1) ? "US" : "RU";
+                    String oldt = (ds.Roster[0].Team == 1) ? "T1" : "T2";
                     DebugScrambler("    " + ScrambleBy + ":" + ds.Metric.ToString("F1") + " " + oldt + "/" + SQUAD_NAMES[ds.Squad]);
                 }
             
@@ -6795,10 +6795,10 @@ private void ScramblerLoop () {
                     foreach (SquadRoster disp in copy) {
                         if (disp.DispersalGroup == 1 && usScrambled.Count < teamMax) {
                             localTarget = usScrambled;
-                            debugMsg = GetTeamName(1);
+                            debugMsg = "T1 (" + GetTeamName(1) + ")";
                         } else if (disp.DispersalGroup == 2 && ruScrambled.Count < teamMax) {
                             localTarget = ruScrambled;
-                            debugMsg = GetTeamName(2);
+                            debugMsg = "T2 (" + GetTeamName(2) + ")";
                         } else {
                             continue;
                         }
@@ -6822,7 +6822,7 @@ private void ScramblerLoop () {
 
                     // Recalc team metrics
                     SumMetricByTeam(usScrambled, ruScrambled, out usMetric, out ruMetric);
-                    if (logOnly || DebugLevel >= 6) DebugScrambler("Updated scrambler metrics " + ScrambleBy + ": US(" + usScrambled.Count + ") = " + usMetric.ToString("F1") + ", RU(" + ruScrambled.Count + ") = " + ruMetric.ToString("F1"));
+                    if (logOnly || DebugLevel >= 6) DebugScrambler("Updated scrambler metrics " + ScrambleBy + ": T1(" + usScrambled.Count + ") = " + usMetric.ToString("F1") + ", T2(" + ruScrambled.Count + ") = " + ruMetric.ToString("F1"));
 
                     if (usScrambled.Count >= teamMax && ruScrambled.Count >= teamMax) {
                         all.Clear(); // no more room, skip remaining squads
@@ -6848,12 +6848,12 @@ private void ScramblerLoop () {
                         target = usScrambled;
                         targetSquadTable = usSquads;
                         opposing = ruScrambled;
-                        debugMsg = "Scrambling to target = " + GetTeamName(1);
+                        debugMsg = "Scrambling to target = T1 (" + GetTeamName(1) + ")";
                     } else {
                         target = ruScrambled;
                         targetSquadTable = ruSquads;
                         opposing = usScrambled;
-                        debugMsg = "Scrambling to target = " + GetTeamName(2);
+                        debugMsg = "Scrambling to target = T2 (" + GetTeamName(2) + ")";
                     }
 
                     // Override choice if teams would be too unbalanced by player count
@@ -6866,10 +6866,10 @@ private void ScramblerLoop () {
                         opposing = tmp;
                         if (target == usScrambled) {
                             targetSquadTable = usSquads;
-                            debugMsg = "^4REVISED for count target = " + GetTeamName(1);
+                            debugMsg = "^4REVISED for count target = T1 (" + GetTeamName(1) + ")";
                         } else {
                             targetSquadTable = ruSquads;
-                            debugMsg = "^4REVISED for count target = " + GetTeamName(2);
+                            debugMsg = "^4REVISED for count target = T2 (" + GetTeamName(2) + ")";
                         }
                     } else {
                         squad = all[0]; // use strongest squad
@@ -6903,7 +6903,7 @@ private void ScramblerLoop () {
                         opposingSquadTable = ruSquads;
                         oppHaveNoSquad = ruHaveNoSquad;
                         oppSquadOfOne = ruSquadOfOne;
-                        debugMsg = GetTeamName(1) + " needs " + needed + " more players";
+                        debugMsg = "T1 (" + GetTeamName(1) + ") needs " + needed + " more players";
                     } else {
                         target = ruScrambled;
                         targetSquadTable = ruSquads;
@@ -6913,10 +6913,10 @@ private void ScramblerLoop () {
                         opposingSquadTable = usSquads;
                         oppHaveNoSquad = usHaveNoSquad;
                         oppSquadOfOne = usSquadOfOne;
-                        debugMsg = GetTeamName(2) + " needs " + needed + " more players";
+                        debugMsg = "T2 (" + GetTeamName(2) + ") needs " + needed + " more players";
                     }
 
-                    DebugScrambler("Adjusting team sizes, US(" + usScrambled.Count + "/" + fTeam1.Count + ") vs RU(" + ruScrambled.Count + "/" + fTeam2.Count + ") " + debugMsg);
+                    DebugScrambler("Adjusting team sizes, T1(" + usScrambled.Count + "/" + fTeam1.Count + ") vs T2(" + ruScrambled.Count + "/" + fTeam2.Count + ") " + debugMsg);
 
                     // See if we have some new players that joined after we started scrambling
                     List<String> extras = null;
@@ -7041,18 +7041,18 @@ private void ScramblerLoop () {
                 }
 
                 // Final counts
-                DebugScrambler("Final scrambled team counts: US(" + usScrambled.Count + "), RU(" + ruScrambled.Count + ")");
+                DebugScrambler("Final scrambled team counts: T1(" + usScrambled.Count + "), T2(" + ruScrambled.Count + ")");
 
                 // Assert that everyone is in their proper team
                 foreach (PlayerModel clone in usScrambled) {
                     if (clone.Team != 1) {
-                        ConsoleDebug("WARNING: ^b" + clone.FullName + "^n was in " + GetTeamName(clone.Team) + ", correcting to " + GetTeamName(1));
+                        ConsoleDebug("WARNING: ^b" + clone.FullName + "^n was in T" + clone.Team + "(" + GetTeamName(clone.Team) + "), correcting to T1");
                         clone.Team = 1;
                     }
                 }
                 foreach (PlayerModel clone in ruScrambled) {
                     if (clone.Team != 2) {
-                        ConsoleDebug("WARNING: ^b" + clone.FullName + "^n was in " + GetTeamName(clone.Team) + ", correcting to " + GetTeamName(2));
+                        ConsoleDebug("WARNING: ^b" + clone.FullName + "^n was in T" + clone.Team + "(" + GetTeamName(clone.Team) + "), correcting to T2");
                         clone.Team = 2;
                     }
                 }
@@ -7098,7 +7098,7 @@ private void ScramblerLoop () {
                 foreach (PlayerModel clone in usScrambled) {
                     int num = 0;
                     if (clone.ScrambledSquad < 1 || clone.ScrambledSquad >= SQUAD_NAMES.Length) {
-                        ConsoleDebug("ASSERT: After unsquading " + GetTeamName(1) + ", ^b" + clone.FullName + "^n has invalid ScrambledSquad = " + clone.ScrambledSquad);
+                        ConsoleDebug("ASSERT: After unsquading T1, ^b" + clone.FullName + "^n has invalid ScrambledSquad = " + clone.ScrambledSquad);
                         continue;
                     }
                     clone.Squad = 0; // unsquad
@@ -7109,14 +7109,14 @@ private void ScramblerLoop () {
                 }
                 foreach (int squadId in playerCount.Keys) {
                     if (playerCount[squadId] > fMaxSquadSize) {
-                        ConsoleDebug("ASSERT: " + GetTeamName(1) + "/" + SQUAD_NAMES[squadId] + " has > " + fMaxSquadSize + " players! = " + playerCount[squadId]);
+                        ConsoleDebug("ASSERT: T1/" + SQUAD_NAMES[squadId] + " has > " + fMaxSquadSize + " players! = " + playerCount[squadId]);
                     }
                 }
                 playerCount.Clear();
                 foreach (PlayerModel clone in ruScrambled) {
                     int num = 0;
                     if (clone.ScrambledSquad < 1 || clone.ScrambledSquad >= SQUAD_NAMES.Length) {
-                        ConsoleDebug("ASSERT: After unsquading " + GetTeamName(2) + ", ^b" + clone.FullName + "^n has invalid ScrambledSquad = " + clone.ScrambledSquad);
+                        ConsoleDebug("ASSERT: After unsquading T2, ^b" + clone.FullName + "^n has invalid ScrambledSquad = " + clone.ScrambledSquad);
                         continue;
                     }
                     clone.Squad = 0; // unsquad
@@ -7127,7 +7127,7 @@ private void ScramblerLoop () {
                 }
                 foreach (int squadId in playerCount.Keys) {
                     if (playerCount[squadId] > fMaxSquadSize) {
-                        ConsoleDebug("ASSERT: " + GetTeamName(2) + "/" + SQUAD_NAMES[squadId] + " has > " + fMaxSquadSize + " players! = " + playerCount[squadId]);
+                        ConsoleDebug("ASSERT: T2/" + SQUAD_NAMES[squadId] + " has > " + fMaxSquadSize + " players! = " + playerCount[squadId]);
                     }
                 }
                 playerCount.Clear();
@@ -12651,7 +12651,7 @@ private void LogStatus(bool isFinal, int level) {
     if (IsSQDM()) {
         if (level >= useLevel) DebugWrite("^bStatus^n: Team counts [" + this.TotalPlayerCount + "] = " + fTeam1.Count + "(A) vs " + fTeam2.Count + "(B) vs " + fTeam3.Count + "(C) vs " + fTeam4.Count + "(D), with " + fUnassigned.Count + " unassigned", 0);
     } else {
-        if (level >= useLevel) DebugWrite("^bStatus^n: Team counts [" + this.TotalPlayerCount + "] = " + fTeam1.Count + "(US) vs " + fTeam2.Count + "(RU), with " + fUnassigned.Count + " unassigned", 0);
+        if (level >= useLevel) DebugWrite("^bStatus^n: Team counts [" + this.TotalPlayerCount + "] = " + fTeam1.Count + "(" + GetTeamName(1) + ") vs " + fTeam2.Count + "(" + GetTeamName(2) + "), with " + fUnassigned.Count + " unassigned", 0);
     }
     
     List<int> counts = new List<int>();
