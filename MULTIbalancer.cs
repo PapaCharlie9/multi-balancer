@@ -130,6 +130,9 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     public const String DEFAULT_LIST_ITEM = "[-- name, tag, or EA_GUID --]";
 
+    public static String[] ROLE_NAMES = new String[] {"PLAYER", "SPECTATOR", "COMMANDER", "MOBILE COMMANDER"};
+
+
     public const uint WL_BALANCE    = 1<<0; // B option
     public const uint WL_UNSTACK    = 1<<1; // U option
     public const uint WL_SWITCH     = 1<<2; // S option
@@ -143,6 +146,11 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
     public const int FACTION_US = 0;
     public const int FACTION_RU = 1;
     public const int FACTION_CN = 2;
+
+    public const int ROLE_PLAYER = 0;
+    public const int ROLE_SPECTATOR = 1;
+    public const int ROLE_COMMANDER_PC = 2;
+    public const int ROLE_COMMANDER_MOBILE = 3;
 
     /* Classes */
 #region Classes
@@ -408,6 +416,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         public int LastMoveFrom;
         public int ScrambledSquad;
         public int OriginalSquad;
+        public int Role; // BF4
         
         // Battlelog
         public String PersonaId;
@@ -494,6 +503,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             StatsFetchStatus = new FetchInfo();
             Subscribed = false;
             Whitelist = 0;
+            Role = ROLE_PLAYER;
         }
         
         public PlayerModel(String name, int team) : this() {
@@ -577,6 +587,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             lhs.StatsFetchStatus = new FetchInfo(this.StatsFetchStatus);
             lhs.Subscribed = this.Subscribed;
             lhs.Whitelist = this.Whitelist;
+            lhs.Role = this.Role;
             return lhs;
         }
     } // end PlayerModel
@@ -2791,7 +2802,7 @@ private void CommandToLog(string cmd) {
             }
             ConsoleDump("Plugin has been enabled for " + fRoundsEnabled + " rounds");
             ConsoleDump("fKnownPlayers.Count = " + kp + ", not playing = " + (kp-ap) + ", more than 12 hours old = " + old);
-            ConsoleDump("fPriorityFetchQ.Count = " + fPriorityFetchQ.Count + ", verified tags = " + validTags);
+            ConsoleDump("fPriorityFetchQ.Count = " + PriorityQueueCount() + ", verified tags = " + validTags);
             ConsoleDump("MULTIbalancerUtils.HTML_DOC.Length = " + MULTIbalancerUtils.HTML_DOC.Length);
             return;
         }
@@ -3577,7 +3588,7 @@ public override void OnPlayerMovedByAdmin(string soldierName, int destinationTea
                 // If the move was not done by MB, update and count the move
                 PlayerModel player = GetPlayer(soldierName);
                 if (player == null // haven't seen this player before
-                || GetMoves(player) == 0 // never been moved before (MB FinishMove would have incremented this)
+                || GetMovesThisRound(player) == 0 // never been moved before (MB FinishMove would have incremented this)
                 || player.Team != destinationTeamId // no update for teams has been done yet (MB FinishMove would have done this)
                 || player.LastMoveFrom != 0) { // interrupted MB move, special case
                     // Do updates as needed
@@ -3733,7 +3744,8 @@ public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subs
     
             foreach (CPlayerInfo p in players) {
                 try {
-                    UpdatePlayerModel(p.SoldierName, p.TeamID, p.SquadID, p.GUID, p.Score, p.Kills, p.Deaths, p.Rank);
+                    int bf4Type = (fGameVersion == GameVersion.BF4) ? p.Type : 0;
+                    UpdatePlayerModel(p.SoldierName, p.TeamID, p.SquadID, p.GUID, p.Score, p.Kills, p.Deaths, p.Rank, bf4Type);
                 } catch (Exception e) {
                     ConsoleException(e);
                     continue;
@@ -4390,6 +4402,26 @@ private void BalanceAndUnstack(String name) {
         return;
     }
 
+    /* Early exemptions - avoid doing exclusion computation if unnecessary */
+
+    // Exempt if this player already been moved for balance or unstacking
+    if ((!mustMove && GetMovesThisRound(player) >= 1) || (mustMove && GetMovesThisRound(player) >= maxDispersalMoves)) {
+        DebugBalance("Exempting ^b" + name + "^n, already moved this round");
+        fExemptRound = fExemptRound + 1;
+        IncrementTotal();
+        return;
+    }
+
+    // Exempt if role isn't ordinary player - mustMove always false for this case
+    if (player.Role != ROLE_PLAYER) {
+        String rn = "UNKNOWN";
+        if (player.Role >= 0 && player.Role < ROLE_NAMES.Length) rn = ROLE_NAMES[player.Role];
+        DebugBalance("Exempting ^b" + name + "^n, role is " + rn + " for team " + GetTeamName(player.Team));
+        fExemptRound = fExemptRound + 1;
+        IncrementTotal();
+        return;
+    }
+
     /* Exclusions */
 
     // Exclude if on Whitelist or Reserved Slots if enabled
@@ -4480,6 +4512,7 @@ private void BalanceAndUnstack(String name) {
             }
         }
     }
+    // Loop is unconditional even when topPlayersPerTeam is zero, due to assigning playerIndex
     for (int i = 0; i < fromList.Count; ++i) {
         if (fromList[i].Name == player.Name) {
             if (!mustMove
@@ -4507,7 +4540,7 @@ private void BalanceAndUnstack(String name) {
 
     // Exclude if too soon since last move
     if ((!mustMove || lenient) && player.MovedByMBTimestamp != DateTime.MinValue) {
-        double mins = DateTime.Now.Subtract(player.MovedByMBTimestamp).TotalMinutes;
+        double mins = now.Subtract(player.MovedByMBTimestamp).TotalMinutes;
         if (mins < MinutesAfterBeingMoved) {
             DebugBalance("Excluding ^b" + player.Name + "^n: last move was " + mins.ToString("F0") + " minutes ago, less than required " + MinutesAfterBeingMoved.ToString("F0") + " minutes");
             fExcludedRound = fExcludedRound + 1;
@@ -4537,8 +4570,8 @@ private void BalanceAndUnstack(String name) {
         return;   
     }
 
-    // Special exemption if tag not verified and first/partial round
-    if (!player.TagVerified && player.Rounds <= 1) {
+    // Special exemption if tag not verified and fetches pending in the queue and joined less than 15 minutes ago
+    if (!player.TagVerified && PriorityQueueCount() > 0 && joinedMinutesAgo < 15) {
         if (DebugLevel >= 7) DebugBalance("Skipping ^b" + player.Name + "^n, clan tag not verified yet");
         // Don't count this as an exemption
         // Don't increment the total
@@ -4589,6 +4622,7 @@ private void BalanceAndUnstack(String name) {
         }
     }
 
+    /* - moved earlier, left here in case need to restore:
     // Exempt if this player already been moved for balance or unstacking
     if ((!mustMove && GetMoves(player) >= 1) || (mustMove && GetMoves(player) >= maxDispersalMoves)) {
         DebugBalance("Exempting ^b" + name + "^n, already moved this round");
@@ -4596,6 +4630,7 @@ private void BalanceAndUnstack(String name) {
         IncrementTotal();
         return;
     }
+    */
 
     /* Balance */
 
@@ -4687,7 +4722,7 @@ private void BalanceAndUnstack(String name) {
             return;
         }
 
-        // Strong/Weak exemptions and clan tag
+        // Strong/Weak exemptions
         if (!mustMove && balanceSpeed != Speed.Fast && fromList.Count >= minPlayers) {
             if (DebugLevel > 5) DebugBalance(strongMsg);
             // don't move weak player to losing team, unless we are only moving weak players
@@ -4953,7 +4988,7 @@ private void BalanceAndUnstack(String name) {
                 moveUnstack = new MoveInfo(name, player.Tag, origUnTeam, origUnName, losingTeam, GetTeamName(losingTeam));
                 toTeam = losingTeam;
                 fUnstackState = UnstackState.SwappedStrong;
-                if (EnableTicketLossRateLogging) UpdateTicketLossRateLog(DateTime.Now, losingTeam, 0);
+                if (EnableTicketLossRateLogging) UpdateTicketLossRateLog(now, losingTeam, 0);
             } else {
                 DebugBalance("Skipping ^b" + name + "^n, don't move weak player to losing team (#" + (playerIndex+1) + " of " + fromList.Count + ", median " + (strongest) + ")");
                 fExemptRound = fExemptRound + 1;
@@ -4977,7 +5012,7 @@ private void BalanceAndUnstack(String name) {
                 fUnstackState = UnstackState.SwappedWeak;
                 strength = "weak";
                 FinishedFullSwap(name, perMode); // updates group count
-                if (EnableTicketLossRateLogging) UpdateTicketLossRateLog(DateTime.Now, 0, winningTeam);
+                if (EnableTicketLossRateLogging) UpdateTicketLossRateLog(now, 0, winningTeam);
             } else {
                 DebugBalance("Skipping ^b" + name + "^n, don't move strong player to winning team (#" + (playerIndex+1) + " of " + fromList.Count + ", median " + (strongest) + ")");
                 fExemptRound = fExemptRound + 1;
@@ -5077,7 +5112,7 @@ private void RemovePlayer(String name) {
 }
 
 
-private void UpdatePlayerModel(String name, int team, int squad, String eaGUID, int score, int kills, int deaths, int rank) {
+private void UpdatePlayerModel(String name, int team, int squad, String eaGUID, int score, int kills, int deaths, int rank, int role) {
     bool known = false;
     if (!IsKnownPlayer(name)) {
         switch (fPluginState) {
@@ -5128,6 +5163,7 @@ private void UpdatePlayerModel(String name, int team, int squad, String eaGUID, 
     m.KillsRound = kills;
     m.DeathsRound = deaths;
     m.Rank = rank;
+    m.Role = role;
 
     m.LastSeenTimestamp = DateTime.Now;
 
@@ -5211,7 +5247,8 @@ private void ValidateModel(List<CPlayerInfo> players, String revWhy) {
         // rebuild the data model and cancel any pending moves
         foreach (CPlayerInfo p in players) {
             try {
-                UpdatePlayerModel(p.SoldierName, p.TeamID, p.SquadID, p.GUID, p.Score, p.Kills, p.Deaths, p.Rank);
+                int bf4Type = (fGameVersion == GameVersion.BF4) ? p.Type : 0;
+                UpdatePlayerModel(p.SoldierName, p.TeamID, p.SquadID, p.GUID, p.Score, p.Kills, p.Deaths, p.Rank, bf4Type);
                 CheckAbortMove(p.SoldierName);
             } catch (Exception e) {
                 ConsoleException(e);
@@ -9342,15 +9379,15 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] tea
                     grandTotal = grandTotal + 1;
 
                     // Make sure this player hasn't been moved more than any other dispersal player
-                    if (GetMoves(p) > GetMoves(player)) {
+                    if (GetMovesThisRound(p) > GetMovesThisRound(player)) {
                         mostMoves = false;
                     }
                 }
             }
         }
 
-        if (mostMoves && GetMoves(player) > 0) {
-            DebugWrite("ToTeamByDispersal List: ^b" + player.Name + "^n moved more than other dispersals (" + GetMoves(player) + " times), skipping!", 5);
+        if (mostMoves && GetMovesThisRound(player) > 0) {
+            DebugWrite("ToTeamByDispersal List: ^b" + player.Name + "^n moved more than other dispersals (" + GetMovesThisRound(player) + " times), skipping!", 5);
             targetTeam = -1;
             goto clan;
         }
@@ -9483,15 +9520,15 @@ clan:
                     grandTotal = grandTotal + 1;
 
                     // Make sure this player hasn't been moved more than any other dispersal player
-                    if (GetMoves(p) > GetMoves(player)) {
+                    if (GetMovesThisRound(p) > GetMovesThisRound(player)) {
                         mostMoves = false;
                     }
                 }
             }
         }
 
-        if (mostMoves && GetMoves(player) > 0) {
-            DebugWrite("ToTeamByDispersal Rank: ^b" + player.Name + "^n moved more than other dispersals (" + GetMoves(player) + " times), skipping!", 5);
+        if (mostMoves && GetMovesThisRound(player) > 0) {
+            DebugWrite("ToTeamByDispersal Rank: ^b" + player.Name + "^n moved more than other dispersals (" + GetMovesThisRound(player) + " times), skipping!", 5);
             return -1;
         }
 
@@ -9733,7 +9770,7 @@ private void ConditionalIncrementMoves(String name) {
 }
 
 
-private int GetMoves(PlayerModel player) {
+private int GetMovesThisRound(PlayerModel player) {
     if (player == null) return 0;
     return (player.MovesRound + player.MovesByMBRound);
 }
@@ -10263,6 +10300,7 @@ private int GetClanPopulation(PlayerModel player, int teamId) {
 
 private bool IsInDispersalList(PlayerModel player, bool ignoreWhitelist) {
     if (player == null) return false;
+    if (player.Role != ROLE_PLAYER) return false;
     player.DispersalGroup = 0;
     PerModeSettings perMode = GetPerModeSettings();
     if (!perMode.EnableDisperseEvenlyList) return false;
@@ -10322,6 +10360,7 @@ private bool IsInDispersalList(PlayerModel player, bool ignoreWhitelist) {
 
 private bool IsRankDispersal(PlayerModel player) {
     if (player == null) return false;
+    if (player.Role != ROLE_PLAYER) return false;
     PerModeSettings perMode = GetPerModeSettings();
     if (perMode.DisperseEvenlyByRank == 0) return false;
     if (SameClanTagsForRankDispersal && CountMatchingTags(player, Scope.SameTeam) >= 2) {
@@ -12304,6 +12343,14 @@ private void UpdateFactions() {
     ServerCommand("vars.team2FactionOverride");
     ServerCommand("vars.team3FactionOverride");
     ServerCommand("vars.team4FactionOverride");
+}
+
+private int PriorityQueueCount() {
+    int c = 0;
+    lock (fPriorityFetchQ) {
+        c = fPriorityFetchQ.Count;
+    }
+    return c;
 }
 
 
