@@ -2959,7 +2959,7 @@ private void CommandToLog(string cmd) {
                     ConsoleDump(String.Format("        {0}, {1}, {2}",
                         p.Name,
                         GetTeamName(p.Team),
-                        (p.Squad < 0 || p.Squad > SQUAD_NAMES.Length) ? "None" : SQUAD_NAMES[p.Squad]
+                        GetSquadName(p.Squad)
                     ));
                 }
             }
@@ -3195,7 +3195,7 @@ private void AnalyzeSquadLists(int beforeTeam, int beforeSquad, List<String> bef
     if (beforeTeam < 1 || beforeTeam > 2 || beforeSquad < 0 || beforeSquad >= SQUAD_NAMES.Length) return;
     Dictionary<String,int> endedUpIn = new Dictionary<string,int>();
     String teamName = GetTeamName(beforeTeam);
-    String squadName = SQUAD_NAMES[beforeSquad];
+    String squadName = GetSquadName(beforeSquad);
     String ts = teamName + "/" + squadName;
 
     // Find which squad each expected player ended up in
@@ -3257,7 +3257,7 @@ private void AnalyzeSquadLists(int beforeTeam, int beforeSquad, List<String> bef
             int siSquad = si - (1000 * siTeam);
             if (!finalCheck) {
                 foreach (String outlier in movedSquadTable[si]) {
-                    split = split + "^b" + outlier + "^n to " + SQUAD_NAMES[siSquad] + ", ";
+                    split = split + "^b" + outlier + "^n to " + GetSquadName(siSquad) + ", ";
                 }
                 split = split + "end.";
                 ConsoleDump(notice + split);
@@ -3270,7 +3270,7 @@ private void AnalyzeSquadLists(int beforeTeam, int beforeSquad, List<String> bef
                             fDebugScramblerSuspects.TryGetValue(finalOutlier, out fm);
                         }
                         if (fm == null) {
-                            fm = "^4UNEXPECTED: split of " + ts + " due to player ^b{0}^n being found in " + SQUAD_NAMES[siSquad];
+                            fm = "^4UNEXPECTED: split of " + ts + " due to player ^b{0}^n being found in " + GetSquadName(siSquad);
                         }
                         PlayerModel outp = GetPlayer(finalOutlier);
                         String fullName = (outp == null) ? finalOutlier : outp.FullName;
@@ -3286,7 +3286,7 @@ private void AnalyzeSquadLists(int beforeTeam, int beforeSquad, List<String> bef
         if (differentTeam < 1 || differentTeam > 2) differentTeam = 0;
         int differentSquad = different - (1000 * differentTeam);
         if (differentSquad < 0 || differentSquad >= SQUAD_NAMES.Length) differentSquad = 0;
-        ConsoleDump(ts + " is intact and is now a different squad: " + GetTeamName(differentTeam) + "/" + SQUAD_NAMES[differentSquad]);
+        ConsoleDump(ts + " is intact and is now a different squad: " + GetTeamName(differentTeam) + "/" + GetSquadName(differentSquad));
     }
     // Dump nothing if everything is as expected
 }
@@ -3459,7 +3459,7 @@ public override void OnPlayerSquadChange(String soldierName, int teamId, int squ
             if (perMode != null && perMode.EnableScrambler && (KeepSquadsTogether || KeepClanTagsInSameTeam)) {
                 PlayerModel player = GetPlayer(soldierName);
                 if (player != null) {
-                    String msg = "Player ^b{0}^n did a squad change to " + GetTeamName(teamId) + "/" + SQUAD_NAMES[squadId] + " after the scrambler finished";
+                    String msg = "Player ^b{0}^n did a squad change to " + GetTeamName(teamId) + "/" + GetSquadName(squadId) + " after the scrambler finished";
                     DebugScrambler(String.Format(msg, player.FullName));
                     lock (fExtrasLock) {
                         fDebugScramblerSuspects[player.Name] = msg;
@@ -4910,7 +4910,7 @@ private void BalanceAndUnstack(String name) {
         // We don't want to send strong players to the team with the highest score!
         if ((a1 > a2 && winningTeam == 1)
         ||  (a2 > a1 && winningTeam == 2)) {
-            if (DebugLevel >= 7) DebugBalance("Team with highest ticket loss rate is the winning team, do not unstack: " + a1.ToString("F1") + " vs " + a2.ToString("F1") + ", winning team is " + TeamName(winningTeam));
+            if (DebugLevel >= 7) DebugBalance("Team with highest ticket loss rate is the winning team, do not unstack: " + a1.ToString("F1") + " vs " + a2.ToString("F1") + ", winning team is " + GetTeamName(winningTeam));
             IncrementTotal();
             return;
         }
@@ -5823,7 +5823,7 @@ private void Reassign(String name, int fromTeam, int toTeam, int diff) {
         if (fWhileScrambling) {
             lock (fExtrasLock) {
                 if (!fExtraNames.Contains(name)) fExtraNames.Add(name);
-                fDebugScramblerSuspects[name] = "New player ^b{0}^n joined " + GetTeamName(toTeam) + "/" + SQUAD_NAMES[toSquad];
+                fDebugScramblerSuspects[name] = "New player ^b{0}^n joined " + GetTeamName(toTeam) + "/" + GetSquadName(toSquad);
             }
             // Can't use reassigning logic if player is already in the right team
             if (fromTeam == toTeam) {
@@ -6736,7 +6736,7 @@ private void ScramblerLoop () {
                     }
 
                     String ot = (sr.Roster[0].Team == 1) ? "T1" : "T2";
-                    DebugScrambler(ot + "/" + SQUAD_NAMES[sr.Squad] + "(" + sr.Roster.Count + ") " + ScrambleBy + ":" + sr.Metric.ToString("F1"));
+                    DebugScrambler(ot + "/" + GetSquadName(sr.Squad) + "(" + sr.Roster.Count + ") " + ScrambleBy + ":" + sr.Metric.ToString("F1"));
 
                     switch (DivideBy) {
                         case DivideByChoices.ClanTag:
@@ -6765,7 +6765,7 @@ private void ScramblerLoop () {
                             break;
                     }
 
-                    if (DivideBy != DivideByChoices.None) DebugScrambler("Divide " + ot + "/" + SQUAD_NAMES[sr.Squad] + " by " + debugMsg);
+                    if (DivideBy != DivideByChoices.None) DebugScrambler("Divide " + ot + "/" + GetSquadName(sr.Squad) + " by " + debugMsg);
 
                     all.Add(sr);
                 }
@@ -6779,7 +6779,7 @@ private void ScramblerLoop () {
                 DebugScrambler("After sorting:");
                 foreach (SquadRoster ds in all) {
                     String oldt = (ds.Roster[0].Team == 1) ? "T1" : "T2";
-                    DebugScrambler("    " + ScrambleBy + ":" + ds.Metric.ToString("F1") + " " + oldt + "/" + SQUAD_NAMES[ds.Squad]);
+                    DebugScrambler("    " + ScrambleBy + ":" + ds.Metric.ToString("F1") + " " + oldt + "/" + GetSquadName(ds.Squad));
                 }
             
                 // Prepare the new team lists
@@ -6811,7 +6811,7 @@ private void ScramblerLoop () {
                         } else {
                             continue;
                         }
-                        DebugScrambler("Squad " + SQUAD_NAMES[disp.Squad] + ", Dispersal Group " + disp.DispersalGroup + " to " + debugMsg + " team");
+                        DebugScrambler("Squad " + GetSquadName(disp.Squad) + ", Dispersal Group " + disp.DispersalGroup + " to " + debugMsg + " team");
                         AssignSquadToTeam(disp, targetSquadTable, usScrambled, ruScrambled, localTarget);
                         all.Remove(disp);
                     }
@@ -6886,7 +6886,7 @@ private void ScramblerLoop () {
 
                     if (logOnly || DebugLevel >= 6) {
                         DebugScrambler(" ");
-                        DebugScrambler(debugMsg + ", squad " + SQUAD_NAMES[squad.Squad] + " (" + squad.Roster.Count + ")");
+                        DebugScrambler(debugMsg + ", squad " + GetSquadName(squad.Squad) + " (" + squad.Roster.Count + ")");
                     }
 
                 } while (all.Count > 0);
@@ -6949,7 +6949,7 @@ private void ScramblerLoop () {
                                     sr.Roster.Add(xtra);
                                     targetSquadTable[xtra.Squad] = sr;
                                 }
-                                DebugScrambler("Adding new joining player ^b" + xtra.FullName + "^n to " + TeamName(toTeamId) + " team");
+                                DebugScrambler("Adding new joining player ^b" + xtra.FullName + "^n to " + GetTeamName(toTeamId) + " team");
                                 target.Add(xtra);
                                 lock (fExtrasLock) {
                                     if (fExtraNames.Contains(ename)) fExtraNames.Remove(ename);
@@ -7118,7 +7118,7 @@ private void ScramblerLoop () {
                 }
                 foreach (int squadId in playerCount.Keys) {
                     if (playerCount[squadId] > fMaxSquadSize) {
-                        ConsoleDebug("ASSERT: T1/" + SQUAD_NAMES[squadId] + " has > " + fMaxSquadSize + " players! = " + playerCount[squadId]);
+                        ConsoleDebug("ASSERT: T1/" + GetSquadName(squadId) + " has > " + fMaxSquadSize + " players! = " + playerCount[squadId]);
                     }
                 }
                 playerCount.Clear();
@@ -7136,7 +7136,7 @@ private void ScramblerLoop () {
                 }
                 foreach (int squadId in playerCount.Keys) {
                     if (playerCount[squadId] > fMaxSquadSize) {
-                        ConsoleDebug("ASSERT: T2/" + SQUAD_NAMES[squadId] + " has > " + fMaxSquadSize + " players! = " + playerCount[squadId]);
+                        ConsoleDebug("ASSERT: T2/" + GetSquadName(squadId) + " has > " + fMaxSquadSize + " players! = " + playerCount[squadId]);
                     }
                 }
                 playerCount.Clear();
@@ -7213,7 +7213,7 @@ private void AssignSquadToTeam(SquadRoster squad, Dictionary<int,SquadRoster> sq
         int wasTeam = squad.Roster[0].Team;
         String st = GetTeamName(wasTeam);
         String gt = GetTeamName((target == usScrambled) ? 1 : 2);
-        DebugScrambler(st + "/" + SQUAD_NAMES[wasSquad] + " scrambled to " + gt + "/" + SQUAD_NAMES[squad.Squad]);
+        DebugScrambler(st + "/" + GetSquadName(wasSquad) + " scrambled to " + gt + "/" + GetSquadName(squad.Squad));
 
         // Assign the squad to the target team
         int toTeam = (target == usScrambled) ? 1 : 2;
@@ -7400,7 +7400,7 @@ private void SwapSameClanTags(ref List<PlayerModel> usScrambled, ref List<Player
                         String xId = ExtractTagOrFriendex(extra);
                         String mateName = (KeepFriendsInSameTeam && !String.IsNullOrEmpty(mId)) ? ("[" + mId + "]" + mate.Name) : (mate.FullName);
                         String extraName = (KeepFriendsInSameTeam && !String.IsNullOrEmpty(xId)) ? ("[" + xId + "]" + extra.Name) : (extra.FullName);
-                        DebugScrambler("SWAP: ^b" + mateName + "^n/" + GetTeamName(opposing) + "/" + SQUAD_NAMES[mate.ScrambledSquad] + " with ^b" + extraName + "^n/" + GetTeamName(target) + "/" + SQUAD_NAMES[extra.ScrambledSquad]);
+                        DebugScrambler("SWAP: ^b" + mateName + "^n/" + GetTeamName(opposing) + "/" + GetSquadName(mate.ScrambledSquad) + " with ^b" + extraName + "^n/" + GetTeamName(target) + "/" + GetSquadName(extra.ScrambledSquad));
                         int tmpSquad = extra.ScrambledSquad;
                         extra.ScrambledSquad = mate.ScrambledSquad;
                         mate.ScrambledSquad = tmpSquad;
@@ -7413,8 +7413,8 @@ private void SwapSameClanTags(ref List<PlayerModel> usScrambled, ref List<Player
                         opposingList.Add(extra);
                         int extraKey = (1000 * extra.Team) + extra.ScrambledSquad;
                         AddPlayerToSquadRoster(squads, extra, extraKey, extra.ScrambledSquad, false);
-                        DebugScrambler("      Team " + GetTeamName(mate.Team) + " now has ^b" + mateName + "^n in " + SQUAD_NAMES[mate.ScrambledSquad] + " squad");
-                        DebugScrambler("      Team " + GetTeamName(extra.Team) + " now has ^b" + extraName + "^n in " + SQUAD_NAMES[extra.ScrambledSquad] + " squad");
+                        DebugScrambler("      Team " + GetTeamName(mate.Team) + " now has ^b" + mateName + "^n in " + GetSquadName(mate.ScrambledSquad) + " squad");
+                        DebugScrambler("      Team " + GetTeamName(extra.Team) + " now has ^b" + extraName + "^n in " + GetSquadName(extra.ScrambledSquad) + " squad");
                     } catch (Exception e) {
                         ConsoleException(e);
                     }
@@ -7651,11 +7651,11 @@ private void ScrambleMove(PlayerModel clone, int where, bool logOnly) {
 
     // Do the move
     if (!EnableLoggingOnlyMode && !logOnly) {
-        DebugScrambler("^1^bMOVE^n^0 ^b" + clone.FullName + "^n to " + GetTeamName(toTeam) + " team, squad " + SQUAD_NAMES[toSquad]);
+        DebugScrambler("^1^bMOVE^n^0 ^b" + clone.FullName + "^n to " + GetTeamName(toTeam) + " team, squad " + GetSquadName(toSquad));
         ServerCommand("admin.movePlayer", clone.Name, toTeam.ToString(), toSquad.ToString(), "false");
         Thread.Sleep(60);
     } else {
-        DebugScrambler("^9(SIMULATED) ^1^bMOVE^n^0 ^b" + clone.FullName + "^n to " + GetTeamName(toTeam) + " team, squad " + SQUAD_NAMES[toSquad]);
+        DebugScrambler("^9(SIMULATED) ^1^bMOVE^n^0 ^b" + clone.FullName + "^n to " + GetTeamName(toTeam) + " team, squad " + GetSquadName(toSquad));
     }
 
     // For debugging and since this is a clone model, update Team & Squad to reflect move
@@ -7687,11 +7687,11 @@ private void RestoreSquads(List<PlayerModel> allCopy, Dictionary<int,int> alloca
             }
             // Do the move
             if (!EnableLoggingOnlyMode && !logOnly) {
-                DebugScrambler("^1^bMOVE^n^0 ^b" + clone.FullName + "^n to " + GetTeamName(clone.Team) + " team, restore squad " + SQUAD_NAMES[toSquad]);
+                DebugScrambler("^1^bMOVE^n^0 ^b" + clone.FullName + "^n to " + GetTeamName(clone.Team) + " team, restore squad " + GetSquadName(toSquad));
                 ServerCommand("admin.movePlayer", clone.Name, clone.Team.ToString(), toSquad.ToString(), "false");
                 Thread.Sleep(60);
             } else {
-                DebugScrambler("^9(SIMULATED) ^1^bMOVE^n^0 ^b" + clone.FullName + "^n to " + GetTeamName(clone.Team) + " team, restore squad " + SQUAD_NAMES[toSquad]);
+                DebugScrambler("^9(SIMULATED) ^1^bMOVE^n^0 ^b" + clone.FullName + "^n to " + GetTeamName(clone.Team) + " team, restore squad " + GetSquadName(toSquad));
             }
         } catch (Exception e) {
             ConsoleException(e);
@@ -7865,11 +7865,11 @@ private void AssignFillerToTeam(PlayerModel filler, int toTeamId, List<PlayerMod
             }
         }
         toSquadId = emptyId;
-        ConsoleDebug("AssignFillerToTeam: created new squad " + SQUAD_NAMES[toSquadId]);
+        ConsoleDebug("AssignFillerToTeam: created new squad " + GetSquadName(toSquadId));
     } else {
-        ConsoleDebug("AssignFillerToTeam: using existing squad " + SQUAD_NAMES[toSquadId]);
+        ConsoleDebug("AssignFillerToTeam: using existing squad " + GetSquadName(toSquadId));
     }
-    DebugScrambler("Filling in " + who + " team with player ^b" + filler.FullName + "^n to squad " + SQUAD_NAMES[toSquadId]);
+    DebugScrambler("Filling in " + who + " team with player ^b" + filler.FullName + "^n to squad " + GetSquadName(toSquadId));
     filler.ScrambledSquad = toSquadId;
     filler.Team = toTeamId;
     target.Add(filler);
@@ -7912,11 +7912,11 @@ private void UnsquadMove(Dictionary<int,SquadRoster> usSquads, Dictionary<int,Sq
 private void SquadMove(PlayerModel clone, int toTeam, int toSquad, bool logOnly) {
     // Do the move
     if (!EnableLoggingOnlyMode && !logOnly) {
-        DebugScrambler("^1^bMOVE SQUAD^n^0 ^b" + clone.FullName + "^n to " + GetTeamName(toTeam) + " team, " + SQUAD_NAMES[toSquad] + " squad");
+        DebugScrambler("^1^bMOVE SQUAD^n^0 ^b" + clone.FullName + "^n to " + GetTeamName(toTeam) + " team, " + GetSquadName(toSquad) + " squad");
         ServerCommand("admin.movePlayer", clone.Name, toTeam.ToString(), toSquad.ToString(), "false");
         Thread.Sleep(60);
     } else {
-        DebugScrambler("^9(SIMULATED) ^1^bMOVE SQUAD^n^0 ^b" + clone.FullName + "^n to " + GetTeamName(toTeam) + " team,  " + SQUAD_NAMES[toSquad] + " squad");
+        DebugScrambler("^9(SIMULATED) ^1^bMOVE SQUAD^n^0 ^b" + clone.FullName + "^n to " + GetTeamName(toTeam) + " team,  " + GetSquadName(toSquad) + " squad");
     }
     // force squad to new squad id
     clone.Squad = toSquad;
@@ -9791,16 +9791,39 @@ private void IncrementTotal()
     if (fPluginState == PluginState.Active) fTotalRound = fTotalRound + 1;
 }
 
-private String GetTeamName(int team) {
-    if (team < 0) return "None";
+public String GetTeamName(int teamId) {
+    if (teamId <= 0) return "Neutral";
 
-    if (IsSQDM() && team < SQUAD_NAMES.Length) {
-        return SQUAD_NAMES[team];
-    } else if (IsRush() && team < RUSH_NAMES.Length) {
-        return RUSH_NAMES[team];
+    String ret = "#" + teamId;
+    if (IsSQDM()) {
+        ret = GetSquadName(teamId);
+    } else if (IsRush() && teamId < RUSH_NAMES.Length) {
+        ret = RUSH_NAMES[teamId];
+    } else {
+        if (fGameVersion == GameVersion.BF4) {
+            if (teamId < fFactionByTeam.Length) {
+                int faction = fFactionByTeam[teamId];
+                if (faction < 0) {
+                    return "T" + teamId;
+                } else if (faction >= BF4_TEAM_NAMES.Length) {
+                    return "f" + faction + "." + teamId;
+                }
+                ret = BF4_TEAM_NAMES[faction];
+            }
+        } else if (teamId < TEAM_NAMES.Length) {
+            ret = TEAM_NAMES[teamId];
+        }
     }
-    if (fGameVersion == GameVersion.BF3 && team >= TEAM_NAMES.Length) return "None";
-    return TeamName(team);
+    return ret;
+}
+
+public String GetSquadName(int squadId) {
+    if (squadId < 0) return "-None";
+    String ret = "$" + squadId;
+    if (squadId < SQUAD_NAMES.Length) {
+        ret = SQUAD_NAMES[squadId];
+    }
+    return ret;
 }
 
 private void ListPlayersLoop() {
@@ -10476,10 +10499,7 @@ private int CountMatchingTags(PlayerModel player, Scope scope) {
         if (ExtractTag(mate) == tag) ++same;
     }
 
-    String sname = squad.ToString();
-    if (squad > 0 && squad <= SQUAD_NAMES.Length) {
-        sname = SQUAD_NAMES[squad];
-    }
+    String sname = GetSquadName(squad);
 
     String loc = sname;
     if (scope == Scope.SameTeam || (scope >= Scope.TeamOne && scope <= Scope.TeamFour)) loc = GetTeamName(team);
@@ -10711,7 +10731,7 @@ private void ListSideBySide(List<PlayerModel> us, List<PlayerModel> ru, bool use
                 sq = Math.Max(0, Math.Min(((useScrambledSquad) ? player.ScrambledSquad : player.Squad), SQUAD_NAMES.Length - 1));
             } catch (Exception e) { ConsoleException (e); }
             //u = xt + " (" + SQUAD_NAMES[sq] + ", " + kstat + ":#" + (allNames.IndexOf(player.Name)+1) + ")";
-            u = "(" + SQUAD_NAMES[sq] + ", " + kstat + ":#" + (allNames.IndexOf(player.Name)+1) + ") " + xt;
+            u = "(" + GetSquadName(sq) + ", " + kstat + ":#" + (allNames.IndexOf(player.Name)+1) + ") " + xt;
         }
         if (i < ru.Count) {
             try {
@@ -10724,7 +10744,7 @@ private void ListSideBySide(List<PlayerModel> us, List<PlayerModel> ru, bool use
                 }
                 sq = Math.Max(0, Math.Min(((useScrambledSquad) ? player.ScrambledSquad : player.Squad), SQUAD_NAMES.Length - 1));
             } catch (Exception e) { ConsoleException(e); }
-            r = xt + " (" + SQUAD_NAMES[sq] + ", " + kstat + ":#" + (allNames.IndexOf(player.Name)+1) + ")";
+            r = xt + " (" + GetSquadName(sq) + ", " + kstat + ":#" + (allNames.IndexOf(player.Name)+1) + ")";
         }
         ConsoleDump(String.Format("{0,-40} - {1,40}", u, r));
     }
@@ -11392,10 +11412,7 @@ private int CountMatchingFriends(PlayerModel player, Scope scope) {
         if (mate.Friendex == player.Friendex) ++same;
     }
 
-    String sname = squad.ToString();
-    if (squad > 0 && squad <= SQUAD_NAMES.Length) {
-        sname = SQUAD_NAMES[squad] + " squad";
-    }
+    String sname = GetSquadName(squad) + " squad";
 
     String where = sname;
     if (scope == Scope.SameTeam) {
@@ -12270,7 +12287,7 @@ private double GetAverageTicketLossRate(int team, bool verbose) {
         double actual = Math.Max(1.0, copy.Count);
         rate = (rate / actual) * 60.0; // loss per minute
         if (verbose) {
-            if (debug != null) DebugWrite("^7" + TeamName(team) + " (" + copy.Count + ") = " + debug + "]", 8);
+            if (debug != null) DebugWrite("^7" + GetTeamName(team) + " (" + copy.Count + ") = " + debug + "]", 8);
         }
     } catch (Exception e) {
         ConsoleException(e);
@@ -12331,22 +12348,6 @@ private void CheckRoundEndingDuration() {
     DebugWrite("Between round seconds = " + secs.ToString("F0") + ", average of " + fTotalRoundEndingRounds + " rounds = " + (fTotalRoundEndingSeconds/fTotalRoundEndingRounds).ToString("F1"), 3);
 }
 
-public String TeamName(int teamId) {
-    if (fGameVersion == GameVersion.BF4) {
-        if (teamId < 0 || teamId >= fFactionByTeam.Length) {
-            return "T" + teamId;
-        }
-        int faction = fFactionByTeam[teamId];
-        if (faction < 0) {
-            return "None";
-        } else if (faction >= BF4_TEAM_NAMES.Length) {
-            return "T" + teamId;
-        }
-        return BF4_TEAM_NAMES[faction];
-    }
-    // else BF3
-    return TEAM_NAMES[teamId];
-}
 
 private void UpdateFactions() {
     ServerCommand("vars.team1FactionOverride");
