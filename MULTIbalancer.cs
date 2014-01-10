@@ -9006,6 +9006,7 @@ private void UpdateTeams() {
         foreach (String dude in names) {
             PlayerModel player = null;
             if (fKnownPlayers.TryGetValue(dude, out player) && player != null) {
+                if (fGameVersion == GameVersion.BF4 && player.Role != ROLE_PLAYER) continue; // only count BF4 players
                 List<PlayerModel> t = GetTeam(player.Team);
                 if (t != null) t.Add(player);
                 // Also update move timer
@@ -12684,10 +12685,11 @@ private void LogStatus(bool isFinal, int level) {
     if (level >= useLevel) DebugWrite("^bStatus^n: " + raged + fReassignedRound + " reassigned, " + fBalancedRound + " balanced, " + fUnstackedRound + " unstacked, " + fUnswitchedRound + " unswitched, " + fExcludedRound + " excluded, " + fExemptRound + " exempted, " + fFailedRound + " failed; of " + fTotalRound + " TOTAL", 0);
     
     useLevel = (isFinal) ? 2 : 4;
+    String bf4Extras = (fGameVersion == GameVersion.BF4) ? ", " + fBF4CommanderCount + " commanders, " + fBF4SpectatorCount + " spectators" : String.Empty;
     if (IsSQDM()) {
-        if (level >= useLevel) DebugWrite("^bStatus^n: Team counts [" + totalPlayers + "] = " + fTeam1.Count + "(A) vs " + fTeam2.Count + "(B) vs " + fTeam3.Count + "(C) vs " + fTeam4.Count + "(D), with " + fUnassigned.Count + " unassigned", 0);
+        if (level >= useLevel) DebugWrite("^bStatus^n: Team counts [" + totalPlayers + "] = " + fTeam1.Count + "(A) vs " + fTeam2.Count + "(B) vs " + fTeam3.Count + "(C) vs " + fTeam4.Count + "(D), with " + fUnassigned.Count + " unassigned" + bf4Extras, 0);
     } else {
-        if (level >= useLevel) DebugWrite("^bStatus^n: Team counts [" + totalPlayers + "] = " + fTeam1.Count + "(" + GetTeamName(1) + ") vs " + fTeam2.Count + "(" + GetTeamName(2) + "), with " + fUnassigned.Count + " unassigned", 0);
+        if (level >= useLevel) DebugWrite("^bStatus^n: Team counts [" + totalPlayers + "] = " + fTeam1.Count + "(" + GetTeamName(1) + ") vs " + fTeam2.Count + "(" + GetTeamName(2) + "), with " + fUnassigned.Count + " unassigned" + bf4Extras, 0);
     }
     
     List<int> counts = new List<int>();
