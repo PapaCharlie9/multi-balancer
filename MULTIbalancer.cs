@@ -963,6 +963,9 @@ private int fGrandTotalQuits = 0;
 private int fGrandRageQuits = 0;
 private int fTotalQuits = 0;
 private int fRageQuits = 0;
+private int fPlayerCount = 0;
+private int fBF4CommanderCount = 0;
+private int fBF4SpectatorCount = 0;
 
 // Settings support
 private Dictionary<int, Type> fEasyTypeDict = null;
@@ -1073,7 +1076,6 @@ public UnswitchChoice ForbidSwitchingToBiggestTeam;
 public UnswitchChoice ForbidSwitchingAfterDispersal;
 
 // Properties
-public int TotalPlayerCount {get{lock (fAllPlayers) {return fAllPlayers.Count;}}}
 public String FriendlyMap { 
     get {
         if (fServerInfo == null) return "???";
@@ -1121,6 +1123,9 @@ public MULTIbalancer() {
     fGrandRageQuits = 0;
     fTotalQuits = 0;
     fRageQuits = 0;
+    fPlayerCount = 0;
+    fBF4CommanderCount = 0;
+    fBF4SpectatorCount = 0;
 
     fMoveThread = null;
     fFetchThread = null;
@@ -2571,7 +2576,7 @@ private void CommandToLog(string cmd) {
                 return;
             }
             double total = (fTotalRoundEndingSeconds/fTotalRoundEndingRounds); // total amount of time between rounds
-            double backoff = (TotalPlayerCount / 15) * 5; // scrambler needs about 5 seconds per 15 players
+            double backoff = (TotalPlayerCount() / 15) * 5; // scrambler needs about 5 seconds per 15 players
             backoff = Math.Max(5, backoff);
             double advice = total - backoff;
             advice = Math.Max(50, advice); // never less than 50 seconds
@@ -3668,7 +3673,7 @@ public override void OnPlayerKilled(Kill kKillerVictimDetails) {
     
         if (fGameState == GameState.Unknown || fGameState == GameState.Warmup) {
             bool wasUnknown = (fGameState == GameState.Unknown);
-            fGameState = (this.TotalPlayerCount < 4) ? GameState.Warmup : GameState.Playing;
+            fGameState = (TotalPlayerCount() < 4) ? GameState.Warmup : GameState.Playing;
             if (wasUnknown || fGameState == GameState.Playing) DebugWrite("OnPlayerKilled: ^b^3Game state = " + fGameState, 6);  
             fNeedPlayerListUpdate = (fGameState == GameState.Playing);
         }
@@ -3720,19 +3725,20 @@ public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subs
         don't do a full reset
         */
         int adjMaxSize = (fGameVersion == GameVersion.BF4) ? (MaximumServerSize+2) : MaximumServerSize;
+        int totalPlayers = TotalPlayerCount();
         if (fServerCrashed 
         || fGotLogin
         || fRefreshCommand 
-        || (fServerCrashed = (this.TotalPlayerCount >= 16 
-            && this.TotalPlayerCount > players.Count 
-            && (this.TotalPlayerCount - players.Count) >= Math.Min(CRASH_COUNT_HEURISTIC, this.TotalPlayerCount))) 
-        || this.TotalPlayerCount > adjMaxSize
+        || (fServerCrashed = (totalPlayers >= 16 
+            && totalPlayers > players.Count 
+            && (totalPlayers - players.Count) >= Math.Min(CRASH_COUNT_HEURISTIC, totalPlayers))) 
+        || totalPlayers > adjMaxSize
         || (fTimeOutOfJoint > 0 && GetTimeInRoundMinutes() - fTimeOutOfJoint > 3.0))  {
             String revWhy = String.Empty;
             if (fServerCrashed) revWhy += "Crash ";
             if (fGotLogin) revWhy += "Login ";
             if (fRefreshCommand) revWhy += "Refresh ";
-            if (this.TotalPlayerCount > adjMaxSize) revWhy += "MaximumServerSize(" + this.TotalPlayerCount + ">" + MaximumServerSize + ") ";
+            if (totalPlayers > adjMaxSize) revWhy += "MaximumServerSize(" + totalPlayers + ">" + MaximumServerSize + ") ";
             if (fTimeOutOfJoint > 0 && (GetTimeInRoundMinutes() - fTimeOutOfJoint) > 3.0) revWhy += "MoveTimeTooLong";
             ValidateModel(players, revWhy);
             fServerCrashed = false;
@@ -3851,6 +3857,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
         fServerUptime = serverInfo.ServerUptime;
 
         // Update max tickets
+        int totalPlayers = TotalPlayerCount();
         PerModeSettings perMode = GetPerModeSettings();
         bool isRush = IsRush();
         double minTickets = Double.MaxValue;
@@ -3877,7 +3884,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
             }
             String avl = String.Empty;
             if (fStageInProgress) avl = ", avg loss = " + RushAttackerAvgLoss().ToString("F1") + "/" + Math.Min(perMode.SecondsToCheckForNewStage, elapsedTimeInSeconds).ToString("F0") + " secs";
-            if (this.TotalPlayerCount > 3) DebugWrite("^7serverInfo: Rush attacker = " + attacker + ", was = " + fMaxTickets + avl + ", defender = " + defender, 7); 
+            if (totalPlayers > 3) DebugWrite("^7serverInfo: Rush attacker = " + attacker + ", was = " + fMaxTickets + avl + ", defender = " + defender, 7); 
         }
 
         if (fMaxTickets == -1) {
@@ -3937,7 +3944,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
         }
 
         // Ticket loss rate updates
-        if ((EnableTicketLossRateLogging || perMode.EnableTicketLossRatio) && fGameState == GameState.Playing && TotalPlayerCount >= 4) {
+        if ((EnableTicketLossRateLogging || perMode.EnableTicketLossRatio) && fGameState == GameState.Playing && totalPlayers >= 4) {
             if (fUpdateTicketsRequest == null) SetupUpdateTicketsRequest();
             AddTicketLossSample(1, oldTickets[1], fTickets[1], elapsedTimeInSeconds);
             AddTicketLossSample(2, oldTickets[2], fTickets[2], elapsedTimeInSeconds);
@@ -3949,7 +3956,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
             UpdateTicketLossRateLog(DateTime.Now, 0, 0);
         }
         
-        if ((EnableTicketLossRateLogging || perMode.EnableTicketLossRatio) && fGameState == GameState.Playing && TotalPlayerCount >= 4) {
+        if ((EnableTicketLossRateLogging || perMode.EnableTicketLossRatio) && fGameState == GameState.Playing && totalPlayers >= 4) {
             try {
                 double a1 = GetAverageTicketLossRate(1, false);
                 double a2 = GetAverageTicketLossRate(2, false);
@@ -4072,7 +4079,7 @@ public override void OnLevelLoaded(String mapFileName, String Gamemode, int roun
     try {
         DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1Level loaded detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
 
-        if (fGameState == GameState.RoundEnding || (fGameState == GameState.Warmup && this.TotalPlayerCount >= 4) || fGameState == GameState.Unknown) {
+        if (fGameState == GameState.RoundEnding || (fGameState == GameState.Warmup && TotalPlayerCount() >= 4) || fGameState == GameState.Unknown) {
             fGameState = GameState.RoundStarting;
             DebugWrite("OnLevelLoaded: ^b^3Game state = " + fGameState, 6);
 
@@ -4094,16 +4101,17 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
     DebugWrite("^9^bGot OnPlayerSpawned: ^n" + soldierName, 8);
     
     try {
+        int totalPlayers = TotalPlayerCount();
         if (fGameState == GameState.Unknown || fGameState == GameState.Warmup) {
             bool wasUnknown = (fGameState == GameState.Unknown);
-            fGameState = (this.TotalPlayerCount < 4) ? GameState.Warmup : GameState.Playing;
+            fGameState = (totalPlayers < 4) ? GameState.Warmup : GameState.Playing;
             if (wasUnknown || fGameState == GameState.Playing) DebugWrite("OnPlayerSpawned: ^b^3Game state = " + fGameState, 6);  
             fNeedPlayerListUpdate = (fGameState == GameState.Playing);
         } else if (fGameState == GameState.RoundStarting) {
             // First spawn after Level Loaded is the official start of a round
             DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1First spawn detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
 
-            fGameState = (this.TotalPlayerCount < 4) ? GameState.Warmup : GameState.Playing;
+            fGameState = (totalPlayers < 4) ? GameState.Warmup : GameState.Playing;
             DebugWrite("OnPlayerSpawned: ^b^3Game state = " + fGameState, 6);
 
             ResetRound();
@@ -4258,7 +4266,7 @@ private void BalanceAndUnstack(String name) {
         return;
     }
 
-    int totalPlayerCount = this.TotalPlayerCount;
+    int totalPlayerCount = TotalPlayerCount();
 
     if (DebugLevel >= 8) DebugBalance("BalanceAndUnstack(^b" + name + "^n), " + totalPlayerCount + " players");
 
@@ -5255,7 +5263,7 @@ private void ValidateModel(List<CPlayerInfo> players, String revWhy) {
             }
         }
         /* Special handling for Reconnected state */
-        fGameState = (this.TotalPlayerCount < 4) ? GameState.Warmup : GameState.Unknown;
+        fGameState = (TotalPlayerCount() < 4) ? GameState.Warmup : GameState.Unknown;
         UpdateTeams();
         UpdateAllFromWhitelist();
     }
@@ -6102,7 +6110,7 @@ private Population GetPopulation(PerModeSettings perMode, bool verbose) {
     int lowPop = perMode.DefinitionOfLowPopulationForPlayers;
     Population pop = Population.Low;
 
-    int totalPop = this.TotalPlayerCount;
+    int totalPop = TotalPlayerCount();
 
     if (totalPop <= lowPop) {
         pop = Population.Low;
@@ -6363,8 +6371,9 @@ private void Scrambler(List<TeamScore> teamScores) {
         return;
     }
 
-    if (this.TotalPlayerCount < 16) {
-        DebugScrambler("Not enough players to scramble, at least 16 required: " + this.TotalPlayerCount);
+    int totalPlayers = TotalPlayerCount();
+    if (totalPlayers < 16) {
+        DebugScrambler("Not enough players to scramble, at least 16 required: " + totalPlayers);
         return;
     }
 
@@ -6533,7 +6542,7 @@ private void ScramblerLoop () {
                     kctiss = ", KeepClansTagsInSameTeam";
                     if (KeepFriendsInSameTeam) kctiss = kctiss + ", KeepFriendsInSameTeam";
                 }
-                DebugScrambler("Starting scramble of " + this.TotalPlayerCount + " players, winner was T" + fWinner + "(" + GetTeamName(fWinner) + ")");
+                DebugScrambler("Starting scramble of " + TotalPlayerCount() + " players, winner was T" + fWinner + "(" + GetTeamName(fWinner) + ")");
                 DebugScrambler("Using (" + ScrambleBy + kst + kctiss + ", DivideBy = " + DivideBy + extra + ")");
                 if (!logOnly) last = DateTime.Now;
 
@@ -8970,7 +8979,7 @@ private int MaxDiff() {
     PerModeSettings perMode = null;
     String simpleMode = String.Empty;
     if (IsSQDM()) {
-        return ((this.TotalPlayerCount <= 32) ? 1 : 2);
+        return ((TotalPlayerCount() <= 32) ? 1 : 2);
     }
     perMode = GetPerModeSettings();
 
@@ -12167,7 +12176,7 @@ private void UpdateTicketLossRateLog(DateTime now, int strong, int weak) {
     Weak unstacked to: Number (0 means no unstack this entry, 1 means to US team, 2 means to RU team)
     */
 
-    if (fServerInfo == null || TotalPlayerCount < 4 || fGameState != GameState.Playing) return;
+    if (fServerInfo == null || TotalPlayerCount() < 4 || fGameState != GameState.Playing) return;
 
     String path = String.Empty;
 
@@ -12300,7 +12309,7 @@ private void SetupUpdateTicketsRequest() {
     if (fUpdateTicketsRequest != null) return;
     fUpdateTicketsRequest = AddTimedRequest("Update serverInfo every 5 seconds", 5.0, delegate(DateTime now) {
         try {
-            if (fGameState == GameState.Playing && TotalPlayerCount >= 4) ServerCommand("serverInfo");
+            if (fGameState == GameState.Playing && TotalPlayerCount() >= 4) ServerCommand("serverInfo");
         } catch (Exception) {}
     });
 }
@@ -12351,6 +12360,32 @@ private int PriorityQueueCount() {
         c = fPriorityFetchQ.Count;
     }
     return c;
+}
+
+
+public int TotalPlayerCount() {
+    fPlayerCount = 0;
+    if (fGameVersion == GameVersion.BF4) {
+        fBF4CommanderCount = 0;
+        fBF4SpectatorCount = 0;
+
+        lock (fAllPlayers) {
+            foreach (String name in fAllPlayers) {
+                PlayerModel p = GetPlayer(name);
+                if (p == null) continue;
+                if (p.Role == ROLE_PLAYER) {
+                    ++fPlayerCount;
+                } else if (p.Role == ROLE_COMMANDER_PC || p.Role == ROLE_COMMANDER_MOBILE) {
+                    ++fBF4CommanderCount;
+                } else if (p.Role == ROLE_SPECTATOR) {
+                    ++fBF4SpectatorCount;
+                }
+            }
+        }
+    } else {
+        lock (fAllPlayers) {fPlayerCount = fAllPlayers.Count;}
+    }
+    return fPlayerCount;
 }
 
 
@@ -12555,7 +12590,8 @@ private uint VersionToNumeric(String ver) {
 private void LogStatus(bool isFinal, int level) {
   try {
     // If server is empty, log status only every 60 minutes
-    if (!isFinal && level < 9 && this.TotalPlayerCount == 0) {
+    int totalPlayers = TotalPlayerCount();
+    if (!isFinal && level < 9 && totalPlayers == 0) {
         if (fRoundStartTimestamp != DateTime.MinValue && DateTime.Now.Subtract(fRoundStartTimestamp).TotalMinutes <= 60) {
             return;
         } else {
@@ -12649,9 +12685,9 @@ private void LogStatus(bool isFinal, int level) {
     
     useLevel = (isFinal) ? 2 : 4;
     if (IsSQDM()) {
-        if (level >= useLevel) DebugWrite("^bStatus^n: Team counts [" + this.TotalPlayerCount + "] = " + fTeam1.Count + "(A) vs " + fTeam2.Count + "(B) vs " + fTeam3.Count + "(C) vs " + fTeam4.Count + "(D), with " + fUnassigned.Count + " unassigned", 0);
+        if (level >= useLevel) DebugWrite("^bStatus^n: Team counts [" + totalPlayers + "] = " + fTeam1.Count + "(A) vs " + fTeam2.Count + "(B) vs " + fTeam3.Count + "(C) vs " + fTeam4.Count + "(D), with " + fUnassigned.Count + " unassigned", 0);
     } else {
-        if (level >= useLevel) DebugWrite("^bStatus^n: Team counts [" + this.TotalPlayerCount + "] = " + fTeam1.Count + "(" + GetTeamName(1) + ") vs " + fTeam2.Count + "(" + GetTeamName(2) + "), with " + fUnassigned.Count + " unassigned", 0);
+        if (level >= useLevel) DebugWrite("^bStatus^n: Team counts [" + totalPlayers + "] = " + fTeam1.Count + "(" + GetTeamName(1) + ") vs " + fTeam2.Count + "(" + GetTeamName(2) + "), with " + fUnassigned.Count + " unassigned", 0);
     }
     
     List<int> counts = new List<int>();
@@ -12664,7 +12700,7 @@ private void LogStatus(bool isFinal, int level) {
     
     counts.Sort();
     int diff = Math.Abs(counts[0] - counts[counts.Count-1]);
-    String next = (this.TotalPlayerCount >= 6 && diff > MaxDiff() && fGameState == GameState.Playing && balanceSpeed != Speed.Stop && !fBalanceIsActive) ? "^n^0 ... autobalance will activate as soon as possible!" : "^n";
+    String next = (totalPlayers >= 6 && diff > MaxDiff() && fGameState == GameState.Playing && balanceSpeed != Speed.Stop && !fBalanceIsActive) ? "^n^0 ... autobalance will activate as soon as possible!" : "^n";
     
     if (level >= 4) DebugWrite("^bStatus^n: Team difference = " + ((diff > MaxDiff()) ? "^8^b" : "^b") + diff + next, 0);
 
