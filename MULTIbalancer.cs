@@ -1007,6 +1007,7 @@ public List<String> fSettingFriendsList;
 public double SecondsUntilAdaptiveSpeedBecomesFast;
 public bool EnableInGameCommands;
 public int DisperseClanPlayersEvenlyWhenMoreThan;
+public bool ReassignNewPlayers;
 
 public bool OnWhitelist;
 public bool OnFriendsList;
@@ -1259,6 +1260,7 @@ public MULTIbalancer() {
     SecondsUntilAdaptiveSpeedBecomesFast = 3*60; // 3 minutes default
     EnableInGameCommands = true;
     DisperseClanPlayersEvenlyWhenMoreThan = 0;
+    ReassignNewPlayers = true;
     
     /* ===== SECTION 2 - Exclusions ===== */
     
@@ -1717,6 +1719,8 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 */
 
         lstReturn.Add(new CPluginVariable("1 - Settings|Seconds Until Adaptive Speed Becomes Fast", SecondsUntilAdaptiveSpeedBecomesFast.GetType(), SecondsUntilAdaptiveSpeedBecomesFast));
+        
+        lstReturn.Add(new CPluginVariable("1 - Settings|Reassign New Players", ReassignNewPlayers.GetType(), ReassignNewPlayers));
         
         lstReturn.Add(new CPluginVariable("1 - Settings|Enable In-Game Commands", EnableInGameCommands.GetType(), EnableInGameCommands));
 
@@ -2392,6 +2396,7 @@ private void ResetSettings() {
     EnableWhitelistingOfReservedSlotsList = rhs.EnableWhitelistingOfReservedSlotsList;
     SecondsUntilAdaptiveSpeedBecomesFast = rhs.SecondsUntilAdaptiveSpeedBecomesFast;
     EnableInGameCommands = rhs.EnableInGameCommands;
+    ReassignNewPlayers = rhs.ReassignNewPlayers;
     // Whitelist = rhs.Whitelist; // don't reset the whitelist
     // DisperseEvenlyList = rhs.DisperseEvenlyList; // don't reset the dispersal list
     
@@ -3501,8 +3506,8 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
             int diff = 0;
             bool mustMove = false; // don't have a player model yet, can't determine if must move
             int reassignTo = ToTeam(soldierName, teamId, true, out diff, ref mustMove);
-            if (fGameVersion == GameVersion.BF4) {
-                DebugWrite("^4New player^0: ^b" + soldierName + "^n not reassigned, reassignment disabled for BF4 ... ", 5);
+            if (!ReassignNewPlayers) {
+                DebugWrite("^4New player^0: ^b" + soldierName + "^n not reassigned, Reassign New Players set to False", 5);
                 reassignTo = 0; 
             }
             if ((reassignTo == 0 || reassignTo == teamId) && !fWhileScrambling) {
@@ -13144,6 +13149,8 @@ static class MULTIbalancerUtils {
 <p><b>Unlimited Team Switching During First Minutes Of Round</b>: Number greater than or equal to 0, default 5. Starting from the beginning of the round, this is the number of minutes that players are allowed to switch teams without restriction. After this time is expired, the plugin will prevent team switching that unbalances or stacks teams. The idea is to enable friends who were split up during the previous round due to autobalancing or unstacking to regroup so that they can play together this round. However, players who switch teams during this period are not excluded from being moved for autobalance or unstacking later in the round, unless some other exclusion applies them.</p>
 
 <p><b>Seconds Until Adaptive Speed Becomes Fast</b>: Number of seconds greater than or equal to 120, default 180. If the autobalance speed is Adaptive and the autobalancer has been active for more than the specified number of seconds, the speed will be forced to Fast. This insures that teams don't remain unbalanced too long if Adaptive speed is not sufficient to move players.</p>
+
+<p><b>Reassign New Players</b>: True or False, default True. This is a trade-off setting, each choice has something good and something bad associated with it. If set to True, new players joining the server are reassigned to the team that needs help before the player's first spawn -- they will not be aware that they were moved, but this may cancel a Battlelog Join on Friend that the player wanted. If set to False, Join on Friend will be respected, but your server may have unbalanced teams for a longer period of time.</p>
 
 <p><b>Enable In-Game Commands</b>: True or False, default True. Enable <b>@mb</b> in-game commands. Most commands allow admins to change settings in the plugin without needing to leave the game. See the plugin thread for details or type <b>@mb help</b> in-game.</p>
 
