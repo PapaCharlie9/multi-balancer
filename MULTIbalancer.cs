@@ -1064,6 +1064,7 @@ public bool LogChat;
 public bool EnableLoggingOnlyMode;
 public bool EnableExternalLogging;
 public String ExternalLogSuffix; 
+public String TeamsWillBeScrambled;
 
 public bool EnableImmediateUnswitch;
 public bool ForbidSwitchAfterAutobalance; // legacy pre-v1
@@ -1321,6 +1322,7 @@ public MULTIbalancer() {
     YellDetectedGoodTeamSwitch = "Thanks for helping out the %toTeam% team!";
     ChatAfterUnswitching = "%name%, please stay on the %toTeam% team for the rest of this round";
     YellAfterUnswitching = "Please stay on the %toTeam% team for the rest of this round";
+    TeamsWillBeScrambled = "*** Teams will be SCRAMBLED next round!";
     
     /* ===== SECTION 6 - Unswitcher ===== */
 
@@ -1598,7 +1600,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.9.1";
+    return "1.0.9.2";
 }
 
 public String GetPluginAuthor() {
@@ -1846,6 +1848,8 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         lstReturn.Add(new CPluginVariable("5 - Messages|Chat: After Unswitching", ChatAfterUnswitching.GetType(), ChatAfterUnswitching));
         
         lstReturn.Add(new CPluginVariable("5 - Messages|Yell: After Unswitching", YellAfterUnswitching.GetType(), YellAfterUnswitching));
+        
+        lstReturn.Add(new CPluginVariable("5 - Messages|Teams Will Be Scrambled", TeamsWillBeScrambled.GetType(), TeamsWillBeScrambled));
 
 
         /* ===== SECTION 6 - Unswitcher ===== */
@@ -2451,6 +2455,7 @@ private void ResetSettings() {
     YellDetectedGoodTeamSwitch = rhs.YellDetectedGoodTeamSwitch;
     ChatAfterUnswitching = rhs.ChatAfterUnswitching;
     YellAfterUnswitching = rhs.YellAfterUnswitching;
+    TeamsWillBeScrambled = rhs.TeamsWillBeScrambled;
     
     /* ===== SECTION 6 - Unswitcher ===== */
 
@@ -6432,6 +6437,8 @@ private void Scrambler(List<TeamScore> teamScores) {
 
     DebugScrambler("Scrambling teams by " + ScrambleBy + " in " + DelaySeconds.ToString("F0") + " seconds");
 
+    Chat("all", TeamsWillBeScrambled, false);
+
     // Activate the scrambler thread
     lock (fScramblerLock) {
         fScramblerLock.MaxDelay = DelaySeconds;
@@ -10085,6 +10092,30 @@ private double RemainingTicketPercent(double tickets, double goal) {
     return (((goal - tickets) / goal) * 100.0);
 }
 
+private double RemainingTickets() {
+    double ret = 0;
+    if (fServerInfo == null) return 0;
+
+    if (IsConquest() || IsRush()) {
+        // Pick lowest ticket count of all teams
+        ret = Double.MaxValue;
+        foreach (TeamScore ts in fServerInfo.TeamScores) {
+            if (ts.Score < ret) ret = ts.Score;
+        }
+    } else {
+        // Picket highest ticket count of all teams
+        ret = 0;
+        double tmax = 0;
+        foreach (TeamScore ts in fServerInfo.TeamScores) {
+            if (ts.Score > ret) ret = ts.Score;
+            if (ts.WinningScore > tmax) tmax = ts.WinningScore;
+        }
+        ret = tmax - ret;
+    }
+
+    return ret;
+}
+
 private TimeSpan GetPlayerJoinedTimeSpan(PlayerModel player) {
     if (player != null) {
         return(DateTime.Now.Subtract(player.FirstSeenTimestamp));
@@ -13255,6 +13286,8 @@ For each phase, there are three unstacking settings for server population: Low, 
 <p><b>Detected Good Team Switch</b>: Message sent after a player switches from the winning team to the losing team, or from the biggest team to the smallest team. There is no follow-up message, this is the only one sent.</p>
 
 <p><b>After Unswitching</b>: Message sent after a player is killed by admin and moved back to the team he was assigned to. This message is sent after the <b>Detected Bad Team Switch</b> message.</p>
+
+<p><b>Teams Will Be Scrambled</b>: <font color=#FF0000>BF4 only, chat only.</font> Message sent after the round ends if scrambling is enabled and teams require scrambling for the next round.</p>
 
 <h3>6 - Unswitcher</h3>
 <p>This section controls the unswitcher. Every time a player tries to switch to a different team, the unswitcher checks if the switch is allowed or forbidden. If forbidden, he will be moved back by the plugin (see <b>Enable Immediate Unswitch</b> for details about how). The possible values are <i>Always</i>, which means do not allow (always forbid) this type of team switching, <i>Never</i>, which means allow team switching of this type, and <i>LatePhaseOnly</i>, which means allow team switching of this type until Late Phase, then no longer allow it (forbid it). Note that setting any of the <b>Forbid ...</b> settings to <i>Never</i> will reduce the effectiveness of the balancer and unstacker.</p>
