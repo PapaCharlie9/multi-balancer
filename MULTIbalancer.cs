@@ -3059,9 +3059,17 @@ private void CommandToLog(string cmd) {
             DebugLevel = 7;
             try {
                 ConsoleDump("Testing BF3 Clantag fetch:");
-                PlayerModel dummy = new PlayerModel(testF3.Groups[1].Value, 1);
+                String tn = testF3.Groups[1].Value;
+                PlayerModel dummy = GetPlayer(tn);
+                if (dummy == null) {
+                    ConsoleDump("Player ^b" + tn + "^n seems to have left the server");
+                    dummy = new PlayerModel(tn, 1);
+                } else {
+                    ConsoleDump("Player ^b" + tn + "^n, TagVerified: " + dummy.TagVerified + ", TagFetchStatus: " + dummy.TagFetchStatus.State + ", PersonaId: " + dummy.PersonaId);
+                }
                 SendBattlelogRequest(dummy.Name, "clanTag", dummy);
                 ConsoleDump("Status = " + dummy.TagFetchStatus.State);
+                dummy.TagVerified = (dummy.TagFetchStatus.State != FetchState.Failed);
             } catch (Exception e) {
                 ConsoleException(e);
             }
@@ -9272,6 +9280,7 @@ private int ToTeam(String name, int fromTeam, bool isReassign, out int diff, ref
 
     // if teams are same size, send to losing team
     if (biggestTeam != smallestTeam && byId[biggestTeam].Count == byId[smallestTeam].Count && losingTeam != fromTeam) {
+        DebugWrite("^9ToTeam for ^b" + name + "^n: teams same size, so send to losing team: " + losingTeam, 8);
         targetTeam = losingTeam;
     }
     
