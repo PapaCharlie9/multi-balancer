@@ -13260,7 +13260,9 @@ static class MULTIbalancerUtils {
 
 <p><b>Enable In-Game Commands</b>: True or False, default True. Enable <b>@mb</b> in-game commands. Most commands allow admins to change settings in the plugin without needing to leave the game. See the plugin thread for details or type <b>@mb help</b> in-game.</p>
 
+<!--
 <p><b>Enable Ticket Loss Rate Logging</b>: True or False, default False. If set to True and the current game mode is one of the Conquest types, including Scavenger and Domination, a comma separated value (CSV) log file will be created for each map/mode/round. Look for files that end with <b>tlr.csv</b> in your procon/Logs/<i>ip_port</i> folder. The log will be updated approximately every 5 seconds with ticket loss information and unstacking moves. You must disable the security sandbox for Plugins if you set the <b>Enable Ticket Loss Rate Logging</b> feature to True.</p>
+-->
 
 <p><b>Enable Whitelisting Of Reserved Slots List</b>: True or False, default True. Treats the reserved slots list as if it were added to the specified <b>Whitelist</b>.</p>
 
