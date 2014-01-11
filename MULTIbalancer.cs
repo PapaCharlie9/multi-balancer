@@ -899,6 +899,8 @@ private Queue<double>[] fAverageTicketLoss = null;
 private Histogram fTicketLossHistogram = null;
 private double fTotalRoundEndingSeconds = 0;
 private double fTotalRoundEndingRounds = 0;
+private bool fRevealSettings = false;
+private bool fShowRiskySettings = false;
 
 // BF4
 private int fMaxSquadSize = 4;
@@ -1059,13 +1061,15 @@ public String ChatDetectedGoodTeamSwitch;
 public String YellDetectedGoodTeamSwitch;
 public String ChatAfterUnswitching;
 public String YellAfterUnswitching;
+public String TeamsWillBeScrambled;
+
 public String ShowInLog; // legacy variable, if defined as String.Empty, settings are pre-v1
 public String ShowCommandInLog; // command line to show info in plugin.log
 public bool LogChat;
 public bool EnableLoggingOnlyMode;
 public bool EnableExternalLogging;
 public String ExternalLogSuffix; 
-public String TeamsWillBeScrambled;
+public bool EnableRiskyFeatures;
 
 public bool EnableImmediateUnswitch;
 public bool ForbidSwitchAfterAutobalance; // legacy pre-v1
@@ -1220,6 +1224,8 @@ public MULTIbalancer() {
     fAverageTicketLoss = new Queue<double>[3]{null, new Queue<double>(), new Queue<double>()};
     fTicketLossHistogram = new Histogram();
     fFactionByTeam = new int[5]{-1,-1,-1,-1,-1};
+    fRevealSettings = false;
+    fShowRiskySettings = false;
     
     /* Settings */
 
@@ -1261,6 +1267,7 @@ public MULTIbalancer() {
     EnableInGameCommands = true;
     DisperseClanPlayersEvenlyWhenMoreThan = 0;
     ReassignNewPlayers = true;
+    EnableTicketLossRateLogging = false;
     
     /* ===== SECTION 2 - Exclusions ===== */
     
@@ -1284,8 +1291,6 @@ public MULTIbalancer() {
     EarlyPhaseTicketPercentageToUnstack = new double[3]         {  0,120,120};
     MidPhaseTicketPercentageToUnstack = new double[3]           {  0,120,120};
     LatePhaseTicketPercentageToUnstack = new double[3]          {  0,  0,  0};
-
-    EnableTicketLossRateLogging = false;
     
     SpellingOfSpeedNamesReminder = Speed.Click_Here_For_Speed_Names;
 
@@ -1346,6 +1351,7 @@ public MULTIbalancer() {
     EnableLoggingOnlyMode = false;
     EnableExternalLogging = false;
     ExternalLogSuffix = "_mb.log";
+    EnableRiskyFeatures = false;
 }
 
 public MULTIbalancer(PresetItems preset) : this() {
@@ -1693,7 +1699,7 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
         lstReturn.Add(new CPluginVariable("1 - Settings|Enable Battlelog Requests", EnableBattlelogRequests.GetType(), EnableBattlelogRequests));
 
-        if (EnableBattlelogRequests) {
+        if (EnableBattlelogRequests || fRevealSettings) {
             var_name = "1 - Settings|Which Battlelog Stats";
             var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(BattlelogStats))) + ")";
         
@@ -1724,7 +1730,9 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         
         lstReturn.Add(new CPluginVariable("1 - Settings|Enable In-Game Commands", EnableInGameCommands.GetType(), EnableInGameCommands));
 
-        lstReturn.Add(new CPluginVariable("1 - Settings|Enable Ticket Loss Rate Logging", EnableTicketLossRateLogging.GetType(), EnableTicketLossRateLogging));
+        if (EnableRiskyFeatures || fRevealSettings) {
+            lstReturn.Add(new CPluginVariable("1 - Settings|Enable Ticket Loss Rate Logging", EnableTicketLossRateLogging.GetType(), EnableTicketLossRateLogging));
+        }
         
         lstReturn.Add(new CPluginVariable("1 - Settings|Enable Whitelisting Of Reserved Slots List", EnableWhitelistingOfReservedSlotsList.GetType(), EnableWhitelistingOfReservedSlotsList));
 
@@ -1740,7 +1748,7 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
         lstReturn.Add(new CPluginVariable("2 - Exclusions|On Friends List", OnFriendsList.GetType(), OnFriendsList));
 
-        if (OnFriendsList) {
+        if (OnFriendsList || fRevealSettings) {
             lstReturn.Add(new CPluginVariable("2 - Exclusions|Apply Friends List To Team", ApplyFriendsListToTeam.GetType(), ApplyFriendsListToTeam)); 
         }
 
@@ -1798,11 +1806,11 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
         lstReturn.Add(new CPluginVariable("4 - Scrambler|Keep Squads Together", KeepSquadsTogether.GetType(), KeepSquadsTogether));
 
-        if (!KeepSquadsTogether) {
+        if (!KeepSquadsTogether || fRevealSettings) {
             lstReturn.Add(new CPluginVariable("4 - Scrambler|Keep Clan Tags In Same Team", KeepClanTagsInSameTeam.GetType(), KeepClanTagsInSameTeam));
         }
 
-        if (!KeepSquadsTogether && KeepClanTagsInSameTeam) {
+        if ((!KeepSquadsTogether && KeepClanTagsInSameTeam) || fRevealSettings) {
             lstReturn.Add(new CPluginVariable("4 - Scrambler|Keep Friends In Same Team", KeepFriendsInSameTeam.GetType(), KeepFriendsInSameTeam));
         }
 
@@ -1811,7 +1819,7 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         
         lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(DivideByChoices), DivideBy)));
 
-        if (DivideBy == DivideByChoices.ClanTag) {
+        if (DivideBy == DivideByChoices.ClanTag || fRevealSettings) {
             lstReturn.Add(new CPluginVariable("4 - Scrambler|Clan Tag To Divide By", ClanTagToDivideBy.GetType(), ClanTagToDivideBy));
         }
 
@@ -1985,10 +1993,14 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
         lstReturn.Add(new CPluginVariable("9 - Debugging|Enable External Logging", EnableExternalLogging.GetType(), EnableExternalLogging));
 
-        if (EnableExternalLogging) {
+        if (EnableExternalLogging || fRevealSettings) {
 
             lstReturn.Add(new CPluginVariable("9 - Debugging|External Log Suffix", ExternalLogSuffix.GetType(), ExternalLogSuffix));
 
+        }
+
+        if (fShowRiskySettings || fRevealSettings) {
+            lstReturn.Add(new CPluginVariable("9 - Debugging|Enable Risky Features", EnableRiskyFeatures.GetType(), EnableRiskyFeatures));
         }
 
 
@@ -2000,7 +2012,15 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 }
 
 public List<CPluginVariable> GetPluginVariables() {
-    List<CPluginVariable> lstReturn = GetDisplayPluginVariables();
+    fRevealSettings = true;
+    List<CPluginVariable> lstReturn = null;
+    try {
+        lstReturn = GetDisplayPluginVariables();
+    } catch (Exception) {
+        if (lstReturn == null) lstReturn = new List<CPluginVariable>();
+    }
+    fRevealSettings = false;
+
     // pre-v1 legacy settings
     lstReturn.Add(new CPluginVariable("6 - Unswitcher|Forbid Switch After Autobalance", ForbidSwitchAfterAutobalance.GetType(), ForbidSwitchAfterAutobalance));
     lstReturn.Add(new CPluginVariable("6 - Unswitcher|Forbid Switch To Winning Team", ForbidSwitchToWinningTeam.GetType(), ForbidSwitchToWinningTeam));
@@ -2228,6 +2248,14 @@ public void SetPluginVariable(String strVariable, String strValue) {
             CommandToLog(ShowCommandInLog);
             ShowCommandInLog = String.Empty;
         }
+
+        // Handle risky settings
+        if (!EnableRiskyFeatures) {
+            if (EnableTicketLossRateLogging) {
+                ConsoleWarn("^8Setting ^bEnable Ticket Loss Rate Logging^n to False. This is an experimental setting and you have not enabled risky settings.");
+                EnableTicketLossRateLogging = false;
+            }
+        }
     }
 }
 
@@ -2399,6 +2427,7 @@ private void ResetSettings() {
     ReassignNewPlayers = rhs.ReassignNewPlayers;
     // Whitelist = rhs.Whitelist; // don't reset the whitelist
     // DisperseEvenlyList = rhs.DisperseEvenlyList; // don't reset the dispersal list
+    EnableTicketLossRateLogging = rhs.EnableTicketLossRateLogging;
     
     /* ===== SECTION 2 - Exclusions ===== */
     
@@ -2421,8 +2450,6 @@ private void ResetSettings() {
     EarlyPhaseTicketPercentageToUnstack = rhs.EarlyPhaseTicketPercentageToUnstack;
     MidPhaseTicketPercentageToUnstack = rhs.MidPhaseTicketPercentageToUnstack;
     LatePhaseTicketPercentageToUnstack = rhs.LatePhaseTicketPercentageToUnstack;
-
-    EnableTicketLossRateLogging = rhs.EnableTicketLossRateLogging;
     
     SpellingOfSpeedNamesReminder = rhs.SpellingOfSpeedNamesReminder;
 
@@ -2491,6 +2518,7 @@ private void ResetSettings() {
     ShowCommandInLog = rhs.ShowCommandInLog;
     LogChat = rhs.LogChat;
     EnableLoggingOnlyMode = rhs.EnableLoggingOnlyMode;
+    EnableRiskyFeatures = rhs.EnableRiskyFeatures;
 }
 
 private void CommandToLog(string cmd) {
@@ -3099,6 +3127,22 @@ private void CommandToLog(string cmd) {
                 ConsoleException(e);
             }
             DebugLevel = oldLevel;
+            return;
+        }
+        
+        // Undocumented command: risky (hide|show)
+        Match risky = Regex.Match(cmd, @"^risky (hide|show)", RegexOptions.IgnoreCase);
+        if (risky.Success) {
+            if (risky.Groups[1].Value == "show") {
+                fShowRiskySettings = true;
+            } else {
+                fShowRiskySettings = false;
+            }
+            if (fShowRiskySettings) {
+                ConsoleDump("Showing risky settings!");
+            } else {
+                ConsoleDump("Hiding risky settings!");
+            }
             return;
         }
         
