@@ -6408,18 +6408,20 @@ private void Scrambler(List<TeamScore> teamScores) {
         double a = teamScores[0].Score;
         double b = teamScores[1].Score;
 
-        
+        /*
         if (IsRush()) {
             // normalize Rush ticket ratio
             b = fMaxTickets - (fRushMaxTickets - b);
             b = Math.Max(b, 1);
         }
+        */
 
         if (Regex.Match(fServerInfo.GameMode, @"(?:TeamDeathMatch|SquadDeathMatch)").Success) {
             countDown = false;
             goal = teamScores[0].WinningScore;
         }
 
+        /*
         double ratio = 0;
         if (countDown) {
             // ratio of difference from max
@@ -6439,7 +6441,13 @@ private void Scrambler(List<TeamScore> teamScores) {
                 ratio = b / Math.Max(1, a);
                 DebugScrambler("Ratio T2/T2: " + a + " vs " + b + " -> [" + goal + "]: " + b + "/" + Math.Max(1, a) + " = " + ratio.ToString("F2"));
             }
-        } 
+        }
+        */
+        
+        String smsg = String.Empty;
+        double ratio = ComputeTicketRatio(a, b, goal, countDown, out smsg);
+        DebugScrambler(smsg);
+
         if ((ratio * 100) < OnlyOnFinalTicketPercentage) {
             DebugScrambler("Only On Final Ticket Percentage >= " + OnlyOnFinalTicketPercentage.ToString("F0") + "%, but ratio is only " + (ratio * 100).ToString("F0") + "%");
             return;
@@ -12436,6 +12444,38 @@ public int TotalPlayerCount() {
 }
 
 
+
+private double ComputeTicketRatio(double a, double b, double goal, bool countDown, out String msg) {
+        if (IsRush() && fMaxTickets != -1) {
+            // normalize Rush ticket ratio
+            b = fMaxTickets - (fRushMaxTickets - b);
+            b = Math.Max(b, 1);
+        }
+
+        double ratio = 0;
+        if (countDown) {
+            // ratio of difference from max
+            if (a < b) {
+                ratio = (goal - a) / Math.Max(1, (goal - b)); 
+                msg = "Ratio T1/T2: " + a + " vs " + b + " <- [" + goal + "]: " + (goal-a) + "/" + Math.Max(1, (goal-b)) + " = " + ratio.ToString("F2");
+            } else {
+                ratio = (goal - b) / Math.Max(1, (goal - a));
+                msg = "Ratio T2/T1: " + a + " vs " + b + " <- [" + goal + "]: " + (goal-b) + "/" + Math.Max(1, (goal-a)) + " = " + ratio.ToString("F2");
+            }
+        } else {
+            // direct ratio
+            if (a > b) {
+                ratio = a / Math.Max(1, b);
+                msg = "Ratio T1/T2: " + a + " vs " + b + " -> [" + goal + "]: " + a + "/" + Math.Max(1, b) + " = " + ratio.ToString("F2");
+            } else {
+                ratio = b / Math.Max(1, a);
+                msg = "Ratio T2/T2: " + a + " vs " + b + " -> [" + goal + "]: " + b + "/" + Math.Max(1, a) + " = " + ratio.ToString("F2");
+            }
+        }
+        return ratio;
+}
+
+
 /* === NEW_NEW_NEW === */
 
 
@@ -12656,14 +12696,19 @@ private void LogStatus(bool isFinal, int level) {
     if (IsCTF()) tm = GetTeamPoints(1) + "/" + GetTeamPoints(2);
 
     double goal = 0;
+    bool countDown = true;
     if (fServerInfo != null && Regex.Match(fServerInfo.GameMode, @"(?:TeamDeathMatch|SquadDeathMatch)").Success) {
-        if (fServerInfo.TeamScores != null && fServerInfo.TeamScores.Count > 0) {
-            goal = fServerInfo.TeamScores[0].WinningScore;
+        countDown = false;
+        if (fServerInfo.TeamScores != null && fServerInfo.TeamScores.Count > 1) {
+            goal = fServerInfo.TeamScores[1].WinningScore;
         }
     }
 
     if (goal == 0) {
-        if (fMaxTickets != -1) tm = tm + " <- [" + fMaxTickets.ToString("F0") + "]";
+        if (fMaxTickets != -1) {
+            tm = tm + " <- [" + fMaxTickets.ToString("F0") + "]";
+            goal = fMaxTickets;
+        }
     } else {
         tm = tm + " -> [" + goal.ToString("F0") + "]";
     }
@@ -12700,6 +12745,14 @@ private void LogStatus(bool isFinal, int level) {
         double a1 = fTickets[1];
         double a2 = (IsRush()) ? (Math.Max(fTickets[1]/2, fMaxTickets - (fRushMaxTickets - fTickets[2]))) : fTickets[2];
         double rat = (a1 > a2) ? (a1/Math.Max(1, a2)) : (a2/Math.Max(1, a1));
+        // For end of round, use standard function for ratio
+        if (fTickets[1] < 1 || fTickets[2] < 1) {
+            String cmsg = String.Empty;
+            a1 = fTickets[1];
+            a2 = fTickets[2];
+            rat = ComputeTicketRatio(a1, a2, goal, countDown, out cmsg);
+            DebugWrite("^9DEBUG: " + cmsg, 7);
+        }
         rat = Math.Min(rat, 50.0); // cap at 50x
         rat = rat * 100.0;
         if (level >= useLevel) DebugWrite("^bStatus^n: Ticket difference = " + ticketGap + ", ticket ratio percentage is " + rat.ToString("F0") + "%", 0);
