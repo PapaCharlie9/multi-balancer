@@ -3927,7 +3927,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
         double attacker = 0;
         double defender = 0;
         double[] oldTickets = new double[]{0, fTickets[1], fTickets[2]};
-        if (fServerInfo.TeamScores == null || fServerInfo.TeamScores.Count == 0)  return;
+        if (fServerInfo.TeamScores == null || fServerInfo.TeamScores.Count < 2)  return;
         foreach (TeamScore ts in fServerInfo.TeamScores) {
             if (ts.TeamID >= fTickets.Length) break;
             fTickets[ts.TeamID] = ts.Score;
@@ -3935,9 +3935,16 @@ public override void OnServerInfo(CServerInfo serverInfo) {
             if (ts.Score < minTickets) minTickets = ts.Score;
         }
 
-        if (isRush && fServerInfo.TeamScores.Count >= 2) {
-            attacker = fServerInfo.TeamScores[0].Score;
-            defender = fServerInfo.TeamScores[1].Score;
+        if (isRush) {
+            foreach (TeamScore ts in fServerInfo.TeamScores) {
+                if (ts.TeamID == 1) {
+                    attacker = ts.Score;
+                } else if (ts.TeamID == 2) {
+                    defender = ts.Score;
+                }
+            }
+            //attacker = fServerInfo.TeamScores[0].Score;
+            //defender = fServerInfo.TeamScores[1].Score;
             if (fStageInProgress) {
                 if (attacker < fRushPrevAttackerTickets && attacker > 0) {
                     fRushAttackerStageLoss = fRushAttackerStageLoss + (fRushPrevAttackerTickets - attacker);
@@ -3953,7 +3960,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
             if (!isRush) {
                 fMaxTickets = maxTickets;
                 ConsoleDebug("ServerInfo update: fMaxTickets = " + fMaxTickets.ToString("F0"));
-            } else if (fServerInfo.TeamScores.Count == 2) {
+            } else {
                 fRushMaxTickets = defender;
                 fMaxTickets = attacker;
                 fRushStage = 1;
@@ -6103,7 +6110,7 @@ private Phase GetPhase(PerModeSettings perMode, bool verbose) {
         return phase;
     }
     
-    if (fServerInfo.TeamScores == null || fServerInfo.TeamScores.Count == 0) return Phase.Mid;
+    if (fServerInfo.TeamScores == null || fServerInfo.TeamScores.Count < 2) return Phase.Mid;
 
     double tickets = -1;
     double goal = 0;
@@ -6113,7 +6120,12 @@ private Phase GetPhase(PerModeSettings perMode, bool verbose) {
 
     if (Regex.Match(fServerInfo.GameMode, @"(?:TeamDeathMatch|SquadDeathMatch)").Success) {
         countDown = false;
-        goal = fServerInfo.TeamScores[0].WinningScore;
+        foreach (TeamScore ts in fServerInfo.TeamScores) {
+            if (ts.TeamID == 1) {
+                goal = ts.WinningScore;
+                break;
+            }
+        }
     }
 
     // Find ticket count closest to end
@@ -6440,7 +6452,7 @@ private void Scrambler(List<TeamScore> teamScores) {
     }
 
     if (!IsCTF() && OnlyOnFinalTicketPercentage > 100) {
-        if (teamScores == null || teamScores.Count != 2) {
+        if (teamScores == null || teamScores.Count < 2) {
             DebugScrambler("DEBUG: no final team scores");
             return;
         }
@@ -6449,8 +6461,8 @@ private void Scrambler(List<TeamScore> teamScores) {
         if (fMaxTickets == -1) return;
 
         double goal = fMaxTickets;
-        double a = teamScores[0].Score;
-        double b = teamScores[1].Score;
+        double a = (teamScores[0].Score == 1) ? 0 : teamScores[0].Score;
+        double b = (teamScores[1].Score == 1) ? 0 : teamScores[1].Score;
 
         /*
         if (IsRush()) {
@@ -9207,11 +9219,20 @@ private void AnalyzeTeams(out int maxDiff, out int[] ascendingSize, out int[] de
     List<TeamScore> byScore = new List<TeamScore>();
     if (fServerInfo.TeamScores == null) return;
     bool isCTF = IsCTF();
-    if (!isCTF && fServerInfo.TeamScores.Count == 0) return;
+    if (!isCTF && fServerInfo.TeamScores.Count < 2) return;
     if (IsRush()) {
         // Normalize scores
-        TeamScore attackers = fServerInfo.TeamScores[0];
-        TeamScore defenders = fServerInfo.TeamScores[1];
+        TeamScore attackers = null;
+        TeamScore defenders = null;
+        foreach (TeamScore ts in fServerInfo.TeamScores) {
+            if (ts.TeamID == 1) {
+                attackers = ts;
+            } else if (ts.TeamID == 2) {
+                defenders = ts;
+            }
+        }
+        //TeamScore attackers = fServerInfo.TeamScores[0];
+        //TeamScore defenders = fServerInfo.TeamScores[1];
         double normalized = fMaxTickets - (fRushMaxTickets - defenders.Score);
         normalized = Math.Max(normalized, Convert.ToDouble(attackers.Score)/2);
         byScore.Add(attackers); // attackers
@@ -10160,7 +10181,7 @@ private double RemainingTicketPercent(double tickets, double goal) {
 
 private double RemainingTickets() {
     double ret = 0;
-    if (fServerInfo == null) return 0;
+    if (fServerInfo == null || fServerInfo.TeamScores.Count < 2) return 0;
 
     if (IsConquest() || IsRush()) {
         // Pick lowest ticket count of all teams
@@ -12744,7 +12765,12 @@ private void LogStatus(bool isFinal, int level) {
     if (fServerInfo != null && Regex.Match(fServerInfo.GameMode, @"(?:TeamDeathMatch|SquadDeathMatch)").Success) {
         countDown = false;
         if (fServerInfo.TeamScores != null && fServerInfo.TeamScores.Count > 1) {
-            goal = fServerInfo.TeamScores[1].WinningScore;
+            foreach (TeamScore ts in fServerInfo.TeamScores) {
+                if (ts.TeamID == 1) {
+                    goal = ts.WinningScore;
+                    break;
+                }
+            }
         }
     }
 
