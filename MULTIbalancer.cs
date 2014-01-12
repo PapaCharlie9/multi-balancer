@@ -9265,7 +9265,9 @@ private void AnalyzeTeams(out int maxDiff, out int[] ascendingSize, out int[] de
     }
 
     winningTeam = byScore[0].TeamID;
-    losingTeam = byScore[byScore.Count-1].TeamID;
+    int iloser = (isSQDM) ? 3 : 1;
+    if (iloser >= byScore.Count) iloser = byScore.Count - 1;
+    losingTeam = byScore[iloser].TeamID;
     DebugWrite("^9AnalyzeTeams: biggest/smallest/winning/losing = " + biggestTeam + "/" + smallestTeam + "/" + winningTeam + "/" + losingTeam, 8);
 }
 
