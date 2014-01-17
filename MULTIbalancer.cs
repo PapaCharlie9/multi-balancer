@@ -13160,19 +13160,18 @@ static class MULTIbalancerUtils {
 <p>This plugin would not have been possible without the help and support of these individuals and communities:<br></br>
 <small>myrcon.com staff, [C2C]Blitz, [FTB]guapoloko, [Xtra]HexaCanon, [11]EBassie, Firejack, [IAF]SDS, dyn, Jaythegreat1, ADKGamers, AgentHawk, TreeSaint, Taxez, PatPgtips, Hutchew, LumpyNutz, popbndr, tarreltje, 24Flat, [Oaks]kcuestag ... and many others</small></p>
 
-<h2>NOTICE</h2>
-<p>This plugin is free to use, forever. Support is provided on a voluntary basic, when time is available, by the author and the user community. Use at your own risk, no guarantees are made or implied (complete notice text is in the source code). Some of the code in this plugin (Battlelog and BattlelogCache code, plugin framework, other odds &amp; ends) was directly derived from Insane Limits by micovery. Inspiration for the plugin settings came from TrueBalancer by Panther and all of the members of the design discussion group, some of whom are listed above in the acknowledgments.</p>
-
-<p><b>Section 7 of settings is intentionally not defined.</b></p>
-
 <h3>BF4 Update</h3>
 <p>The following features do not yet work for BF4:
 <ul>
 <li><b>Official mode</b>: this plugin <b>WILL NOT WORK</b> on Official mode servers -- due to admin.movePlayer being disabled on Official mode.</li>
-<li><b>Reassignment moves</b>: reassignment moves would break the new way that <i>Join on Friend</i> works for BF4, so this is disabled for BF4 until I can figure out a way around the problem.</li>
 <li><b>Battlelog Cache</b>: needs to be updated to BF4.</li>
-<li><b>Yell settings</b>: yell is currently disabled for BF4, as of patch R7.</li>
+<li><b>Yell settings</b>: yell is not supported in BF4, as of patch R20.</li>
 </ul></p>
+
+<h2>NOTICE</h2>
+<p>This plugin is free to use, forever. Support is provided on a voluntary basic, when time is available, by the author and the user community. Use at your own risk, no guarantees are made or implied (complete notice text is in the source code). Some of the code in this plugin (Battlelog and BattlelogCache code, plugin framework, other odds &amp; ends) was directly derived from Insane Limits by micovery. Inspiration for the plugin settings came from TrueBalancer by Panther and all of the members of the design discussion group, some of whom are listed above in the acknowledgments.</p>
+
+<p><b>Section 7 of settings is intentionally not defined.</b></p>
 
 <h2>Description</h2>
 <p>This plugin performs several automated operations:
