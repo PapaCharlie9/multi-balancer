@@ -99,6 +99,8 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     public enum IGCommand {None, Add, Delete, List, New};
 
+    public enum ForceMove {Newest, Weakest, Random};
+
     /* Constants & Statics */
 
     public const double SWAP_TIMEOUT = 600; // in seconds
@@ -111,7 +113,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     public const double CHECK_FOR_UPDATES_MINS = 12*60; // 12 hours
 
-    public const double MIN_ADAPT_FAST = 120.0;
+    public const double MIN_ADAPT_FAST = 30.0;
 
     public const String INVALID_NAME_TAG_GUID = "////////";
 
@@ -638,17 +640,20 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         public String YellBefore = String.Empty;
         public String ChatAfter = String.Empty;
         public String YellAfter = String.Empty;
+        public double Delay = 0;
+        public bool Fast = false;
         public bool aborted = false;
 
         public MoveInfo() {}
 
-        public MoveInfo(String name, String tag, int fromTeam, String fromName, int toTeam, String toName) : this() {
+        public MoveInfo(String name, String tag, int fromTeam, String fromName, int toTeam, String toName, double delay) : this() {
             Name = name;
             Tag = tag;
             Source = fromTeam;
             SourceName = (String.IsNullOrEmpty(fromName)) ? fromTeam.ToString() : fromName;
             Destination = toTeam;
             DestinationName = (String.IsNullOrEmpty(toName)) ? toTeam.ToString() : toName;
+            Delay = delay;
         }
 
         public void Format(MULTIbalancer plugin, String fmt, bool isYell, bool isBefore) {
@@ -979,6 +984,8 @@ private Dictionary<String,PerModeSettings> fPerMode = null;
 public int SettingsVersion;
 public PresetItems Preset;
 public bool EnableUnstacking;
+public bool EnableAdminKillForFastBalance;
+public ForceMove SelectFastBalanceBy;
 public bool EnableSettingsWizard;
 public String WhichMode;
 public bool MetroIsInMapRotation;
@@ -1234,6 +1241,8 @@ public MULTIbalancer() {
     SettingsVersion = 1;
     Preset = PresetItems.Standard;
     EnableUnstacking = false;
+    EnableAdminKillForFastBalance = false;
+    SelectFastBalanceBy = ForceMove.Weakest;
     EnableSettingsWizard = false;
     WhichMode = "Conquest Large";
     MetroIsInMapRotation = false;
@@ -1727,6 +1736,15 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         lstReturn.Add(new CPluginVariable("1 - Settings|Seconds Until Adaptive Speed Becomes Fast", SecondsUntilAdaptiveSpeedBecomesFast.GetType(), SecondsUntilAdaptiveSpeedBecomesFast));
         
         lstReturn.Add(new CPluginVariable("1 - Settings|Reassign New Players", ReassignNewPlayers.GetType(), ReassignNewPlayers));
+
+        lstReturn.Add(new CPluginVariable("1 - Settings|Enable Admin Kill For Fast Balance", EnableAdminKillForFastBalance.GetType(), EnableAdminKillForFastBalance));
+
+        if (EnableAdminKillForFastBalance || fRevealSettings) {
+            var_name = "1 - Settings|Select Fast Balance By"; 
+            var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(ForceMove))) + ")";
+        
+            lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(ForceMove), SelectFastBalanceBy)));
+        }
         
         lstReturn.Add(new CPluginVariable("1 - Settings|Enable In-Game Commands", EnableInGameCommands.GetType(), EnableInGameCommands));
 
@@ -2138,6 +2156,13 @@ public void SetPluginVariable(String strVariable, String strValue) {
                 } catch (Exception e) {
                     ConsoleException(e);
                 }
+            } else if (tmp.Contains("Select Fast Balance By")) { 
+                fieldType = typeof(ForceMove);
+                try {
+                    field.SetValue(this, (ForceMove)Enum.Parse(fieldType, strValue));
+                } catch (Exception e) {
+                    ConsoleException(e);
+                }
             } else if (fEasyTypeDict.ContainsValue(fieldType)) {
                 field.SetValue(this, TypeDescriptor.GetConverter(fieldType).ConvertFromString(strValue));
             } else if (fListStrDict.ContainsValue(fieldType)) {
@@ -2407,6 +2432,8 @@ private void ResetSettings() {
 
     Preset = rhs.Preset;
     // EnableUnstacking = rhs.EnableUnstacking; // don't reset EnableUnstacking
+    EnableAdminKillForFastBalance = rhs.EnableAdminKillForFastBalance;
+    SelectFastBalanceBy = rhs.SelectFastBalanceBy;
 
     /* ===== SECTION 1 - Settings ===== */
 
@@ -3503,6 +3530,10 @@ public override void OnPlayerLeft(CPlayerInfo playerInfo) {
         }
     
         DebugWrite("Player left: ^b" + playerInfo.SoldierName, 4);
+
+        if (EnableAdminKillForFastBalance) {
+            FastBalance();
+        }
     } catch (Exception e) {
         ConsoleException(e);
     }
@@ -3568,6 +3599,9 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
                 AddNewPlayer(soldierName, teamId);
                 UpdateTeams();
                 DebugWrite("^4New player^0: ^b" + soldierName + "^n, assigned to " + GetTeamName(teamId) + " team by game server", 4);
+                if (EnableAdminKillForFastBalance) {
+                    FastBalance();
+                }
             } else {
                 Reassign(soldierName, teamId, reassignTo, diff);
             }
@@ -4060,6 +4094,10 @@ public override void OnGlobalChat(String speaker, String message) {
     try {
         if (Regex.Match(message, @"^\s*[!@#]mb", RegexOptions.IgnoreCase).Success) {
             InGameCommand(message, ChatScope.Global, 0, 0, speaker);
+        } else {
+            if (EnableAdminKillForFastBalance) {
+                FastBalance();
+            }
         }
     } catch (Exception e) {
         ConsoleException(e);
@@ -4072,6 +4110,10 @@ public override void OnTeamChat(String speaker, String message, int teamId) {
     try {
         if (Regex.Match(message, @"^\s*[!@#]mb", RegexOptions.IgnoreCase).Success) {
             InGameCommand(message, ChatScope.Team, teamId, 0, speaker);
+        } else {
+            if (EnableAdminKillForFastBalance) {
+                FastBalance();
+            }
         }
     } catch (Exception e) {
         ConsoleException(e);
@@ -4176,6 +4218,9 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
             fGameState = (totalPlayers < 4) ? GameState.Warmup : GameState.Playing;
             if (wasUnknown || fGameState == GameState.Playing) DebugWrite("OnPlayerSpawned: ^b^3Game state = " + fGameState, 6);  
             fNeedPlayerListUpdate = (fGameState == GameState.Playing);
+            if (EnableAdminKillForFastBalance) {
+                FastBalance();
+            }
         } else if (fGameState == GameState.RoundStarting) {
             // First spawn after Level Loaded is the official start of a round
             DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1First spawn detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
@@ -4836,7 +4881,7 @@ private void BalanceAndUnstack(String name) {
             origName = GetTeamName(origTeam);
         }
         
-        MoveInfo move = new MoveInfo(name, player.Tag, origTeam, origName, toTeam, GetTeamName(toTeam));
+        MoveInfo move = new MoveInfo(name, player.Tag, origTeam, origName, toTeam, GetTeamName(toTeam), YellDurationSeconds);
         move.For = MoveType.Balance;
         move.Format(this, ChatMovedForBalance, false, false);
         move.Format(this, YellMovedForBalance, true, false);
@@ -5062,7 +5107,7 @@ private void BalanceAndUnstack(String name) {
                     return;
                 }
                 DebugBalance("Sending strong player ^0^b" + player.FullName + "^n^9 to losing team " + GetTeamName(losingTeam));
-                moveUnstack = new MoveInfo(name, player.Tag, origUnTeam, origUnName, losingTeam, GetTeamName(losingTeam));
+                moveUnstack = new MoveInfo(name, player.Tag, origUnTeam, origUnName, losingTeam, GetTeamName(losingTeam), YellDurationSeconds);
                 toTeam = losingTeam;
                 fUnstackState = UnstackState.SwappedStrong;
                 if (EnableTicketLossRateLogging) UpdateTicketLossRateLog(now, losingTeam, 0);
@@ -5084,7 +5129,7 @@ private void BalanceAndUnstack(String name) {
                     return;
                 }
                 DebugBalance("Sending weak player ^0^b" + player.FullName + "^n^9 to winning team " + GetTeamName(winningTeam));
-                moveUnstack = new MoveInfo(name, player.Tag, origUnTeam, origUnName, winningTeam, GetTeamName(winningTeam));
+                moveUnstack = new MoveInfo(name, player.Tag, origUnTeam, origUnName, winningTeam, GetTeamName(winningTeam), YellDurationSeconds);
                 toTeam = winningTeam;
                 fUnstackState = UnstackState.SwappedWeak;
                 strength = "weak";
@@ -5125,6 +5170,220 @@ private void BalanceAndUnstack(String name) {
 }
 
 
+private void FastBalance() {
+
+    /* Useful variables */
+
+    PlayerModel player = null;
+    String simpleMode = String.Empty;
+    PerModeSettings perMode = GetPerModeSettings();
+    int winningTeam = 0;
+    int losingTeam = 0;
+    int biggestTeam = 0;
+    int smallestTeam = 0;
+    int[] ascendingSize = null;
+    int[] descendingTickets = null;
+    String strongMsg = String.Empty;
+    int diff = 0;
+    DateTime now = DateTime.Now;
+    String log = String.Empty;
+
+    /* Sanity checks */
+
+    if (fServerInfo == null) {
+        return;
+    }
+
+    if (fGameState != GameState.Playing) {
+        return;
+    }
+
+    Speed balanceSpeed = GetBalanceSpeed(perMode);
+
+    if (balanceSpeed == Speed.Stop) {
+        DebugFast("Speed is Stop, fast balance check skipped");
+        return;
+    }
+
+    int totalPlayerCount = TotalPlayerCount();
+
+    /* if (DebugLevel >= 8) */ DebugFast("Checking if fast balance is needed, " + totalPlayerCount + " players");
+
+    if (totalPlayerCount >= (MaximumServerSize-1)) {
+        /* if (DebugLevel >= 6) */ DebugFast("Server is full, no balancing or unstacking will be attempted!");
+        return;
+    }
+
+    int floorPlayers = 6;
+    if (totalPlayerCount < floorPlayers) {
+        /* if (DebugLevel >= 6) */ DebugFast("Not enough players in server, minimum is " + floorPlayers);
+        return;
+    }
+
+    if (totalPlayerCount > 0) {
+        AnalyzeTeams(out diff, out ascendingSize, out descendingTickets, out biggestTeam, out smallestTeam, out winningTeam, out losingTeam);
+    }
+
+    // Adjust speed to Fast?
+    if (balanceSpeed != Speed.Fast) {
+        if (diff >= MaxFastDiff()) {
+            balanceSpeed = Speed.Fast;
+        }
+    }
+    if (balanceSpeed != Speed.Fast || diff < MaxFastDiff()) {
+        if (DebugLevel >= 7) DebugFast("Fast balance not active, diff is only " + diff + ", requires " + MaxFastDiff());
+        return;
+    }
+
+    // Prepare for player selection
+    if (smallestTeam < 1) {
+        DebugFast("Cannot determine smallest team: " + smallestTeam);
+        return;
+    }
+    List<PlayerModel> big = new List<PlayerModel>();
+    List<PlayerModel> tmp = GetTeam(biggestTeam);
+    if (tmp == null || tmp.Count < 1 || biggestTeam < 1) {
+        DebugFast("Cannot determine biggest team: " + biggestTeam);
+    }
+    big.AddRange(tmp);
+    tmp = new List<PlayerModel>();
+    foreach (PlayerModel p in big) {
+        if (OnWhitelist && CheckWhitelist(p, WL_BALANCE)) { // exclude if on whitelist
+            if (DebugLevel >= 7) DebugFast("On whitelist: ^b" + player.FullName + "^n, excluding from fast balance");
+            continue; 
+        } else if (p.MovedByMBTimestamp != DateTime.MinValue) { // exclude if moved recently 
+            double mins = now.Subtract(p.MovedByMBTimestamp).TotalMinutes;
+            if (mins < MinutesAfterBeingMoved) {
+                if (DebugLevel >= 7) DebugFast("Excluding ^b" + player.Name + "^n: last move was " + mins.ToString("F0") + " minutes ago, less than required " + MinutesAfterBeingMoved.ToString("F0") + " minutes");
+                continue;
+            } else {
+                // reset
+                player.MovedByMBTimestamp = DateTime.MinValue;
+            }
+        }
+
+        tmp.Add(p);
+    }
+    big = tmp;
+
+    // Select player
+    String kstat = String.Empty;
+    switch (SelectFastBalanceBy) {
+        case ForceMove.Weakest: {
+            switch (perMode.DetermineStrongPlayersBy) {
+                case DefineStrong.RoundScore:
+                    big.Sort(DescendingRoundScore);
+                    kstat = "S";
+                    break;
+                case DefineStrong.RoundSPM:
+                    big.Sort(DescendingRoundSPM);
+                    kstat = "SPM";
+                    break;
+                case DefineStrong.RoundKills:
+                    big.Sort(DescendingRoundKills);
+                    kstat = "K";
+                    break;
+                case DefineStrong.RoundKDR:
+                    big.Sort(DescendingRoundKDR);
+                    kstat = "KDR";
+                    break;
+                case DefineStrong.PlayerRank:
+                    big.Sort(DescendingPlayerRank);
+                    kstat = "R";
+                    break;
+                case DefineStrong.RoundKPM:
+                    big.Sort(DescendingRoundKPM);
+                    kstat = "KPM";
+                    break;
+                case DefineStrong.BattlelogSPM:
+                    big.Sort(DescendingSPM);
+                    kstat = "bSPM";
+                    break;
+                case DefineStrong.BattlelogKDR:
+                    big.Sort(DescendingKDR);
+                    kstat = "bKDR";
+                    break;
+                case DefineStrong.BattlelogKPM:
+                    big.Sort(DescendingKPM);
+                    kstat = "bKPM";
+                    break;
+                default:
+                    big.Sort(DescendingRoundScore);
+                    break;
+            }
+
+            // Select weakest
+            player = big[big.Count-1];
+            DebugFast("Selected WEAKEST player ^b" + player.FullName + "^n, " + kstat + ": " + GetPlayerStat(player, perMode.DetermineStrongPlayersBy).ToString("F1"));
+            break;
+        }
+
+        case ForceMove.Newest: {
+            // Descending by elapsed join time
+            big.Sort(delegate(PlayerModel lhs, PlayerModel rhs) {
+                if (lhs == null) {
+                    return ((rhs == null) ? 0 : -1);
+                } else if (rhs == null) {
+                    return ((lhs == null) ? 0 : 1);
+                }
+                double lTime = GetPlayerJoinedTimeSpan(lhs).TotalSeconds;
+                double rTime = GetPlayerJoinedTimeSpan(rhs).TotalSeconds;
+                if (lTime < rTime) return 1;
+                if (lTime > rTime) return -1;
+                return 0;
+            });
+            // Select newest
+            player = big[big.Count-1];
+            DebugFast("Selected NEWEST player ^b" + player.FullName + "^n, joined " + GetPlayerJoinedTimeSpan(player).TotalMinutes.ToString("F1") + " minutes ago");
+            break;
+        }
+
+        case ForceMove.Random: {
+            Random rnd = new Random();
+            player = big[rnd.Next(big.Count)];
+            DebugFast("Selected RANDOM player ^b" + player.FullName);
+            break;
+        }
+    }
+
+    /* Move for fast balance */
+
+    int origTeam = player.Team;
+    String origName = GetTeamName(player.Team);
+    int lastMoveFrom = player.LastMoveFrom;
+
+    if (lastMoveFrom != 0) {
+        origTeam = lastMoveFrom;
+        origName = GetTeamName(origTeam);
+    }
+        
+    MoveInfo move = new MoveInfo(player.Name, player.Tag, origTeam, origName, smallestTeam, GetTeamName(smallestTeam), 0);
+    move.For = MoveType.Balance;
+    move.Format(this, ChatMovedForBalance, false, false);
+    move.Format(this, YellMovedForBalance, true, false);
+    move.Fast = true;
+    String why = "because difference is " + diff;
+    log = "^4^bFAST BALANCE^n^0 moving ^b" + player.FullName + "^n from " + move.SourceName + " team to " + move.DestinationName + " team " + why;
+    log = (EnableLoggingOnlyMode) ? "^9(SIMULATING)^0 " + log : log;
+    DebugWrite(log, 3);
+
+    DebugWrite("^9" + move, 8);
+
+    player.LastMoveFrom = player.Team;
+
+    KillAndMoveAsync(move);
+
+    /*
+    if (EnableLoggingOnlyMode) {
+        // Simulate completion of move
+        OnPlayerTeamChange(name, toTeam, 0);
+        OnPlayerMovedByAdmin(name, toTeam, 0, false); // simulate reverse order
+    }
+    */
+
+}
+
+
 private bool IsKnownPlayer(String name) {
     bool check = false;
     lock (fAllPlayers) {
@@ -5145,6 +5404,7 @@ private bool AddNewPlayer(String name, int team) {
         } else {
             player = fKnownPlayers[name];
             player.Team = team;
+            player.FirstSeenTimestamp = DateTime.Now;
             known = true;
             needsFetch = !(player.TagVerified && player.StatsVerified);
         }
@@ -5169,6 +5429,7 @@ private void RemovePlayer(String name) {
             PlayerModel m = fKnownPlayers[name];
             m.ResetRound();
             m.LastSeenTimestamp = DateTime.Now;
+            m.FirstSeenTimestamp = DateTime.MinValue;
             removeFetch = true;
         }
     }
@@ -5460,7 +5721,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
 
     // Trying to switch to losing team?
     if (!forbidden && toLosing && toTeam != biggestTeam) {
-        move = new MoveInfo(player.Name, player.Tag, fromTeam, GetTeamName(fromTeam), toTeam, GetTeamName(toTeam));
+        move = new MoveInfo(player.Name, player.Tag, fromTeam, GetTeamName(fromTeam), toTeam, GetTeamName(toTeam), YellDurationSeconds);
         move.Format(this, ChatDetectedGoodTeamSwitch, false, true);
         move.Format(this, YellDetectedGoodTeamSwitch, true, true);
         DebugUnswitch("ALLOWED: Team switch to losing team ^b: " + name);
@@ -5482,7 +5743,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
 
     // Trying to switch to smallest team?
     if (!forbidden && toSmallest && toTeam != winningTeam) {
-        move = new MoveInfo(player.Name, player.Tag, fromTeam, GetTeamName(fromTeam), toTeam, GetTeamName(toTeam));
+        move = new MoveInfo(player.Name, player.Tag, fromTeam, GetTeamName(fromTeam), toTeam, GetTeamName(toTeam), YellDurationSeconds);
         move.Format(this, ChatDetectedGoodTeamSwitch, false, true);
         move.Format(this, YellDetectedGoodTeamSwitch, true, true);
         DebugUnswitch("ALLOWED: Team switch to smallest team ^b: " + name);
@@ -5605,7 +5866,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     }
 
     // Tried to switch toTeam from origTeam, so moving from toTeam back to origTeam
-    move = new MoveInfo(name, player.Tag, toTeam, GetTeamName(toTeam), origTeam, origName);
+    move = new MoveInfo(name, player.Tag, toTeam, GetTeamName(toTeam), origTeam, origName, YellDurationSeconds);
     move.For = MoveType.Unswitch;
     move.Because = why;
     move.Format(this, badChat, false, true);
@@ -5763,7 +6024,8 @@ private void StartMoveImmediate(MoveInfo move, bool sendMessages) {
         case MoveType.Unswitch: r = " to unswitch player"; break;
         default: r = " for ???"; break;
     }
-    String doing = (EnableLoggingOnlyMode) ? "^9(SIMULATING) ^b^1MOVING^0 " : "^b^1MOVING^0 ";
+    String moving = (move.Fast) ? "FAST MOVING" : "MOVING";
+    String doing = (EnableLoggingOnlyMode) ? "^9(SIMULATING) ^b^1" + moving + "^0 " : "^b^1" + moving + "^0 ";
     DebugWrite(doing + move.Name + "^n from " + move.SourceName + " to " + move.DestinationName + r, 4);
 }
 
@@ -5828,7 +6090,7 @@ public void MoveLoop() {
             }
 
             // Pause
-            Thread.Sleep(Convert.ToInt32(YellDurationSeconds*1000));
+            Thread.Sleep(Convert.ToInt32(move.Delay*1000));
             if (!fIsEnabled) return;
 
             // Player may have started another move during the delay, check and abort
@@ -9072,6 +9334,20 @@ private int MaxDiff() {
     return 2;
 }
 
+private int MaxFastDiff() {
+    if (fServerInfo == null) return 4;
+    PerModeSettings perMode = null;
+    String simpleMode = String.Empty;
+    if (IsSQDM()) {
+        return ((TotalPlayerCount() <= 32) ? 3 : 4);
+    }
+    perMode = GetPerModeSettings();
+
+    if (!perMode.isDefault) return ((GetPopulation(perMode, false) == Population.Low) ? 3 : 4);
+
+    return 2;
+}
+
 private void UpdateTeams() {
     ClearTeams();
 
@@ -10206,7 +10482,7 @@ private double RemainingTickets() {
 }
 
 private TimeSpan GetPlayerJoinedTimeSpan(PlayerModel player) {
-    if (player != null) {
+    if (player != null && player.FirstSeenTimestamp != DateTime.MinValue) {
         return(DateTime.Now.Subtract(player.FirstSeenTimestamp));
     }
     return TimeSpan.FromMinutes(0);
@@ -10232,6 +10508,10 @@ private void DebugBalance(String msg) {
     }
     DebugWrite("^5(AUTO)^9 " + msg, level);
     fLastMsg = msg;
+}
+
+private void DebugFast(String msg) {
+    DebugWrite("^5(FAST)^9 " + msg, 5);
 }
 
 
@@ -10312,6 +10592,42 @@ private String GetPlayerStatsString(String name) {
     String vn = m.FullName;
 
     return("^0" + type + " STATS: ^b" + vn + "^n [T:" + team + ", S:" + score + ", K:" + kills + ", D:" + deaths + ", KDR:" + kdr.ToString("F2") + ", SPM:" + spm.ToString("F0") + ", KPM:" + kpm.ToString("F1") + ", TIR: " + sTIR + "]");
+}
+
+private double GetPlayerStat(PlayerModel player, DefineStrong which) {
+    double stat = 0;
+    switch (ScrambleBy) {
+        case DefineStrong.RoundScore:
+            stat = player.ScoreRound;
+            break;
+        case DefineStrong.RoundSPM:
+            stat = player.SPMRound;
+            break;
+        case DefineStrong.RoundKills:
+            stat = player.KillsRound;
+            break;
+        case DefineStrong.RoundKDR:
+            stat = player.KDRRound;
+            break;
+        case DefineStrong.PlayerRank:
+            stat = player.Rank;
+            break;
+        case DefineStrong.RoundKPM:
+            stat = player.KPMRound;
+            break;
+        case DefineStrong.BattlelogSPM:
+            stat = ((player.StatsVerified) ? player.SPM :player.SPMRound);
+            break;
+        case DefineStrong.BattlelogKDR:
+            stat = ((player.StatsVerified) ? player.KDR :player.KDRRound);
+            break;
+        case DefineStrong.BattlelogKPM:
+            stat = ((player.StatsVerified) ? player.KPM :player.KPMRound);
+            break;
+        default:
+            break;
+    }
+    return stat;
 }
 
 
@@ -10647,7 +10963,8 @@ private void ListSideBySide(List<PlayerModel> us, List<PlayerModel> ru, bool use
         player = u;
         if (player == null) continue;
         all.Add(player);
-        double stat = 0;
+        double stat = GetPlayerStat(player, ScrambleBy);
+        /*
         switch (ScrambleBy) {
             case DefineStrong.RoundScore:
                 stat = player.ScoreRound;
@@ -10679,6 +10996,7 @@ private void ListSideBySide(List<PlayerModel> us, List<PlayerModel> ru, bool use
             default:
                 break;
         }
+        */
         usTotal = usTotal + stat;
     }
     double usAvg = usTotal / Math.Max(1, us.Count);
@@ -10689,7 +11007,8 @@ private void ListSideBySide(List<PlayerModel> us, List<PlayerModel> ru, bool use
         player = r;
         if (player == null) continue;
         all.Add(player);
-        double stat = 0;
+        double stat = GetPlayerStat(player, ScrambleBy);
+        /*
         switch (ScrambleBy) {
             case DefineStrong.RoundScore:
                 stat = player.ScoreRound;
@@ -10721,6 +11040,7 @@ private void ListSideBySide(List<PlayerModel> us, List<PlayerModel> ru, bool use
             default:
                 break;
         }
+        */
         ruTotal = ruTotal + stat;
     }
     double ruAvg = ruTotal / Math.Max(1, ru.Count);
@@ -12793,8 +13113,9 @@ private void LogStatus(bool isFinal, int level) {
     String unstackDisabled = (!EnableUnstacking) ? ", Unstacking Disabled" : String.Empty;
     String logOnly = (EnableLoggingOnlyMode) ? ", Logging Only Mode Enabled" : String.Empty;
     String weakOnly = (perMode.OnlyMoveWeakPlayers) ? ", Only Move Weak Players" : String.Empty;
+    String fastBalance = (EnableAdminKillForFastBalance) ? ", Admin Kill Enabled": String.Empty;
 
-    if (level >= 6) DebugWrite("^bStatus^n: Plugin state = " + fPluginState + ", game state = " + fGameState + weakOnly + metroAdj + unstackDisabled + logOnly, 0);
+    if (level >= 6) DebugWrite("^bStatus^n: Plugin state = " + fPluginState + ", game state = " + fGameState + weakOnly + fastBalance + metroAdj + unstackDisabled + logOnly, 0);
     int useLevel = (isFinal) ? 2 : 4;
     if (IsRush()) {
         if (level >= useLevel) DebugWrite("^bStatus^n: Map = " + this.FriendlyMap + ", mode = " + this.FriendlyMode + ", stage = " + fRushStage + ", time in round = " + rt + ", tickets = " + tm, 0);
@@ -12873,9 +13194,18 @@ private void LogStatus(bool isFinal, int level) {
     
     counts.Sort();
     int diff = Math.Abs(counts[0] - counts[counts.Count-1]);
-    String next = (totalPlayers >= 6 && diff > MaxDiff() && fGameState == GameState.Playing && balanceSpeed != Speed.Stop && !fBalanceIsActive) ? "^n^0 ... autobalance will activate as soon as possible!" : "^n";
+    String next = "^n";
+
+    if (EnableAdminKillForFastBalance && diff >= MaxFastDiff()) {
+        next = "^n^0 ... fast balance with admin kills in progress!";
+    } else if ((totalPlayers >= 6 && diff > MaxDiff() && fGameState == GameState.Playing && balanceSpeed != Speed.Stop && !fBalanceIsActive)) {
+        next = "^n^0 ... autobalance will activate as soon as possible!";
+    }
     
-    if (level >= 4) DebugWrite("^bStatus^n: Team difference = " + ((diff > MaxDiff()) ? "^8^b" : "^b") + diff + next, 0);
+    if (level >= 4) {
+        String md = ((diff > MaxDiff()) ? "^8^b" : "^b") + diff + ((diff > MaxFastDiff() && EnableAdminKillForFastBalance) ? " (FAST)" : String.Empty);
+        DebugWrite("^bStatus^n: Team difference = " + md + next, 0);
+    }
 
   } catch (Exception e) {
     ConsoleException(e);
@@ -12893,7 +13223,7 @@ public void OnPluginLoadingEnv(List<string> lstPluginEnv) {
         case "BF4": fGameVersion = GameVersion.BF4; break;
         default: break;
     }
-    ConsoleWrite("^1Game Version = " + lstPluginEnv[1], 0);
+    ConsoleWrite("^2Game Version = " + lstPluginEnv[1], 0);
     /*
     Version PRoConVersion = new Version(lstPluginEnv[0]);
     this.m_strPRoConVersion = PRoConVersion.ToString();
@@ -13281,9 +13611,13 @@ static class MULTIbalancerUtils {
 
 <p><b>Unlimited Team Switching During First Minutes Of Round</b>: Number greater than or equal to 0, default 5. Starting from the beginning of the round, this is the number of minutes that players are allowed to switch teams without restriction. After this time is expired, the plugin will prevent team switching that unbalances or stacks teams. The idea is to enable friends who were split up during the previous round due to autobalancing or unstacking to regroup so that they can play together this round. However, players who switch teams during this period are not excluded from being moved for autobalance or unstacking later in the round, unless some other exclusion applies them.</p>
 
-<p><b>Seconds Until Adaptive Speed Becomes Fast</b>: Number of seconds greater than or equal to 120, default 180. If the autobalance speed is Adaptive and the autobalancer has been active for more than the specified number of seconds, the speed will be forced to Fast. This insures that teams don't remain unbalanced too long if Adaptive speed is not sufficient to move players.</p>
+<p><b>Seconds Until Adaptive Speed Becomes Fast</b>: Number of seconds greater than or equal to 30, default 180. If the autobalance speed is Adaptive and the autobalancer has been active for more than the specified number of seconds, the speed will be forced to Fast. This insures that teams don't remain unbalanced too long if Adaptive speed is not sufficient to move players.</p>
 
 <p><b>Reassign New Players</b>: True or False, default True. This is a trade-off setting, each choice has something good and something bad associated with it. If set to True, new players joining the server are reassigned to the team that needs help before the player's first spawn -- they will not be aware that they were moved, but this may cancel a Battlelog Join on Friend that the player wanted. If set to False, Join on Friend will be respected, but your server may have unbalanced teams for a longer period of time.</p>
+
+<p><b>Enable Admin Kill For Fast Balance</b>: True or False, default False. Enables forced moves using admin kills when teams are grossly unbalanced. All exclusions are ignored except for the <b>Whitelist</b>. If the setting is True and teams are more than 3 or 4 players apart (depending on mode and per-mode Low Population setting) and the speed is not Stop, the speed will be changed to Fast. Every time a player leaves or any players types anything into chat and the speed is Fast, live players will be selected and admin killed and then moved. The selection of who is forced to move is controlled by <b>Select Fast Balance By</b>.</p>
+
+<p><b>Select Fast Balance By</b>: Newest, Weakest or Random; default Weakest. Only visible if <b>Enable Admin Kill For Fast Balance</b> is True. Determines which live player is forced moved for Fast balance. <i>Newest</i> is the player that has been in the server the least amount of time. <i>Weakest</i> is the player with the lowest value as defined by per-mode <b>Determine Strong Players By</b>, e.g., for RoundScore the player with the lowest point score is selected. <i>Random</i> is a player selected at random.</p>
 
 <p><b>Enable In-Game Commands</b>: True or False, default True. Enable <b>@mb</b> in-game commands. Most commands allow admins to change settings in the plugin without needing to leave the game. See the plugin thread for details or type <b>@mb help</b> in-game.</p>
 
