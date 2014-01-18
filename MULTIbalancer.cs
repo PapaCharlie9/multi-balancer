@@ -75,7 +75,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
 
     public enum MoveType { Balance, Unstack, Unswitch };
 
-    public enum ForbidBecause { None, MovedByBalancer, ToWinning, ToBiggest, DisperseByRank, DisperseByList };
+    public enum ForbidBecause { None, MovedByBalancer, ToWinning, ToBiggest, DisperseByRank, DisperseByList, DisperseByClan };
 
     public enum Phase {Early, Mid, Late};
 
@@ -170,6 +170,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             isDefault = false;
             EnableTicketLossRatio = false;
             TicketLossSampleCount = 180;
+            DisperseEvenlyByClanPlayers = 0;
             // Rush only
             Stage1TicketPercentageToUnstackAdjustment = 0;
             Stage2TicketPercentageToUnstackAdjustment = 0;
@@ -364,6 +365,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         public bool EnableTicketLossRatio = false;
         public int TicketLossSampleCount = 180;
         public int MaxUnstackingTicketDifference = 0;
+        public int DisperseEvenlyByClanPlayers = 0;
 
         // Rush only
         public double Stage1TicketPercentageToUnstackAdjustment = 0;
@@ -679,6 +681,9 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                         break;
                     case ForbidBecause.ToWinning:
                         reason = plugin.BadBecauseWinningTeam;
+                        break;
+                    case ForbidBecause.DisperseByClan: // DCE
+                        reason = plugin.BadBecauseClan;
                         break;
                     case ForbidBecause.None:
                     default:
@@ -1017,7 +1022,6 @@ public String[] FriendsList;
 public List<String> fSettingFriendsList;
 public double SecondsUntilAdaptiveSpeedBecomesFast;
 public bool EnableInGameCommands;
-public int DisperseClanPlayersEvenlyWhenMoreThan;
 public bool ReassignNewPlayers;
 
 public bool OnWhitelist;
@@ -1060,6 +1064,7 @@ public String BadBecauseWinningTeam;
 public String BadBecauseBiggestTeam;
 public String BadBecauseRank;
 public String BadBecauseDispersalList;
+public String BadBecauseClan; // DCE
 public String ChatMovedForBalance;
 public String YellMovedForBalance;
 public String ChatMovedToUnstack;
@@ -1277,7 +1282,6 @@ public MULTIbalancer() {
     fSettingFriendsList = new List<String>();
     SecondsUntilAdaptiveSpeedBecomesFast = 3*60; // 3 minutes default
     EnableInGameCommands = true;
-    DisperseClanPlayersEvenlyWhenMoreThan = 0;
     ReassignNewPlayers = true;
     EnableTicketLossRateLogging = false;
     
@@ -1329,8 +1333,9 @@ public MULTIbalancer() {
     BadBecauseMovedByBalancer = "autobalance moved you to the %toTeam% team";
     BadBecauseWinningTeam = "switching to the winning team is not allowed";
     BadBecauseBiggestTeam = "switching to the biggest team is not allowed";
-    BadBecauseRank = "this server splits Colonel 100's between teams";
+    BadBecauseRank = "this server splits high rank players between teams";
     BadBecauseDispersalList = "you're on the list of players to split between teams";
+    BadBecauseClan = "players with same clan tags are split up"; // DCE
     ChatMovedForBalance = "*** MOVED %name% for balance ...";
     YellMovedForBalance = "Moved %name% for balance ...";
     ChatMovedToUnstack = "*** MOVED %name% to unstack teams ...";
@@ -1873,6 +1878,8 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         lstReturn.Add(new CPluginVariable("5 - Messages|Bad Because: Rank", BadBecauseRank.GetType(), BadBecauseRank));
 
         lstReturn.Add(new CPluginVariable("5 - Messages|Bad Because: Dispersal List", BadBecauseDispersalList.GetType(), BadBecauseDispersalList));
+
+        lstReturn.Add(new CPluginVariable("5 - Messages|Bad Because: Clan", BadBecauseClan.GetType(), BadBecauseClan)); // DCE
         
         lstReturn.Add(new CPluginVariable("5 - Messages|Chat: Detected Good Team Switch", ChatDetectedGoodTeamSwitch.GetType(), ChatDetectedGoodTeamSwitch));
         
@@ -1951,9 +1958,11 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Disperse Evenly By Rank >=", oneSet.DisperseEvenlyByRank.GetType(), oneSet.DisperseEvenlyByRank));
 
+            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Disperse Evenly By Clan Players >=", oneSet.DisperseEvenlyByClanPlayers.GetType(), oneSet.DisperseEvenlyByClanPlayers));
+
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Enable Disperse Evenly List", oneSet.EnableDisperseEvenlyList.GetType(), oneSet.EnableDisperseEvenlyList));
 
-            if (oneSet.EnableDisperseEvenlyList) {
+            if (oneSet.EnableDisperseEvenlyList || oneSet.DisperseEvenlyByClanPlayers > 1) {
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Enable Strict Dispersal", oneSet.EnableStrictDispersal.GetType(), oneSet.EnableStrictDispersal)); 
             }
 
@@ -2399,6 +2408,7 @@ private bool ValidateSettings(String strVariable, String strValue) {
             else if (strVariable.Contains("Max Unstacking Ticket Difference")) ValidateInt(ref perMode.MaxUnstackingTicketDifference, mode + ":" + "Max Unstacking Ticket Difference", def.MaxUnstackingTicketDifference);
             else if (strVariable.Contains("Percent Of Top Of Team Is Strong")) ValidateDoubleRange(ref perMode.PercentOfTopOfTeamIsStrong, mode + ":" + "Percent Of Top Of Team Is Strong", 5, 50, def.PercentOfTopOfTeamIsStrong, false);
             else if (strVariable.Contains("Disperse Evenly By Rank")) ValidateIntRange(ref perMode.DisperseEvenlyByRank, mode + ":" + "Disperse Evenly By Rank", 0, 145, def.DisperseEvenlyByRank, true);
+            else if (strVariable.Contains("Disperse Evenly By Clan Players")) ValidateIntRange(ref perMode.DisperseEvenlyByClanPlayers, mode + ":" + "Disperse Evenly By Clan Players", 4, 40, def.DisperseEvenlyByRank, true);
             else if (strVariable.Contains("Definition Of High Population For Players")) ValidateIntRange(ref perMode.DefinitionOfHighPopulationForPlayers, mode + ":" + "Definition Of High Population For Players", 0, perMode.MaxPlayers, def.DefinitionOfHighPopulationForPlayers, false); 
             else if (strVariable.Contains("Definition Of Low Population For Players")) ValidateIntRange(ref perMode.DefinitionOfLowPopulationForPlayers, mode + ":" + "Definition Of Low Population For Players", 0, perMode.MaxPlayers, def.DefinitionOfLowPopulationForPlayers, false);
             else if (strVariable.Contains("Ticket Loss Sample Count")) ValidateIntRange(ref perMode.TicketLossSampleCount, mode + ":" + "Ticket Loss Sample Count", MIN_SAMPLE_COUNT, 1200, def.TicketLossSampleCount, false);
@@ -2507,6 +2517,7 @@ private void ResetSettings() {
     BadBecauseBiggestTeam = rhs.BadBecauseBiggestTeam;
     BadBecauseRank = rhs.BadBecauseRank;
     BadBecauseDispersalList = rhs.BadBecauseDispersalList;
+    BadBecauseClan = rhs.BadBecauseClan; // DCE
     ChatMovedForBalance = rhs.ChatMovedForBalance;
     YellMovedForBalance = rhs.YellMovedForBalance;
     ChatMovedToUnstack = rhs.ChatMovedToUnstack;
@@ -4485,17 +4496,22 @@ private void BalanceAndUnstack(String name) {
     int maxDispersalMoves = 2;
     bool isDisperseByRank = IsRankDispersal(player);
     bool isDisperseByList = IsInDispersalList(player, false);
-    /* DCE
+    /* DCE */
     bool isDisperseByClanPop = false;
     if (!isDisperseByList) {
         isDisperseByClanPop = IsClanDispersal(player, false);
-        // Add to if test below || isDisperseByClanPop
     }
-    */
+
     if (isDisperseByList) {
         lenient = !perMode.EnableStrictDispersal; // the opposite of strict is lenient
         String dispersalMode = (lenient) ? "LENIENT MODE" : "STRICT MODE";
         DebugBalance("ON MUST MOVE LIST ^b" + player.FullName + "^n T:" + player.Team + ", disperse evenly enabled, " + dispersalMode);
+        mustMove = true;
+        maxDispersalMoves = (lenient) ? 1 : 2;
+    } else if (isDisperseByClanPop) {
+        lenient = !perMode.EnableStrictDispersal; // the opposite of strict is lenient
+        String dispersalMode = (lenient) ? "LENIENT MODE" : "STRICT MODE";
+        DebugBalance("ON MUST MOVE LIST ^b" + player.FullName + "^n T:" + player.Team + ", disperse clan tags evenly enabled, " + dispersalMode);
         mustMove = true;
         maxDispersalMoves = (lenient) ? 1 : 2;
     } else if (isDisperseByRank) {
@@ -4733,7 +4749,7 @@ private void BalanceAndUnstack(String name) {
     }
 
     // Exclude if in squad with same tags
-    if ((!mustMove || lenient) && SameClanTagsInSquad) {
+    if ((!mustMove || lenient) && SameClanTagsInSquad && !isDisperseByClanPop) {
         int cmt =  CountMatchingTags(player, Scope.SameSquad);
         if (cmt >= 2) {
             String et = ExtractTag(player);
@@ -4745,9 +4761,9 @@ private void BalanceAndUnstack(String name) {
     }
 
     // Exclude if in team with same tags
-    if ((!mustMove || lenient) && SameClanTagsInTeam) {
+    if ((!mustMove || lenient) && SameClanTagsInTeam && !isDisperseByClanPop) {
         int cmt =  CountMatchingTags(player, Scope.SameTeam);
-        if (cmt >= 5) {
+        if (cmt >= 5 && !isDisperseByClanPop) {
             String et = ExtractTag(player);
             DebugBalance("Excluding ^b" + name + "^n, " + cmt + " players in team with tag [" + et + "]");
             fExcludedRound = fExcludedRound + 1;
@@ -5725,7 +5741,8 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     bool isSQDM = IsSQDM();
     bool isDispersal = IsInDispersalList(player, false);
     bool isRank = IsRankDispersal(player);
-    bool forbidden = (((isDispersal || isRank) && Forbid(perMode, ForbidSwitchingAfterDispersal)) || (player.MovesByMBRound > 0 && !isSQDM && Forbid(perMode, ForbidSwitchingAfterAutobalance)));
+    bool isClanDispersal = IsClanDispersal(player, false);
+    bool forbidden = (((isDispersal || isRank || isClanDispersal) && Forbid(perMode, ForbidSwitchingAfterDispersal)) || (player.MovesByMBRound > 0 && !isSQDM && Forbid(perMode, ForbidSwitchingAfterAutobalance)));
 
     // Unlimited time?
     if (!forbidden && UnlimitedTeamSwitchingDuringFirstMinutesOfRound > 0 && GetTimeInRoundMinutes() < UnlimitedTeamSwitchingDuringFirstMinutesOfRound) {
@@ -5907,6 +5924,14 @@ private bool CheckTeamSwitch(String name, int toTeam) {
         }
     } else if (isRank) {
         why = ForbidBecause.DisperseByRank;
+        if (!Forbid(perMode, ForbidSwitchingAfterDispersal)) {
+            DebugUnswitch("ALLOWED: move by ^b" + name + "^n because ^bForbid Switch After Dispersal^n is False");
+            SetSpawnMessages(name, String.Empty, String.Empty, false);
+            CheckAbortMove(name);
+            return true;
+        }
+    } else if (isClanDispersal) {
+        why = ForbidBecause.DisperseByClan;
         if (!Forbid(perMode, ForbidSwitchingAfterDispersal)) {
             DebugUnswitch("ALLOWED: move by ^b" + name + "^n because ^bForbid Switch After Dispersal^n is False");
             SetSpawnMessages(name, String.Empty, String.Empty, false);
@@ -9776,10 +9801,9 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] tea
 
     bool isDispersalByRank = IsRankDispersal(player);
     bool isDispersalByList = IsInDispersalList(player, false);
-    /* DCE
+    /* DCE */
     bool isDispersalByClanPop = false;
     if (!isDispersalByList) isDispersalByClanPop = IsClanDispersal(player, false);
-    */
 
     /* By Dispersal List */
 
@@ -9869,12 +9893,12 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] tea
         }
 
         if (allEqual) DebugWrite("^9ToTeamByDispersal: all equal list, skipping", 5);
-        // otherwise fall through and try rank
+        // otherwise fall through and try clan
     }
 
 clan:
-    /* DCE
     if (isDispersalByClanPop) {
+        String tag = ExtractTag(player);
         int[] pops = new int[5]{0,0,0,0,0};
         grandTotal = 0;
         mostMoves = false;
@@ -9894,32 +9918,34 @@ clan:
             grandTotal = grandTotal + n;
         }
 
-        if  (grandTotal > DisperseClanPlayersEvenlyWhenMoreThan) {
-            if (GetMoves(player) > 0 && player.Team >= 1 && player.Team < teamListsById.Count) {
+        if  (grandTotal >= perMode.DisperseEvenlyByClanPlayers) {
+            if (GetMovesThisRound(player) > 0 && player.Team >= 1 && player.Team < teamListsById.Length) {
                 mostMoves = true;
                 foreach (PlayerModel p in teamListsById[player.Team]) {
                     if (p.Name == player.Name) continue; // don't count this player
                     // Make sure this player hasn't been moved more than any other dispersal player
-                    if (GetMoves(p) > GetMoves(player)) {
+                    if (GetMovesThisRound(p) > GetMovesThisRound(player)) {
                         mostMoves = false;
                         break;
                     }
                 } 
             }
             if (mostMoves) {
-                DebugWrite("ToTeamByDispersal Clan: ^b" + player.FullName + "^n moved more than other dispersals (" + GetMoves(player) + " times), skipping!", 5);
+                DebugWrite("ToTeamByDispersal Clan: ^b" + player.FullName + "^n moved more than other dispersals (" + GetMovesThisRound(player) + " times), skipping!", 5);
                 targetTeam = -1;
                 goto rank;
             }
 
             String a = pops[1] + "/" + pops[2];
             if (isSQDM) a = a + "/" + pops[3] + "/" + pops[4];
-            DebugWrite("ToTeamByDispersal: analysis of ^b" + player.FullName + "^n dispersal of clan population > " + DisperseClanPlayersEvenlyWhenMoreThan + ": " + grandTotal  + " = " + a, 5);
+            DebugWrite("ToTeamByDispersal: analysis of ^b" + player.FullName + "^n dispersal of clan population >= " + perMode.DisperseEvenlyByClanPlayers + ": " + grandTotal  + " = " + a, 5);
 
-            // Pick smallest one
+            // Pick largest and smallest
             targetTeam = 0;
+            int bigTeam = 0;
             allEqual = true;
             int minPop = 40;
+            int maxPop = 0;
             for (int i = 1; i < pops.Length; ++i) {
                 if (!isSQDM && i > 2) continue;
                 if (allEqual && pops[i] == minPop) {
@@ -9931,11 +9957,19 @@ clan:
                 } else {
                     if (i != 1) allEqual = false;
                 }
+                if (pops[i] > maxPop) {
+                    maxPop = pops[i];
+                    bigTeam = i;
+                }
             }
 
             if (allEqual) {
                 DebugWrite("^9ToTeamByDispersal: all equal by clan population, skipping", 5);
                 targetTeam = 0; // don't disperse
+                goto rank;
+            } else if (Math.Abs(maxPop - minPop) < 2 || targetTeam == bigTeam) {
+                DebugWrite("^9ToTeamByDispersal: [" + tag + "] clan populations " + maxPop + "/" + minPop + " balanced or targetTeam same as bigTeam", 5);
+                targetTeam = 0;
                 goto rank;
             } else {
                 return targetTeam;
@@ -9943,10 +9977,9 @@ clan:
         }
         // fall through
     }
-    */
 
     /* By Rank? */
-//rank:
+rank:
     if (isDispersalByRank) {
         int[] rankers = new int[5]{0,0,0,0,0};
         grandTotal = 0;
@@ -10791,11 +10824,11 @@ private void CheckDeativateBalancer(String reason) {
 private bool IsClanDispersal(PlayerModel player, bool ignoreWhitelist) {
     if (player == null) return false;
     PerModeSettings perMode = GetPerModeSettings();
-    if (!perMode.EnableDisperseEvenlyList) return false;
+    if (perMode.DisperseEvenlyByClanPlayers == 0) return false;
     if (OnWhitelist && !ignoreWhitelist && CheckWhitelist(player, WL_DISPERSE)) return false;
     bool disperse = false;
     String extractedTag = ExtractTag(player);
-    if (!String.IsNullOrEmpty(extractedTag) && GetClanPopulation(player, 0) > DisperseClanPlayersEvenlyWhenMoreThan) { // 0 means all teams
+    if (!String.IsNullOrEmpty(extractedTag) && GetClanPopulation(player, 0) >= perMode.DisperseEvenlyByClanPlayers) { // 0 means all teams
         disperse = true;
     }
     return disperse;
@@ -10835,12 +10868,6 @@ private bool IsInDispersalList(PlayerModel player, bool ignoreWhitelist) {
     String extractedTag = ExtractTag(player);
     if (String.IsNullOrEmpty(extractedTag)) {
         extractedTag = INVALID_NAME_TAG_GUID;
-    } else {
-        /* DCE - Disperse Clan Evenly
-        if (GetClanPopulation(player, 0) > DisperseClanPlayersEvenlyWhenMoreThan) { // 0 means all teams
-            return true;
-        } // otherwise fall thru
-        */
     }
     String guid = (String.IsNullOrEmpty(player.EAGUID)) ? INVALID_NAME_TAG_GUID : player.EAGUID;
     if (fSettingDisperseEvenlyList.Count > 0) {
@@ -13692,7 +13719,7 @@ static class MULTIbalancerUtils {
 <tr><td>B</td><td>Exclude from balancing moves</td></tr>
 <tr><td>U</td><td>Exclude from unstacking moves</td></tr>
 <tr><td>S</td><td>Exclude from unswitching (allow to switch teams freely)</td></tr>
-<tr><td>D</td><td>Exclude from <b>Disperse Evenly List</b> moves</td></tr>
+<tr><td>D</td><td>Exclude from <b>Disperse Evenly List</b> or <b>Disperse Evenly By Clan Players</b> moves</td></tr>
 <tr><td>R</td><td>Exclude from <b>Disperse Evenly By Rank &gt;=</b> moves</td></tr>
 </table></p>
 
@@ -13815,6 +13842,8 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Bad Because: Rank</b>: Replacement for %reason% if the player has Rank greater than or equal to the per-mode <b>Disperse Evenly By Rank</b> setting.</p>
 
+<p><b>Bad Because: Clan</b>: Replacement for %reason% if the player has the same clan tag as other players for <b>Disperse Evenly By Clan Players</b> setting.</p>
+
 <p><b>Bad Because: Dispersal List</b>: Replacement for %reason% if the player is a member of the <b>Disperse Evenly List</b>.</p>
 
 <p><b>Detected Good Team Switch</b>: Message sent after a player switches from the winning team to the losing team, or from the biggest team to the smallest team. There is no follow-up message, this is the only one sent.</p>
@@ -13832,7 +13861,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Forbid Switch To Biggest Team</b>: Always, Never, or LatePhaseOnly, default Always. Contorls switching to the biggest team.</p>
 
-<p><b>Forbid Switch After Dispersal</b>: Always, Never, or LatePhaseOnly, default Always. Controls team switching after being moved to a different team due to <b>Disperse Evenly By Rank</b> or the <b>Disperse Evenly List</b>. This setting forbids them from moving back to their original team.</p>
+<p><b>Forbid Switch After Dispersal</b>: Always, Never, or LatePhaseOnly, default Always. Controls team switching after being moved to a different team due to <b>Disperse Evenly By Rank</b>, <b>Disperse Evenly By Clan Players</b> or the <b>Disperse Evenly List</b>. This setting forbids them from moving back to their original team.</p>
 
 <p><b>Enable Immediate Unswitch</b>: True or False, default True. If True, if a player tries to make a forbidden team switch, the plugin will immediately move them back without any warning. They will only see the <b>After Unswitching</b> message(s). If False, the plugin will wait until the player spawns, it will then post the <b>Detected Bad Team Switch</b> message(s), it will wait <b>Yell Duration Seconds</b> seconds, then it will admin kill the player and move him back. <b>NOTE: Does not apply to SQDM. SQDM is always treated as this were set to False.</b></p>
 
@@ -13880,9 +13909,11 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Disperse Evenly By Rank &gt;=</b>: Number greater than or equal to 0 and less than or equal to 145, default 0. Any players with this absolute rank (Colonel 100 is 145) or higher will be dispersed evenly across teams. This is useful to insure that Colonel 100 ranked players don't all stack on one team. Set to 0 to disable.</p>
 
+<p><b>Disperse Evenly By Clan Players &gt;=</b>: Number greater than or equal to 4 and less than or equal to 40, default 0. If the number of players with the same clan tag is greater than or equal to this number, the players with this same clan tag will be dispersed evenly across teams. This setting overrides <b>Same Clan Tag ...</b> exclusions. Set to 0 to disable.</p>
+
 <p><b>Enable Disperse Evenly List</b>: True or False, default False. If set to true, the players are matched against the <b>Disperse Evenly List</b> and any that match will be dispersed evenly across teams. This is useful to insure that certain clans or groups of players don't always dominate whatever team they are not on.</p>
 
-<p><b>Enable Strict Dispersal</b>: True or False, default True. Only visible if <b>Enable Disperse Evenly List</b> is set to True. If set to True, players will be moved for dispersal, ignoring all exclusions except whitelisting. This may result in wildly unbalanced teams, but absolutely guarantees that players are dispersed. If set to False, players will be moved for dispersal, but many exclusions will apply, such as <b>Same Clan Tags In Squad</b> and <b>Minutes After Being Moved</b>. The teams will be kept in balance, but players may not be dispersed evenly.</p>
+<p><b>Enable Strict Dispersal</b>: True or False, default True. Only visible if <b>Disperse Evenly By Clan Players</b> or <b>Enable Disperse Evenly List</b> is set to True. If set to True, players will be moved for dispersal, ignoring all exclusions except whitelisting. This may result in wildly unbalanced teams, but absolutely guarantees that players are dispersed. If set to False, players will be moved for dispersal, but many exclusions will apply, such as <b>Same Clan Tags In Squad</b> and <b>Minutes After Being Moved</b>. The teams will be kept in balance, but players may not be dispersed evenly.</p>
 
 <p><b>Definition Of High Population For Players &gt;=</b>: Number greater than or equal to 0 and less than or equal to <b>Max&nbsp;Players</b>. This is where you define the High population level. If the total number of players in the server is greater than or equal to this number, population is High.</p>
 
