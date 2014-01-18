@@ -907,6 +907,7 @@ private double fTotalRoundEndingRounds = 0;
 private bool fRevealSettings = false;
 private bool fShowRiskySettings = false;
 private bool fTestFastBalance = false;
+private DateTime fLastFastMoveTimestamp = DateTime.MinValue;
 
 // BF4
 private int fMaxSquadSize = 4;
@@ -1234,6 +1235,7 @@ public MULTIbalancer() {
     fFactionByTeam = new int[5]{-1,-1,-1,-1,-1};
     fRevealSettings = false;
     fShowRiskySettings = false;
+    fLastFastMoveTimestamp = DateTime.MinValue;
     
     /* Settings */
 
@@ -3803,6 +3805,10 @@ public override void OnPlayerKilled(Kill kKillerVictimDetails) {
                     }
                 } else {
                     fTimeOutOfJoint = 0;
+                    if (EnableAdminKillForFastBalance) {
+                        FastBalance("Kill: ");
+                    }
+                    // Ok to call normal balance after FastBalance, they exclude from each other
                     BalanceAndUnstack(victim);
                 }
             }
@@ -3876,6 +3882,8 @@ public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subs
         GarbageCollectKnownPlayers(); // also resets LastMoveTo
  
         UpdateTeams();
+
+        fLastFastMoveTimestamp = DateTime.MinValue; // reset fast move gap timer
 
         LogStatus(false, DebugLevel);
     
@@ -5211,6 +5219,8 @@ private void FastBalance(String trigger) {
     int diff = 0;
     DateTime now = DateTime.Now;
     String log = String.Empty;
+    int level = 6;
+    int adj = 1;
 
     /* Sanity checks */
 
@@ -5222,6 +5232,11 @@ private void FastBalance(String trigger) {
         return;
     }
 
+    if (fLastFastMoveTimestamp != DateTime.MinValue && now.Subtract(fLastFastMoveTimestamp).TotalSeconds < 25) {
+        DebugFast("Too soon to check for fast balance again, wait another " + (25.0 - now.Subtract(fLastFastMoveTimestamp).TotalSeconds).ToString("F1") + " seconds");
+        return;
+    }
+
     Speed balanceSpeed = GetBalanceSpeed(perMode);
 
     if (balanceSpeed == Speed.Stop) {
@@ -5229,23 +5244,28 @@ private void FastBalance(String trigger) {
         return;
     }
 
+    if (trigger.Contains("Kill")) {
+        level = 8;
+        adj = 0;
+    }
+
     int totalPlayerCount = TotalPlayerCount();
 
-    if (DebugLevel >= 7) DebugFast(trigger + "Checking if fast balance is needed, " + totalPlayerCount + " players");
+    if (DebugLevel >= (level + adj)) DebugFast(trigger + "Checking if fast balance is needed, " + totalPlayerCount + " players");
 
     if (totalPlayerCount >= (MaximumServerSize-1)) {
-        if (DebugLevel >= 6) DebugBalance("Server is full, no balancing or unstacking will be attempted!");
+        if (DebugLevel >= level) DebugBalance("Server is full, no balancing or unstacking will be attempted!");
         return;
     }
 
     if (totalPlayerCount >= (perMode.MaxPlayers-1)) {
-        if (DebugLevel >= 6) DebugBalance("Server is full by per-mode Max Players, no balancing or unstacking will be attempted!");
+        if (DebugLevel >= level) DebugBalance("Server is full by per-mode Max Players, no balancing or unstacking will be attempted!");
         return;
     }
 
     int floorPlayers = 6;
     if (totalPlayerCount < floorPlayers) {
-        if (DebugLevel >= 6) DebugBalance("Not enough players in server, minimum is " + floorPlayers);
+        if (DebugLevel >= level) DebugBalance("Not enough players in server, minimum is " + floorPlayers);
         return;
     }
 
@@ -5260,7 +5280,7 @@ private void FastBalance(String trigger) {
         }
     }
     if (balanceSpeed != Speed.Fast || diff < MaxFastDiff()) {
-        if (DebugLevel >= 6) DebugFast("Fast balance not active, diff is only " + diff + ", requires " + MaxFastDiff());
+        if (diff > 1 && DebugLevel >= level) DebugFast("Fast balance not active, diff is only " + diff + ", requires " + MaxFastDiff());
         return;
     }
 
@@ -5404,6 +5424,7 @@ private void FastBalance(String trigger) {
     DebugWrite("^9" + move, 8);
 
     player.LastMoveFrom = player.Team;
+    fLastFastMoveTimestamp = DateTime.Now;
 
     KillAndMoveAsync(move);
 
@@ -6026,6 +6047,8 @@ private void StartMoveImmediate(MoveInfo move, bool sendMessages) {
         ConsoleDebug("StartMoveImmediate called while fIsEnabled is " + fIsEnabled + " or fPluginState is "  + fPluginState);
         return;
     }
+
+    fLastFastMoveTimestamp = DateTime.Now; // Any move resets the timer for fast moves
 
     // Send before messages?
     if (sendMessages) {
