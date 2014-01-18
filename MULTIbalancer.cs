@@ -906,6 +906,7 @@ private double fTotalRoundEndingSeconds = 0;
 private double fTotalRoundEndingRounds = 0;
 private bool fRevealSettings = false;
 private bool fShowRiskySettings = false;
+private bool fTestFastBalance = false;
 
 // BF4
 private int fMaxSquadSize = 4;
@@ -3179,6 +3180,23 @@ private void CommandToLog(string cmd) {
             ScrambleByCommand(true); // log only
             return;
         }
+        
+        // Undocumented command: test fast balance
+        if (Regex.Match(cmd, @"^test fast", RegexOptions.IgnoreCase).Success) {
+            if (!EnableAdminKillForFastBalance) {
+                ConsoleDump("Enable Admin Kill For Fast Balance must be True to test, skipping");
+                return;
+            }
+            ConsoleDump("Testing fast balance:");
+            if (fTestFastBalance) {
+                fTestFastBalance = false;
+                ConsoleDump("Deactivated fast balance test");
+            } else {
+                fTestFastBalance = true;
+                FastBalance("Test: ");
+            }
+            return;
+        }
 
         // Undocumented command: generate VBCode from HTML
         if (Regex.Match(cmd, @"^vbcode", RegexOptions.IgnoreCase).Success) {
@@ -3532,7 +3550,7 @@ public override void OnPlayerLeft(CPlayerInfo playerInfo) {
         DebugWrite("Player left: ^b" + playerInfo.SoldierName, 4);
 
         if (EnableAdminKillForFastBalance) {
-            FastBalance();
+            FastBalance("Player left: ");
         }
     } catch (Exception e) {
         ConsoleException(e);
@@ -3600,7 +3618,7 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
                 UpdateTeams();
                 DebugWrite("^4New player^0: ^b" + soldierName + "^n, assigned to " + GetTeamName(teamId) + " team by game server", 4);
                 if (EnableAdminKillForFastBalance) {
-                    FastBalance();
+                    FastBalance("New Player: ");
                 }
             } else {
                 Reassign(soldierName, teamId, reassignTo, diff);
@@ -4096,7 +4114,7 @@ public override void OnGlobalChat(String speaker, String message) {
             InGameCommand(message, ChatScope.Global, 0, 0, speaker);
         } else {
             if (EnableAdminKillForFastBalance) {
-                FastBalance();
+                FastBalance("Chat: ");
             }
         }
     } catch (Exception e) {
@@ -4112,7 +4130,7 @@ public override void OnTeamChat(String speaker, String message, int teamId) {
             InGameCommand(message, ChatScope.Team, teamId, 0, speaker);
         } else {
             if (EnableAdminKillForFastBalance) {
-                FastBalance();
+                FastBalance("Team Chat: ");
             }
         }
     } catch (Exception e) {
@@ -4219,7 +4237,7 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
             if (wasUnknown || fGameState == GameState.Playing) DebugWrite("OnPlayerSpawned: ^b^3Game state = " + fGameState, 6);  
             fNeedPlayerListUpdate = (fGameState == GameState.Playing);
             if (EnableAdminKillForFastBalance) {
-                FastBalance();
+                FastBalance("GameState changed to Playing: ");
             }
         } else if (fGameState == GameState.RoundStarting) {
             // First spawn after Level Loaded is the official start of a round
@@ -4402,6 +4420,12 @@ private void BalanceAndUnstack(String name) {
         AnalyzeTeams(out diff, out ascendingSize, out descendingTickets, out biggestTeam, out smallestTeam, out winningTeam, out losingTeam);
     } else {
         CheckDeativateBalancer("Empty");
+        return;
+    }
+
+    if (EnableAdminKillForFastBalance && diff >= MaxFastDiff()) {
+        DebugBalance("Fast balance is enabled and active, skipping normal balancing and unstacking");
+        CheckDeativateBalancer("Fast balance is active");
         return;
     }
 
@@ -5170,7 +5194,7 @@ private void BalanceAndUnstack(String name) {
 }
 
 
-private void FastBalance() {
+private void FastBalance(String trigger) {
 
     /* Useful variables */
 
@@ -5201,22 +5225,27 @@ private void FastBalance() {
     Speed balanceSpeed = GetBalanceSpeed(perMode);
 
     if (balanceSpeed == Speed.Stop) {
-        DebugFast("Speed is Stop, fast balance check skipped");
+        DebugBalance("Speed is Stop, fast balance check skipped. " + trigger + " was trigger"); // DebugBalance on purpose to get repeat filtering
         return;
     }
 
     int totalPlayerCount = TotalPlayerCount();
 
-    /* if (DebugLevel >= 8) */ DebugFast("Checking if fast balance is needed, " + totalPlayerCount + " players");
+    if (DebugLevel >= 7) DebugFast(trigger + "Checking if fast balance is needed, " + totalPlayerCount + " players");
 
     if (totalPlayerCount >= (MaximumServerSize-1)) {
-        /* if (DebugLevel >= 6) */ DebugFast("Server is full, no balancing or unstacking will be attempted!");
+        if (DebugLevel >= 6) DebugBalance("Server is full, no balancing or unstacking will be attempted!");
+        return;
+    }
+
+    if (totalPlayerCount >= (perMode.MaxPlayers-1)) {
+        if (DebugLevel >= 6) DebugBalance("Server is full by per-mode Max Players, no balancing or unstacking will be attempted!");
         return;
     }
 
     int floorPlayers = 6;
     if (totalPlayerCount < floorPlayers) {
-        /* if (DebugLevel >= 6) */ DebugFast("Not enough players in server, minimum is " + floorPlayers);
+        if (DebugLevel >= 6) DebugBalance("Not enough players in server, minimum is " + floorPlayers);
         return;
     }
 
@@ -5231,7 +5260,7 @@ private void FastBalance() {
         }
     }
     if (balanceSpeed != Speed.Fast || diff < MaxFastDiff()) {
-        if (DebugLevel >= 7) DebugFast("Fast balance not active, diff is only " + diff + ", requires " + MaxFastDiff());
+        if (DebugLevel >= 6) DebugFast("Fast balance not active, diff is only " + diff + ", requires " + MaxFastDiff());
         return;
     }
 
@@ -5244,21 +5273,23 @@ private void FastBalance() {
     List<PlayerModel> tmp = GetTeam(biggestTeam);
     if (tmp == null || tmp.Count < 1 || biggestTeam < 1) {
         DebugFast("Cannot determine biggest team: " + biggestTeam);
+        return;
     }
     big.AddRange(tmp);
     tmp = new List<PlayerModel>();
     foreach (PlayerModel p in big) {
+        if (p == null) continue;
         if (OnWhitelist && CheckWhitelist(p, WL_BALANCE)) { // exclude if on whitelist
-            if (DebugLevel >= 7) DebugFast("On whitelist: ^b" + player.FullName + "^n, excluding from fast balance");
+            if (DebugLevel >= 7) DebugFast("On whitelist: ^b" + p.FullName + "^n, excluding from fast balance");
             continue; 
         } else if (p.MovedByMBTimestamp != DateTime.MinValue) { // exclude if moved recently 
             double mins = now.Subtract(p.MovedByMBTimestamp).TotalMinutes;
             if (mins < MinutesAfterBeingMoved) {
-                if (DebugLevel >= 7) DebugFast("Excluding ^b" + player.Name + "^n: last move was " + mins.ToString("F0") + " minutes ago, less than required " + MinutesAfterBeingMoved.ToString("F0") + " minutes");
+                if (DebugLevel >= 7) DebugFast("Excluding ^b" + p.Name + "^n: last move was " + mins.ToString("F0") + " minutes ago, less than required " + MinutesAfterBeingMoved.ToString("F0") + " minutes");
                 continue;
             } else {
                 // reset
-                player.MovedByMBTimestamp = DateTime.MinValue;
+                p.MovedByMBTimestamp = DateTime.MinValue;
             }
         }
 
@@ -5267,6 +5298,7 @@ private void FastBalance() {
     big = tmp;
 
     // Select player
+    if (DebugLevel >= 7) ConsoleDebug("FastBalance selecting player");
     String kstat = String.Empty;
     switch (SelectFastBalanceBy) {
         case ForceMove.Weakest: {
@@ -5347,6 +5379,8 @@ private void FastBalance() {
     }
 
     /* Move for fast balance */
+
+    if (DebugLevel >= 7) ConsoleDebug("Move for fast balance");
 
     int origTeam = player.Team;
     String origName = GetTeamName(player.Team);
@@ -9335,6 +9369,7 @@ private int MaxDiff() {
 }
 
 private int MaxFastDiff() {
+    if (fTestFastBalance) return 1;
     if (fServerInfo == null) return 4;
     PerModeSettings perMode = null;
     String simpleMode = String.Empty;
@@ -10031,7 +10066,7 @@ private int ToSquad(String name, int team) {
 private void StartThreads() {
     fMoveThread = new Thread(new ThreadStart(MoveLoop));
     fMoveThread.IsBackground = true;
-    fMoveThread.Name = "unswitcher";
+    fMoveThread.Name = "mover";
     fMoveThread.Start();
 
     fListPlayersThread = new Thread(new ThreadStart(ListPlayersLoop));
@@ -10596,7 +10631,7 @@ private String GetPlayerStatsString(String name) {
 
 private double GetPlayerStat(PlayerModel player, DefineStrong which) {
     double stat = 0;
-    switch (ScrambleBy) {
+    switch (which) {
         case DefineStrong.RoundScore:
             stat = player.ScoreRound;
             break;
@@ -13115,7 +13150,7 @@ private void LogStatus(bool isFinal, int level) {
     String weakOnly = (perMode.OnlyMoveWeakPlayers) ? ", Only Move Weak Players" : String.Empty;
     String fastBalance = (EnableAdminKillForFastBalance) ? ", Admin Kill Enabled": String.Empty;
 
-    if (level >= 6) DebugWrite("^bStatus^n: Plugin state = " + fPluginState + ", game state = " + fGameState + weakOnly + fastBalance + metroAdj + unstackDisabled + logOnly, 0);
+    if (level >= 6) DebugWrite("^bStatus^n: Plugin state = " + fPluginState + ", game state = " + fGameState + fastBalance + weakOnly + metroAdj + unstackDisabled + logOnly, 0);
     int useLevel = (isFinal) ? 2 : 4;
     if (IsRush()) {
         if (level >= useLevel) DebugWrite("^bStatus^n: Map = " + this.FriendlyMap + ", mode = " + this.FriendlyMode + ", stage = " + fRushStage + ", time in round = " + rt + ", tickets = " + tm, 0);
