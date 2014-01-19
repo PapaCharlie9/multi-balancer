@@ -1251,7 +1251,7 @@ public MULTIbalancer() {
     Preset = PresetItems.Standard;
     EnableUnstacking = false;
     EnableAdminKillForFastBalance = false;
-    SelectFastBalanceBy = ForceMove.Weakest;
+    SelectFastBalanceBy = ForceMove.Newest;
     EnableSettingsWizard = false;
     WhichMode = "Conquest Large";
     MetroIsInMapRotation = false;
@@ -13736,7 +13736,7 @@ static class MULTIbalancerUtils {
 
 <p><b>Enable Admin Kill For Fast Balance</b>: True or False, default False. Enables forced moves using admin kills when teams are grossly unbalanced. All exclusions are ignored except for the <b>Whitelist</b>. If the setting is True and teams are more than 3 or 4 players apart (depending on mode and per-mode Low Population setting) and the speed is not Stop, the speed will be changed to Fast. Every time a player leaves or any players types anything into chat and the speed is Fast, live players will be selected and admin killed and then moved. The selection of who is forced to move is controlled by <b>Select Fast Balance By</b>.</p>
 
-<p><b>Select Fast Balance By</b>: Newest, Weakest or Random; default Weakest. Only visible if <b>Enable Admin Kill For Fast Balance</b> is True. Determines which live player is forced moved for Fast balance. <i>Newest</i> is the player that has been in the server the least amount of time. <i>Weakest</i> is the player with the lowest value as defined by per-mode <b>Determine Strong Players By</b>, e.g., for RoundScore the player with the lowest point score is selected. <i>Random</i> is a player selected at random.</p>
+<p><b>Select Fast Balance By</b>: Newest, Weakest or Random; default Newest. Only visible if <b>Enable Admin Kill For Fast Balance</b> is True. Determines which live player is forced moved for Fast balance. <i>Newest</i> is the player that has been in the server the least amount of time. <i>Weakest</i> is the player with the lowest value as defined by per-mode <b>Determine Strong Players By</b>, e.g., for RoundScore the player with the lowest point score is selected. <i>Random</i> is a player selected at random.</p>
 
 <p><b>Enable In-Game Commands</b>: True or False, default True. Enable <b>@mb</b> in-game commands. Most commands allow admins to change settings in the plugin without needing to leave the game. See the plugin thread for details or type <b>@mb help</b> in-game.</p>
 
