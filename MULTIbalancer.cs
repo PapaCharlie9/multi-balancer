@@ -913,6 +913,7 @@ private bool fRevealSettings = false;
 private bool fShowRiskySettings = false;
 private bool fTestFastBalance = false;
 private DateTime fLastFastMoveTimestamp = DateTime.MinValue;
+private bool fTestClanDispersal = false;
 
 // BF4
 private int fMaxSquadSize = 4;
@@ -1625,7 +1626,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.9.2";
+    return "1.0.9.3";
 }
 
 public String GetPluginAuthor() {
@@ -3207,6 +3208,24 @@ private void CommandToLog(string cmd) {
             } else {
                 fTestFastBalance = true;
                 FastBalance("Test: ");
+            }
+            return;
+        }
+        
+        // Undocumented command: test clan dispersal
+        if (Regex.Match(cmd, @"^test clan", RegexOptions.IgnoreCase).Success) {
+            PerModeSettings perMode = GetPerModeSettings();
+            if (perMode.DisperseEvenlyByClanPlayers == 0) {
+                ConsoleDump("per-mode Disperse Evenly By Clan Players must be more than 0 to test, skipping");
+                return;
+            }
+            ConsoleDump("Testing clan dispersal:");
+            if (fTestClanDispersal) {
+                fTestClanDispersal = false;
+                ConsoleDump("Deactivated clan dispersal testing");
+            } else {
+                fTestClanDispersal = true;
+                ConsoleDump("Activated clan dispersal testing");
             }
             return;
         }
@@ -5279,7 +5298,7 @@ private void FastBalance(String trigger) {
         return;
     }
 
-    int floorPlayers = 6;
+    int floorPlayers = 5; // minimum number for which a team difference of 3 minimum is possible
     if (totalPlayerCount < floorPlayers) {
         if (DebugLevel >= level) DebugBalance("Not enough players in server, minimum is " + floorPlayers);
         return;
@@ -6308,6 +6327,7 @@ private void Chat(String who, String what) {
 
 private void Chat(String who, String what, bool quiet) {
     String doing = null;
+    if (String.IsNullOrEmpty(what)) return;
     if (quiet) {
         if (!EnableLoggingOnlyMode) {
             ServerCommand("admin.say", what, "player", who); // chat player only
@@ -6328,6 +6348,7 @@ private void Chat(String who, String what, bool quiet) {
 
 private void Yell(String who, String what) {
     String doing = null;
+    if (String.IsNullOrEmpty(what)) return;
     if (!EnableLoggingOnlyMode) {
         ServerCommand("admin.yell", what, YellDurationSeconds.ToString("F0"), "player", who); // yell to player
     }
@@ -6337,17 +6358,20 @@ private void Yell(String who, String what) {
 
 private void ProconChat(String what) {
     if (fAborted) return;
+    if (String.IsNullOrEmpty(what)) return;
     if (EnableLoggingOnlyMode) what = "(SIMULATING) " + what;
     if (LogChat) ExecuteCommand("procon.protected.chat.write", GetPluginName() + " > All: " + what);
 }
 
 private void ProconChatPlayer(String who, String what) {
     if (fAborted) return;
+    if (String.IsNullOrEmpty(what)) return;
     if (EnableLoggingOnlyMode) what = "(SIMULATING) " + what;
     if (LogChat) ExecuteCommand("procon.protected.chat.write", GetPluginName() + " > " + who + ": " + what);
 }
 
 private void SendToAllSubscribers(String what) {
+    if (String.IsNullOrEmpty(what)) return;
     try {
         List<String> subscribers = new List<String>();
         lock (fAllPlayers) {
@@ -9851,14 +9875,14 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] tea
         }
 
         if (mostMoves && GetMovesThisRound(player) > 0) {
-            DebugWrite("ToTeamByDispersal List: ^b" + player.Name + "^n moved more than other dispersals (" + GetMovesThisRound(player) + " times), skipping!", 5);
+            DebugWrite("^9ToTeamByDispersal List: ^b" + player.Name + "^n moved more than other dispersals (" + GetMovesThisRound(player) + " times), skipping!", 5);
             targetTeam = -1;
             goto clan;
         }
 
         String an = usualSuspects[1] + "/" + usualSuspects[2];
         if (isSQDM) an = an + "/" + usualSuspects[3] + "/" + usualSuspects[4];
-        DebugWrite("ToTeamByDispersal: analysis of ^b" + player.FullName + "^n dispersal by list: " + an, 5);
+        DebugWrite("^9ToTeamByDispersal: analysis of ^b" + player.FullName + "^n dispersal by list: " + an, 5);
 
         // Pick smallest one
         targetTeam = 0;
@@ -9931,14 +9955,14 @@ clan:
                 } 
             }
             if (mostMoves) {
-                DebugWrite("ToTeamByDispersal Clan: ^b" + player.FullName + "^n moved more than other dispersals (" + GetMovesThisRound(player) + " times), skipping!", 5);
+                DebugWrite("^9ToTeamByDispersal Clan: ^b" + player.FullName + "^n moved more than other dispersals (" + GetMovesThisRound(player) + " times), skipping!", 5);
                 targetTeam = -1;
                 goto rank;
             }
 
             String a = pops[1] + "/" + pops[2];
             if (isSQDM) a = a + "/" + pops[3] + "/" + pops[4];
-            DebugWrite("ToTeamByDispersal: analysis of ^b" + player.FullName + "^n dispersal of clan population >= " + perMode.DisperseEvenlyByClanPlayers + ": " + grandTotal  + " = " + a, 5);
+            DebugWrite("^9ToTeamByDispersal: analysis of ^b" + player.FullName + "^n dispersal of clan population >= " + perMode.DisperseEvenlyByClanPlayers + ": " + grandTotal  + " = " + a, 5);
 
             // Pick largest and smallest
             targetTeam = 0;
@@ -10001,13 +10025,13 @@ rank:
         }
 
         if (mostMoves && GetMovesThisRound(player) > 0) {
-            DebugWrite("ToTeamByDispersal Rank: ^b" + player.Name + "^n moved more than other dispersals (" + GetMovesThisRound(player) + " times), skipping!", 5);
+            DebugWrite("^9ToTeamByDispersal Rank: ^b" + player.Name + "^n moved more than other dispersals (" + GetMovesThisRound(player) + " times), skipping!", 5);
             return -1;
         }
 
         String a = rankers[1] + "/" + rankers[2];
         if (isSQDM) a = a + "/" + rankers[3] + "/" + rankers[4];
-        DebugWrite("ToTeamByDispersal: analysis of ^b" + name + "^n dispersal of rank >= " + perMode.DisperseEvenlyByRank + ": " + a, 5);
+        DebugWrite("^9ToTeamByDispersal: analysis of ^b" + name + "^n dispersal of rank >= " + perMode.DisperseEvenlyByRank + ": " + a, 5);
 
         // Pick smallest one
         targetTeam = 0;
@@ -11017,6 +11041,13 @@ private int CountMatchingTags(PlayerModel player, Scope scope) {
         if (scope == Scope.SameSquad && mate.Squad != squad) continue;
         ++total;
         if (mate.TagVerified) ++verified;
+        if (fTestClanDispersal) {
+            // Treat tags of same length as equal
+            if (ExtractTag(mate).Length == tag.Length) {
+                ++same;
+                continue;
+            }
+        }
         if (ExtractTag(mate) == tag) ++same;
     }
 
