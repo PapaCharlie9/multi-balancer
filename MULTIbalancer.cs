@@ -5334,7 +5334,10 @@ private void FastBalance(String trigger) {
     tmp = new List<PlayerModel>();
     foreach (PlayerModel p in big) {
         if (p == null) continue;
-        if (OnWhitelist && CheckWhitelist(p, WL_BALANCE)) { // exclude if on whitelist
+        if (p.Role >= 0 && p.Role < ROLE_NAMES.Length && p.Role != ROLE_PLAYER) {
+            if (DebugLevel >= 7) DebugFast("Role is not player: ^b" + p.FullName + "^n, " + ROLE_NAMES[p.Role]);
+            continue; 
+        } else if (OnWhitelist && CheckWhitelist(p, WL_BALANCE)) { // exclude if on whitelist
             if (DebugLevel >= 7) DebugFast("On whitelist: ^b" + p.FullName + "^n, excluding from fast balance");
             continue; 
         } else if (p.MovedByMBTimestamp != DateTime.MinValue) { // exclude if moved recently 
