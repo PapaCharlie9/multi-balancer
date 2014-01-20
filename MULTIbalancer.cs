@@ -4146,12 +4146,13 @@ public override void OnServerInfo(CServerInfo serverInfo) {
 
 public override void OnGlobalChat(String speaker, String message) {
     if (!fIsEnabled) return;
+    if (DebugLevel >= 8) ConsoleDebug("OnGlobalChat(" + speaker + ", '" + message + ")");
 
     try {
         if (Regex.Match(message, @"^\s*[!@#]mb", RegexOptions.IgnoreCase).Success) {
             InGameCommand(message, ChatScope.Global, 0, 0, speaker);
         } else {
-            if (EnableAdminKillForFastBalance) {
+            if (EnableAdminKillForFastBalance && speaker != "Server") {
                 FastBalance("Chat: ");
             }
         }
@@ -4162,12 +4163,13 @@ public override void OnGlobalChat(String speaker, String message) {
 
 public override void OnTeamChat(String speaker, String message, int teamId) {
     if (!fIsEnabled) return;
+    if (DebugLevel >= 8) ConsoleDebug("OnTeamChat(" + speaker + ", '" + message + "', " +teamId + ")");
 
     try {
         if (Regex.Match(message, @"^\s*[!@#]mb", RegexOptions.IgnoreCase).Success) {
             InGameCommand(message, ChatScope.Team, teamId, 0, speaker);
         } else {
-            if (EnableAdminKillForFastBalance) {
+            if (EnableAdminKillForFastBalance && speaker != "Server") {
                 FastBalance("Team Chat: ");
             }
         }
@@ -12909,10 +12911,7 @@ private void CheckRoundEndingDuration() {
 
 
 private void UpdateFactions() {
-    ServerCommand("vars.team1FactionOverride");
-    ServerCommand("vars.team2FactionOverride");
-    ServerCommand("vars.team3FactionOverride");
-    ServerCommand("vars.team4FactionOverride");
+    ServerCommand("vars.teamFactionOverride");
 }
 
 private int PriorityQueueCount() {
@@ -13734,9 +13733,9 @@ static class MULTIbalancerUtils {
 
 <p><b>Reassign New Players</b>: True or False, default True. This is a trade-off setting, each choice has something good and something bad associated with it. If set to True, new players joining the server are reassigned to the team that needs help before the player's first spawn -- they will not be aware that they were moved, but this may cancel a Battlelog Join on Friend that the player wanted. If set to False, Join on Friend will be respected, but your server may have unbalanced teams for a longer period of time.</p>
 
-<p><b>Enable Admin Kill For Fast Balance</b>: True or False, default False. Enables forced moves using admin kills when teams are grossly unbalanced. All exclusions are ignored except for the <b>Whitelist</b>. If the setting is True and teams are more than 3 or 4 players apart (depending on mode and per-mode Low Population setting) and the speed is not Stop, the speed will be changed to Fast. Every time a player leaves or any players types anything into chat and the speed is Fast, live players will be selected and admin killed and then moved. The selection of who is forced to move is controlled by <b>Select Fast Balance By</b>.</p>
+<p><b>Enable Admin Kill For Fast Balance</b>: True or False, default False. Enables forced moves using admin kills when teams are grossly unbalanced. All exclusions are ignored except for <b>On Whitelist</b> and <b>Minutes After Being Moved</b>. If the setting is True and teams are 4 or more players apart (3 if population is Low) and the speed is not Stop, live players will be selected and admin killed and then moved. The selection of who is forced to move is controlled by <b>Select Fast Balance By</b>.</p>
 
-<p><b>Select Fast Balance By</b>: Newest, Weakest or Random; default Newest. Only visible if <b>Enable Admin Kill For Fast Balance</b> is True. Determines which live player is forced moved for Fast balance. <i>Newest</i> is the player that has been in the server the least amount of time. <i>Weakest</i> is the player with the lowest value as defined by per-mode <b>Determine Strong Players By</b>, e.g., for RoundScore the player with the lowest point score is selected. <i>Random</i> is a player selected at random.</p>
+<p><b>Select Fast Balance By</b>: Newest, Weakest or Random; default Newest. Only visible if <b>Enable Admin Kill For Fast Balance</b> is True. Determines which live player is force moved for Fast balance. <i>Newest</i> is the player that has been in the server the least amount of time. <i>Weakest</i> is the player with the lowest value as defined by per-mode <b>Determine Strong Players By</b>, e.g., for RoundScore the player with the lowest point score is selected. <i>Random</i> is a player selected at random.</p>
 
 <p><b>Enable In-Game Commands</b>: True or False, default True. Enable <b>@mb</b> in-game commands. Most commands allow admins to change settings in the plugin without needing to leave the game. See the plugin thread for details or type <b>@mb help</b> in-game.</p>
 
