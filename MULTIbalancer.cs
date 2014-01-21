@@ -5453,6 +5453,10 @@ private void FastBalance(String trigger) {
         
     MoveInfo move = new MoveInfo(player.Name, player.Tag, origTeam, origName, smallestTeam, GetTeamName(smallestTeam), 0);
     move.For = MoveType.Balance;
+    // private message to player before getting killed
+    move.Format(this, ChatMovedForBalance, false, true);
+    move.Format(this, YellMovedForBalance, true, true);
+    // regular message for after move
     move.Format(this, ChatMovedForBalance, false, false);
     move.Format(this, YellMovedForBalance, true, false);
     move.Fast = true;
@@ -6187,7 +6191,7 @@ public void MoveLoop() {
 
             // Sending before messages
             Yell(move.Name, move.YellBefore);
-            Chat(move.Name, move.ChatBefore, (move.For == MoveType.Unswitch || QuietMode)); // player only if unswitching or Quiet
+            Chat(move.Name, move.ChatBefore, (move.For == MoveType.Balance || move.For == MoveType.Unswitch || QuietMode)); // player only if balancing or unswitching or Quiet
 
             // Stash for check later
             lock (fMoveStash) {
