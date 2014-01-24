@@ -9706,16 +9706,16 @@ private int ToTeam(String name, int fromTeam, bool isReassign, out int diff, ref
         }
 
         if (disTeam != 0) {
-            DebugWrite("^9ToTeam for ^b" + name + "^n: dispersal returned team " + disTeam, 6);
+            DebugWrite("^9(DEBUG) ToTeam for ^b" + name + "^n: dispersal returned team " + disTeam, 6);
             return disTeam;
         }
         // fall thru if dispersal doesn't find a suitable team
         mustMove = false;
     }
 
-    DebugWrite("^9ToTeam for ^b" + name + "^n: winning/losing = " + winningTeam + "/" + losingTeam, 8);
+    DebugWrite("^9(DEBUG) ToTeam for ^b" + name + "^n: winning/losing = " + winningTeam + "/" + losingTeam, 8);
     if (DebugLevel >= 8 && descendingTickets != null) {
-        String ds = "^9ToTeam for ^b" + name + "^n: descendingTickets = [";
+        String ds = "^9(DEBUG) ToTeam for ^b" + name + "^n: descendingTickets = [";
         for (int k = 0; k < descendingTickets.Length; ++k) {
             ds = ds + descendingTickets[k] + " ";
         }
@@ -9731,7 +9731,7 @@ private int ToTeam(String name, int fromTeam, bool isReassign, out int diff, ref
 
     // if teams are same size, send to losing team
     if (biggestTeam != smallestTeam && byId[biggestTeam].Count == byId[smallestTeam].Count && losingTeam != fromTeam) {
-        DebugWrite("^9ToTeam for ^b" + name + "^n: teams same size, so send to losing team: " + losingTeam, 8);
+        DebugWrite("^9(DEBUG) ToTeam for ^b" + name + "^n: teams same size, so send to losing team: " + losingTeam, 8);
         targetTeam = losingTeam;
     }
     
@@ -9789,7 +9789,7 @@ private int ToTeam(String name, int fromTeam, bool isReassign, out int diff, ref
         if (j != 4) tm = tm + "/";
     }
     tm = tm + ")";
-    DebugWrite("ToTeam for ^b" + name + "^n: analyze returned " + tm + ", " + fromTeam + " ==> " + targetTeam, 5);
+    DebugWrite("^9(DEBUG) ToTeam for ^b" + name + "^n: analyze returned " + tm + ", " + fromTeam + " ==> " + targetTeam, 5);
 
     return targetTeam;
 }
