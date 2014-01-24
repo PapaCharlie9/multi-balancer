@@ -1626,7 +1626,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.9.3";
+    return "1.1.0.0";
 }
 
 public String GetPluginAuthor() {
@@ -3478,10 +3478,7 @@ public void OnPluginLoaded(String strHostName, String strPort, String strPRoConV
         "OnRunNextLevel",
         "OnResponseError",
         "OnLogin",
-        "OnTeam1FactionOverride",
-        "OnTeam2FactionOverride",
-        "OnTeam3FactionOverride",
-        "OnTeam4FactionOverride"
+        "OnTeamFactionOverride"
     );
 }
 
@@ -3511,7 +3508,8 @@ public void OnPluginEnable() {
 
     ServerCommand("reservedSlotsList.list");
     ServerCommand("serverInfo");
-    ServerCommand("admin.listPlayers", "all");
+    ServerCommand("admin.listPlayers", "all"); 
+    if (fGameVersion == GameVersion.BF4) UpdateFactions(); 
 
     LaunchCheckForPluginUpdate();
 
@@ -3821,6 +3819,7 @@ public override void OnPlayerKilled(Kill kKillerVictimDetails) {
             bool wasUnknown = (fGameState == GameState.Unknown);
             fGameState = (TotalPlayerCount() < 4) ? GameState.Warmup : GameState.Playing;
             if (wasUnknown || fGameState == GameState.Playing) DebugWrite("OnPlayerKilled: ^b^3Game state = " + fGameState, 6);  
+            if (wasUnknown && fGameVersion == GameVersion.BF4) UpdateFactions();
             fNeedPlayerListUpdate = (fGameState == GameState.Playing);
         }
     
@@ -4169,7 +4168,7 @@ public override void OnTeamChat(String speaker, String message, int teamId) {
         if (Regex.Match(message, @"^\s*[!@#]mb", RegexOptions.IgnoreCase).Success) {
             InGameCommand(message, ChatScope.Team, teamId, 0, speaker);
         } else {
-            if (EnableAdminKillForFastBalance && speaker != "Server") {
+            if (EnableAdminKillForFastBalance && speaker != "Server" && !message.StartsWith("ID_CHAT")) {
                 FastBalance("Team Chat: ");
             }
         }
@@ -4274,7 +4273,8 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
         if (fGameState == GameState.Unknown || fGameState == GameState.Warmup) {
             bool wasUnknown = (fGameState == GameState.Unknown);
             fGameState = (totalPlayers < 4) ? GameState.Warmup : GameState.Playing;
-            if (wasUnknown || fGameState == GameState.Playing) DebugWrite("OnPlayerSpawned: ^b^3Game state = " + fGameState, 6);  
+            if (wasUnknown || fGameState == GameState.Playing) DebugWrite("OnPlayerSpawned: ^b^3Game state = " + fGameState, 6); 
+            if (wasUnknown && fGameVersion == GameVersion.BF4) UpdateFactions(); 
             fNeedPlayerListUpdate = (fGameState == GameState.Playing);
             if (EnableAdminKillForFastBalance) {
                 FastBalance("GameState changed to Playing: ");
@@ -4290,7 +4290,8 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
             fIsFullRound = true;
             ServerCommand("serverInfo");
             ScheduleListPlayers(2);
-            fNeedPlayerListUpdate = (fGameState == GameState.Playing);
+            fNeedPlayerListUpdate = (fGameState == GameState.Playing); 
+            if (fGameVersion == GameVersion.BF4) UpdateFactions(); 
         }
     
         if (fPluginState == PluginState.Active) {
@@ -4337,33 +4338,16 @@ public override void OnRunNextLevel() {
     DebugWrite("^9^bGot OnRunNextLevel^n", 7);
 }
 
-public override void OnTeam1FactionOverride(int faction) {
-    //if (!fIsEnabled) return;
-    
-    DebugWrite("^9^bGot OnTeam1FactionOverride^n(" + faction + ")", 1);
-    fFactionByTeam[1] = faction;
-}
-
-public override void OnTeam2FactionOverride(int faction) {
+public override void OnTeamFactionOverride(int teamId, int faction) {
     if (!fIsEnabled) return;
     
-    DebugWrite("^9^bGot OnTeam2FactionOverride^n(" + faction + ")", 7);
-    fFactionByTeam[2] = faction;
+    DebugWrite("^9^bGot OnTeamFactionOverride^n(" + teamId + ", " + faction + ")", 7);
+    if (teamId >= 0 && teamId < fFactionByTeam.Length && faction >= 0) {
+        fFactionByTeam[teamId] = faction;
+    }
 }
 
-public override void OnTeam3FactionOverride(int faction) {
-    if (!fIsEnabled) return;
-    
-    DebugWrite("^9^bGot OnTeam3FactionOverride^n(" + faction + ")", 7);
-    fFactionByTeam[3] = faction;
-}
 
-public override void OnTeam4FactionOverride(int faction) {
-    if (!fIsEnabled) return;
-    
-    DebugWrite("^9^bGot OnTeam4FactionOverride^n(" + faction + ")", 7);
-    fFactionByTeam[4] = faction;
-}
 
 public override void OnResponseError(List<string> lstRequestWords, string strError) {
     if (!fIsEnabled) return;
@@ -5269,21 +5253,21 @@ private void FastBalance(String trigger) {
         return;
     }
 
+    if (trigger.Contains("Kill")) {
+        level = 8;
+        adj = 0;
+    }
+
     if (fLastFastMoveTimestamp != DateTime.MinValue && now.Subtract(fLastFastMoveTimestamp).TotalSeconds < 25) {
-        DebugFast("Too soon to check for fast balance again, wait another " + (25.0 - now.Subtract(fLastFastMoveTimestamp).TotalSeconds).ToString("F1") + " seconds");
+        if (DebugLevel >= (level + adj)) DebugFast("Too soon to check for fast balance again, wait another " + (25.0 - now.Subtract(fLastFastMoveTimestamp).TotalSeconds).ToString("F1") + " seconds");
         return;
     }
 
     Speed balanceSpeed = GetBalanceSpeed(perMode);
 
     if (balanceSpeed == Speed.Stop) {
-        DebugBalance("Speed is Stop, fast balance check skipped. " + trigger + " was trigger"); // DebugBalance on purpose to get repeat filtering
+        if (DebugLevel >= (level + adj)) DebugFast("Speed is Stop, fast balance check skipped. " + trigger + " was trigger"); // DebugBalance on purpose to get repeat filtering
         return;
-    }
-
-    if (trigger.Contains("Kill")) {
-        level = 8;
-        adj = 0;
     }
 
     int totalPlayerCount = TotalPlayerCount();
@@ -5291,18 +5275,18 @@ private void FastBalance(String trigger) {
     if (DebugLevel >= (level + adj)) DebugFast(trigger + "Checking if fast balance is needed, " + totalPlayerCount + " players");
 
     if (totalPlayerCount >= (MaximumServerSize-1)) {
-        if (DebugLevel >= level) DebugBalance("Server is full, no balancing or unstacking will be attempted!");
+        if (DebugLevel >= (level + adj)) DebugFast("Server is full, no balancing or unstacking will be attempted!");
         return;
     }
 
     if (totalPlayerCount >= (perMode.MaxPlayers-1)) {
-        if (DebugLevel >= level) DebugBalance("Server is full by per-mode Max Players, no balancing or unstacking will be attempted!");
+        if (DebugLevel >= (level + adj)) DebugFast("Server is full by per-mode Max Players, no balancing or unstacking will be attempted!");
         return;
     }
 
     int floorPlayers = 5; // minimum number for which a team difference of 3 minimum is possible
     if (totalPlayerCount < floorPlayers) {
-        if (DebugLevel >= level) DebugBalance("Not enough players in server, minimum is " + floorPlayers);
+        if (DebugLevel >= (level + adj)) DebugFast("Not enough players in server, minimum is " + floorPlayers);
         return;
     }
 
@@ -9056,7 +9040,7 @@ private String FormatMessage(String msg, MessageType type, int level) {
     else if (type.Equals(MessageType.Debug))
         prefix += "^9^bDEBUG^n: ";
 
-    return prefix + msg;
+    return prefix + msg.Replace('{','(').Replace('}',')');
 }
 
 
@@ -9884,14 +9868,14 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] tea
         }
 
         if (mostMoves && GetMovesThisRound(player) > 0) {
-            DebugWrite("^9ToTeamByDispersal List: ^b" + player.Name + "^n moved more than other dispersals (" + GetMovesThisRound(player) + " times), skipping!", 5);
+            ConsoleDebug("^9ToTeamByDispersal List: ^b" + player.Name + "^n moved more than other dispersals (" + GetMovesThisRound(player) + " times), skipping!");
             targetTeam = -1;
             goto clan;
         }
 
         String an = usualSuspects[1] + "/" + usualSuspects[2];
         if (isSQDM) an = an + "/" + usualSuspects[3] + "/" + usualSuspects[4];
-        DebugWrite("^9ToTeamByDispersal: analysis of ^b" + player.FullName + "^n dispersal by list: " + an, 5);
+        DebugWrite("^9(DEBUG) ToTeamByDispersal: analysis of ^b" + player.FullName + "^n dispersal by list: " + an, 5);
 
         // Pick smallest one
         targetTeam = 0;
@@ -9925,7 +9909,7 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] tea
             goto clan;
         }
 
-        if (allEqual) DebugWrite("^9ToTeamByDispersal: all equal list, skipping", 5);
+        if (allEqual) DebugWrite("^9(DEBUG) ToTeamByDispersal: all equal list, skipping", 5);
         // otherwise fall through and try clan
     }
 
@@ -9964,14 +9948,14 @@ clan:
                 } 
             }
             if (mostMoves) {
-                DebugWrite("^9ToTeamByDispersal Clan: ^b" + player.FullName + "^n moved more than other dispersals (" + GetMovesThisRound(player) + " times), skipping!", 5);
+                ConsoleDebug("^9ToTeamByDispersal Clan: ^b" + player.FullName + "^n moved more than other dispersals (" + GetMovesThisRound(player) + " times), skipping!");
                 targetTeam = -1;
                 goto rank;
             }
 
             String a = pops[1] + "/" + pops[2];
             if (isSQDM) a = a + "/" + pops[3] + "/" + pops[4];
-            DebugWrite("^9ToTeamByDispersal: analysis of ^b" + player.FullName + "^n dispersal of clan population >= " + perMode.DisperseEvenlyByClanPlayers + ": " + grandTotal  + " = " + a, 5);
+            DebugWrite("^9(DEBUG) ToTeamByDispersal: analysis of ^b" + player.FullName + "^n dispersal of clan population >= " + perMode.DisperseEvenlyByClanPlayers + ": " + grandTotal  + " = " + a, 5);
 
             // Pick largest and smallest
             targetTeam = 0;
@@ -9997,11 +9981,11 @@ clan:
             }
 
             if (allEqual) {
-                DebugWrite("^9ToTeamByDispersal: all equal by clan population, skipping", 5);
+                DebugWrite("^9(DEBUG) ToTeamByDispersal: all equal by clan population, skipping", 5);
                 targetTeam = 0; // don't disperse
                 goto rank;
             } else if (Math.Abs(maxPop - minPop) < 2 || targetTeam == bigTeam) {
-                DebugWrite("^9ToTeamByDispersal: [" + tag + "] clan populations " + maxPop + "/" + minPop + " balanced or targetTeam same as bigTeam", 5);
+                DebugWrite("^9(DEBUG) ToTeamByDispersal: [" + tag + "] clan populations " + maxPop + "/" + minPop + " balanced or targetTeam same as bigTeam", 5);
                 targetTeam = 0;
                 goto rank;
             } else {
@@ -10034,13 +10018,13 @@ rank:
         }
 
         if (mostMoves && GetMovesThisRound(player) > 0) {
-            DebugWrite("^9ToTeamByDispersal Rank: ^b" + player.Name + "^n moved more than other dispersals (" + GetMovesThisRound(player) + " times), skipping!", 5);
+            ConsoleDebug("^9ToTeamByDispersal Rank: ^b" + player.Name + "^n moved more than other dispersals (" + GetMovesThisRound(player) + " times), skipping!");
             return -1;
         }
 
         String a = rankers[1] + "/" + rankers[2];
         if (isSQDM) a = a + "/" + rankers[3] + "/" + rankers[4];
-        DebugWrite("^9ToTeamByDispersal: analysis of ^b" + name + "^n dispersal of rank >= " + perMode.DisperseEvenlyByRank + ": " + a, 5);
+        DebugWrite("^9(DEBUG) ToTeamByDispersal: analysis of ^b" + name + "^n dispersal of rank >= " + perMode.DisperseEvenlyByRank + ": " + a, 5);
 
         // Pick smallest one
         targetTeam = 0;
@@ -10060,7 +10044,7 @@ rank:
         }
 
         if (allEqual || grandTotal < 2) {
-            DebugWrite("^9ToTeamByDispersal: all equal by rank, skipping", 5);
+            DebugWrite("^9(DEBUG) ToTeamByDispersal: all equal by rank, skipping", 5);
             return 0; // don't disperse
         }
         // fall through
