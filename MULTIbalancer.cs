@@ -5343,6 +5343,10 @@ private void FastBalance(String trigger) {
 
     // Select player
     if (DebugLevel >= 7) ConsoleDebug("FastBalance selecting player");
+    if (big.Count < 1) {
+        if (DebugLevel >= level) DebugFast("All players on " + GetTeamName(biggestTeam) + " team were excluded, unable to select the " + SelectFastBalanceBy + " player");
+        return;
+    }
     String kstat = String.Empty;
     switch (SelectFastBalanceBy) {
         case ForceMove.Weakest: {
