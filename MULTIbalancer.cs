@@ -4844,7 +4844,7 @@ private void BalanceAndUnstack(String name) {
     }
 
 
-    if ((fBalanceIsActive || mustMove) && toTeam != 0) {
+    if ((fBalanceIsActive || mustMove) && toTeam != 0 && balanceSpeed != Speed.Stop) {
         String ts = null;
         if (isSQDM) {
             ts = fTeam1.Count + "(A) vs " + fTeam2.Count + "(B) vs " + fTeam3.Count + "(C) vs " + fTeam4.Count + "(D)";
