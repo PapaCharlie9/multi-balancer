@@ -366,6 +366,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         public int TicketLossSampleCount = 180;
         public int MaxUnstackingTicketDifference = 0;
         public int DisperseEvenlyByClanPlayers = 0;
+        public bool EnableUnstackingByPlayerStats = false;
 
         // Rush only
         public double Stage1TicketPercentageToUnstackAdjustment = 0;
@@ -1946,6 +1947,8 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Delay Seconds Between Swap Groups", oneSet.DelaySecondsBetweenSwapGroups.GetType(), oneSet.DelaySecondsBetweenSwapGroups));
 
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Max Unstacking Ticket Difference", oneSet.MaxUnstackingTicketDifference.GetType(), oneSet.MaxUnstackingTicketDifference));
+
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Enable Unstacking By Player Stats", oneSet.EnableUnstackingByPlayerStats.GetType(), oneSet.EnableUnstackingByPlayerStats));
 
                 var_name = "8 - Settings for " + sm + "|" + sm + ": " + "Determine Strong Players By";
                 var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(DefineStrong))) + ")";
@@ -5063,6 +5066,24 @@ private void BalanceAndUnstack(String name) {
 
     String um = "Ticket ratio " + (ratio*100.0).ToString("F0") + " vs. unstack ratio of " + (unstackTicketRatio*100.0).ToString("F0");
 
+    // Using player stats instead of ticket ratio
+    if (perMode.EnableUnstackingByPlayerStats) {
+        double a1 = GetAveragePlayerStats(1, perMode.DetermineStrongPlayersBy);
+        double a2 = GetAveragePlayerStats(2, perMode.DetermineStrongPlayersBy);
+        ratio = (a1 > a2) ? (a1/Math.Max(1, a2)) : (a2/Math.Max(1, a1));
+        ratio = Math.Min(ratio, 50.0); // cap at 50x
+
+        // Don't unstack if the team with the lowest average stats is the winning team
+        // We don't want to send strong players to the team with the highest score!
+        if ((a1 < a2 && winningTeam == 1)
+        ||  (a2 < a1 && winningTeam == 2)) {
+            if (DebugLevel >= 7) DebugBalance("Team with lowest avg. stats is the winning team, do not unstack: " + a1.ToString("F1") + " vs " + a2.ToString("F1") + ", winning team is " + GetTeamName(winningTeam));
+            IncrementTotal();
+            return;
+        }
+        um = "Average " + perMode.DetermineStrongPlayersBy + " stats ratio is " + (ratio*100.0).ToString("F0") + " vs. unstack ratio of " + (unstackTicketRatio*100.0).ToString("F0");
+    }
+    
     // Using ticket loss instead of ticket ratio?
     if (perMode.EnableTicketLossRatio && false) { // disable for this release
         double a1 = GetAverageTicketLossRate(1, false);
@@ -13004,6 +13025,61 @@ int GetRushMaxStages(String mapName) {
     return maxStages;
 }
 
+double GetAveragePlayerStats(int teamId, DefineStrong stat) {
+    double avg = 0;
+    List<PlayerModel> team = GetTeam(teamId);
+    if (team.Count < 1) return 0;
+    double n = Convert.ToDouble(team.Count);
+    switch (stat) {
+        case DefineStrong.BattlelogKDR:
+            foreach (PlayerModel player in team) {
+                avg = avg + player.KDR;
+            }
+            break;
+        case DefineStrong.BattlelogKPM:
+            foreach (PlayerModel player in team) {
+                avg = avg + player.KPM;
+            }
+            break;
+        case DefineStrong.BattlelogSPM:
+            foreach (PlayerModel player in team) {
+                avg = avg + player.SPM;
+            }
+            break;
+        case DefineStrong.PlayerRank:
+            foreach (PlayerModel player in team) {
+                avg = avg + player.Rank;
+            }
+            break;
+        case DefineStrong.RoundKDR:
+            foreach (PlayerModel player in team) {
+                avg = avg + player.KDRRound;
+            }
+            break;
+        case DefineStrong.RoundKills:
+            foreach (PlayerModel player in team) {
+                avg = avg + player.KillsRound;
+            }
+            break;
+        case DefineStrong.RoundKPM:
+            foreach (PlayerModel player in team) {
+                avg = avg + player.KPMRound;
+            }
+            break;
+        case DefineStrong.RoundScore:
+            foreach (PlayerModel player in team) {
+                avg = avg + player.ScoreRound;
+            }
+            break;
+        case DefineStrong.RoundSPM:
+            foreach (PlayerModel player in team) {
+                avg = avg + player.SPMRound;
+            }
+            break;
+        default: return 0;
+    }
+    return (avg / n);
+}
 
 /* === NEW_NEW_NEW === */
 
