@@ -1628,7 +1628,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.1.0.1";
+    return "1.1.1.0";
 }
 
 public String GetPluginAuthor() {
@@ -5081,7 +5081,8 @@ private void BalanceAndUnstack(String name) {
             IncrementTotal();
             return;
         }
-        um = "Average " + perMode.DetermineStrongPlayersBy + " stats ratio is " + (ratio*100.0).ToString("F0") + " vs. unstack ratio of " + (unstackTicketRatio*100.0).ToString("F0");
+        String cmp = (a1 > a2) ? (a1.ToString("F1") + "/" + a2.ToString("F1")) : (a2.ToString("F1") + "/" + a1.ToString("F1"));
+        um = "Average " + perMode.DetermineStrongPlayersBy + " stats ratio is " + (ratio*100.0).ToString("F0") + " (" + cmp + ") vs. unstack ratio of " + (unstackTicketRatio*100.0).ToString("F0");
     }
     
     // Using ticket loss instead of ticket ratio?
@@ -14062,6 +14063,8 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Max Unstacking Ticket Difference</b>: Number greater than or equal to 0. If the difference in tickets is greater than the number specified, unstacking will be disabled. Set to 0 to allow any difference for unstacking.</p>
 
+<p><b>Enable Unstacking By Player Stats</b>: True or False, default False. If set to True, the ratio of average player stats across each team is used instead of the ticket ratio for determining if unstacking is needed. You choose the stat to use with <b>Determine Strong Players By</b>. For example, if <b>Determine Strong Players By</b> is <i>RoundKills</i> and the average of team 1 kills per player is 13 and the average for team 2 is 10, the ratio of 13/10 is 130%. If the unstacking ratio is 120%, teams will be unstacked.</p>
+
 <p><b>Determine Strong Players By</b>: Choice based on method. The setting defines how strong players are determined. Any player that is not a strong player is a weak player. See the <b>Definition of Strong</b> section above for the list of settings. All players in a single team are sorted by the specified definition. Any player above the median position after sorting is considered strong. For example, suppose there are 31 players on a team and this setting is set to <i>RoundScore</i> and after sorting, the median is position #16. If this player is position #7, he is considered strong. If his position is #16 or #17, he is considered weak.</p>
 
 <p><b>Percent Of Top Of Team Is Strong</b>: Number greater than or equal to 5 and less than or equal to 50, or 0. After sorting a team with the <b>Determine Strong Players By</b> choice, this percentage determines the portion of the top players to define as strong. Default is 50 so that any player above the median counts as strong. CAUTION: This setting is changed when the <b>Preset</b> is changed, previous values are overwritten for all modes.</p>
@@ -14116,7 +14119,9 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Stage 4 And 5 Ticket Percentage To Unstack Adjustment</b>: Any positive or negative number whose absolute value is 0 or less than or equal to the corresponding <b>Ticket Percentage To Unstack</b> value. This is tricky, since a team that is stacked for attackers or evenly matched teams will both get to the last stage. To give the benefit of the doubt, aim for a ratio of 0. For example, if your normal ratio is 120, set the adjustment to -120 to get 0 for Rush.</p>
 
-<p><b>Seconds To Check For New Stage </b>: Number greater than or equal to 5 and less than or equal to 30, default is 10. Number of seconds between each check to see if a new stage has started. The check is a guess since BF3 does not report stage changes, so it is possible for the plugin to guess incorrectly.</p>
+<p><b>Seconds To Check For New Stage</b>: Number greater than or equal to 5 and less than or equal to 30, default is 10. Number of seconds between each check to see if a new stage has started. The check is a guess since BF3 does not report stage changes, so it is possible for the plugin to guess incorrectly.</p>
+
+<p><b>Enable Advanced Rush Unstacking</b>: True or False, default False. If set to True, an advanced method of determining unstacking is used for Rush. Do not use this unless you know what you are doing. See forum post for details.</p>
 
 
 <h3>9 - Debugging</h3>
