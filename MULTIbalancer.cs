@@ -9168,6 +9168,7 @@ private List<String> GetSimplifiedModes() {
                     case "Rush":
                     case "Squad Deathmatch":
                     case "Team Deathmatch":
+                    case "CTF":
                         simple = m.GameMode;
                         break;
                     case "Air Superiority":
@@ -11345,7 +11346,7 @@ private bool AdjustForMetro(PerModeSettings perMode) {
     if (!perMode.EnableMetroAdjustments) return false;
     if (perMode.EnableTicketLossRatio) return false;
     if (fServerInfo == null) return false;
-    return (fServerInfo.Map == "MP_Subway");
+    return (fServerInfo.Map == "MP_Subway" || fServerInfo.Map == "XP0_Metro");
 }
 
 private void LogExternal(String msg) {
