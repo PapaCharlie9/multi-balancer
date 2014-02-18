@@ -373,6 +373,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         public double Stage3TicketPercentageToUnstackAdjustment = 0;
         public double Stage4And5TicketPercentageToUnstackAdjustment = 0;
         public double SecondsToCheckForNewStage = 10;
+        public bool EnableAdvancedRushUnstacking = false;
         
         public bool isDefault = true; // not a setting
     } // end PerModeSettings
@@ -1223,7 +1224,7 @@ public MULTIbalancer() {
     fStageInProgress = false;
     fHost = String.Empty;
     fPort = String.Empty;
-    fRushMap3Stages = new List<String>(new String[6]{"MP_007", "XP4_Quake", "XP5_002", "MP_012", "XP4_Rubble", "MP_Damage"});
+    fRushMap3Stages = new List<String>(new String[8]{"MP_007", "XP4_Quake", "XP5_002", "MP_012", "XP4_Rubble", "MP_Damage", "XP0_Caspian", "XP0_Firestorm"});
     fRushMap5Stages = new List<String>(new String[6]{"MP_013", "XP3_Valley", "MP_017", "XP5_001", "MP_Prison", "MP_Siege"});
     fGroupAssignments = new int[5]{0,0,0,0,0};
     fDispersalGroups = new List<String>[5]{null, new List<String>(), new List<String>(), new List<String>(), new List<String>()};
@@ -1996,6 +1997,8 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Stage 4 And 5 Ticket Percentage To Unstack Adjustment", oneSet.Stage4And5TicketPercentageToUnstackAdjustment.GetType(), oneSet.Stage4And5TicketPercentageToUnstackAdjustment));
                 
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Seconds To Check For New Stage", oneSet.SecondsToCheckForNewStage.GetType(), oneSet.SecondsToCheckForNewStage));
+                
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Enable Advanced Rush Unstacking", oneSet.EnableAdvancedRushUnstacking.GetType(), oneSet.EnableAdvancedRushUnstacking));
             }
 
             if (isConquest) {
@@ -4063,12 +4066,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
 
         // Rush heuristic: if attacker tickets are higher than last check, new stage started
         if (isRush && fServerInfo != null && !String.IsNullOrEmpty(fServerInfo.Map)) {
-            int maxStages = 4;
-            if (fRushMap3Stages.Contains(fServerInfo.Map)) {
-                maxStages = 3;
-            } else if (fRushMap5Stages.Contains(fServerInfo.Map)) {
-                maxStages = 5;
-            }
+            int maxStages = GetRushMaxStages(fServerInfo.Map);
             if (fRushStage == 0) {
                 fRushMaxTickets = defender;
                 fMaxTickets = attacker;
@@ -5084,9 +5082,29 @@ private void BalanceAndUnstack(String name) {
     }
 
     if (unstackTicketRatio == 0 || ratio < unstackTicketRatio) {
-        if (DebugLevel >= 6) DebugBalance("No unstacking needed: " + um);
-        IncrementTotal(); // no matching stat, reflect total deaths handled
-        return;
+        bool ticketRatioOk = true;
+        bool scoreRatioOk = true;
+        int maxStages = 4;
+        bool isRush = IsRush();
+        if (fServerInfo != null && isRush) maxStages = GetRushMaxStages(fServerInfo.Map);
+        if (isRush && perMode.EnableAdvancedRushUnstacking && fRushStage > 0 && fRushStage < maxStages) {
+            // Check team points as well as tickets
+            double usPoints = GetTeamPoints(1);
+            double ruPoints = GetTeamPoints(2);
+            if (usPoints <= 0) usPoints = 1;
+            if (ruPoints <= 0) ruPoints = 1;
+            ratio = (usPoints > ruPoints) ? (usPoints/ruPoints) : (ruPoints/usPoints);
+            if (DebugLevel >= 6) DebugBalance("Checking Advanced Rush Unstacking (by score): stage = " + fRushStage);
+            scoreRatioOk = (unstackTicketRatio == 0 || ratio < unstackTicketRatio);
+            if (!scoreRatioOk) {
+                um = "(Advanced) score ratio is " + (ratio * 100.0).ToString("F0") + "% (" + usPoints.ToString("F0") + "/" + ruPoints.ToString("F0") + ") vs " + (unstackTicketRatio * 100.0).ToString("F0");
+            }
+        }
+        if (ticketRatioOk && scoreRatioOk) {
+            if (DebugLevel >= 6) DebugBalance("No unstacking needed: " + um);
+            IncrementTotal(); // no matching stat, reflect total deaths handled
+            return;
+        }
     }
 
     /*
@@ -12974,6 +12992,19 @@ private double ComputeTicketRatio(double a, double b, double goal, bool countDow
 }
 
 
+int GetRushMaxStages(String mapName) {
+    int maxStages = 4;
+    if (!String.IsNullOrEmpty(mapName)) {
+        if (fRushMap3Stages.Contains(mapName)) {
+            maxStages = 3;
+        } else if (fRushMap5Stages.Contains(mapName)) {
+            maxStages = 5;
+        }
+    }
+    return maxStages;
+}
+
+
 /* === NEW_NEW_NEW === */
 
 
@@ -13246,8 +13277,9 @@ private void LogStatus(bool isFinal, int level) {
         rat = rat * 100.0;
         if (level >= useLevel) DebugWrite("^bStatus^n: Ticket difference = " + ticketGap + ", average ticket loss = " + a1.ToString("F2") + "(US) vs " + a2.ToString("F2") + " (RU)" + " for " + perMode.TicketLossSampleCount + " samples, ratio is " + rat.ToString("F0") + "%", 0);
     } else if (!IsSQDM() && fServerInfo.GameMode != "GunMaster0")  {
+        bool privIsRush = IsRush();
         double a1 = fTickets[1];
-        double a2 = (IsRush()) ? (Math.Max(fTickets[1]/2, fMaxTickets - (fRushMaxTickets - fTickets[2]))) : fTickets[2];
+        double a2 = (privIsRush) ? (Math.Max(fTickets[1]/2, fMaxTickets - (fRushMaxTickets - fTickets[2]))) : fTickets[2];
         double rat = (a1 > a2) ? (a1/Math.Max(1, a2)) : (a2/Math.Max(1, a1));
         // For end of round, use standard function for ratio
         if (fTickets[1] < 1 || fTickets[2] < 1) {
@@ -13259,7 +13291,17 @@ private void LogStatus(bool isFinal, int level) {
         }
         rat = Math.Min(rat, 50.0); // cap at 50x
         rat = rat * 100.0;
-        if (level >= useLevel) DebugWrite("^bStatus^n: Ticket difference = " + ticketGap + ", ticket ratio percentage is " + rat.ToString("F0") + "%", 0);
+        String advRush = String.Empty;
+        if (privIsRush && perMode.EnableAdvancedRushUnstacking) {
+            // Check team points as well as tickets
+            double usPoints = GetTeamPoints(1);
+            double ruPoints = GetTeamPoints(2);
+            if (usPoints <= 0) usPoints = 1;
+            if (ruPoints <= 0) ruPoints = 1;
+            double sratio = (usPoints > ruPoints) ? (usPoints/ruPoints) : (ruPoints/usPoints);
+            advRush = ", Score ratio = " + sratio + "% (" + usPoints.ToString("F0") + "/" + ruPoints.ToString("F0") + ")";
+        }
+        if (level >= useLevel) DebugWrite("^bStatus^n: Ticket difference = " + ticketGap + ", ticket ratio percentage is " + rat.ToString("F0") + "%" + advRush, 0);
     }
 
     if (fPluginState == PluginState.Active) {
