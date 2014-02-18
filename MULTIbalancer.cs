@@ -5995,8 +5995,25 @@ private bool CheckTeamSwitch(String name, int toTeam) {
         }
     }
 
+    // Check switch to same team?
     if (toTeam == origTeam) {
         ConsoleDebug("CheckTeamSwitch: ^b" + name + "^n, can't forbid unswitch to same team " + GetTeamName(toTeam) + "?");
+        SetSpawnMessages(name, String.Empty, String.Empty, false);
+        CheckAbortMove(name);
+        return true;
+    }
+
+    /*
+    Too soon to move again.
+    
+    This can happen when another plugin, particularly another instance of MB, is moving players.
+    Players get into a ping-poing unswitch loop. Adding a time check will prevent this.
+    */
+    double esm = DateTime.Now.Subtract(player.MovedTimestamp).TotalSeconds;
+    if (esm < 15) {
+        DebugUnswitch("IGNORED: switch by ^b" + name + "^n, too soon (" + esm.ToString("F1") + " secs ago) since last move, maybe another plugin is switching this player?");
+        SetSpawnMessages(name, String.Empty, String.Empty, false);
+        CheckAbortMove(name);
         return true;
     }
 
