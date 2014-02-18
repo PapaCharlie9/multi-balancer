@@ -5070,7 +5070,7 @@ private void BalanceAndUnstack(String name) {
     if (perMode.EnableUnstackingByPlayerStats) {
         double a1 = GetAveragePlayerStats(1, perMode.DetermineStrongPlayersBy);
         double a2 = GetAveragePlayerStats(2, perMode.DetermineStrongPlayersBy);
-        ratio = (a1 > a2) ? (a1/Math.Max(1, a2)) : (a2/Math.Max(1, a1));
+        ratio = (a1 > a2) ? (a1/Math.Max(0.01, a2)) : (a2/Math.Max(0.01, a1));
         ratio = Math.Min(ratio, 50.0); // cap at 50x
 
         // Don't unstack if the team with the lowest average stats is the winning team
@@ -13385,17 +13385,26 @@ private void LogStatus(bool isFinal, int level) {
         }
         rat = Math.Min(rat, 50.0); // cap at 50x
         rat = rat * 100.0;
-        String advRush = String.Empty;
-        if (privIsRush && perMode.EnableAdvancedRushUnstacking) {
+        String extra = String.Empty;
+        if (perMode.EnableUnstackingByPlayerStats) {
+            a1 = GetAveragePlayerStats(1, perMode.DetermineStrongPlayersBy);
+            a2 = GetAveragePlayerStats(2, perMode.DetermineStrongPlayersBy);
+            double ratio = (a1 > a2) ? (a1/Math.Max(0.01, a2)) : (a2/Math.Max(0.01, a1));
+            ratio = Math.Min(ratio, 50.0); // cap at 50x
+
+            String cmp = (a1 > a2) ? (a1.ToString("F1") + "/" + a2.ToString("F1")) : (a2.ToString("F1") + "/" + a1.ToString("F1"));
+            extra = ", average " + perMode.DetermineStrongPlayersBy + " stats ratio = " + (ratio*100.0).ToString("F0") + "% (" + cmp + ")";
+        } else if (privIsRush && perMode.EnableAdvancedRushUnstacking) {
             // Check team points as well as tickets
             double usPoints = GetTeamPoints(1);
             double ruPoints = GetTeamPoints(2);
             if (usPoints <= 0) usPoints = 1;
             if (ruPoints <= 0) ruPoints = 1;
             double sratio = (usPoints > ruPoints) ? (usPoints/ruPoints) : (ruPoints/usPoints);
-            advRush = ", Score ratio = " + sratio + "% (" + usPoints.ToString("F0") + "/" + ruPoints.ToString("F0") + ")";
+            String cr = (usPoints > ruPoints) ? (usPoints.ToString("F0") + "/" + ruPoints.ToString("F0")) : (ruPoints.ToString("F0") + "/" + usPoints.ToString("F0")) ;
+            extra = ", score ratio = " + (sratio * 100).ToString("F0") + "% (" + cr + ")";
         }
-        if (level >= useLevel) DebugWrite("^bStatus^n: Ticket difference = " + ticketGap + ", ticket ratio percentage is " + rat.ToString("F0") + "%" + advRush, 0);
+        if (level >= useLevel) DebugWrite("^bStatus^n: Ticket difference = " + ticketGap + ", ticket ratio percentage is " + rat.ToString("F0") + "%" + extra, 0);
     }
 
     if (fPluginState == PluginState.Active) {
