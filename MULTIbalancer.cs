@@ -366,6 +366,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         public int TicketLossSampleCount = 180;
         public int MaxUnstackingTicketDifference = 0;
         public int DisperseEvenlyByClanPlayers = 0;
+        public bool EnableUnstackingByPlayerStats = false;
 
         // Rush only
         public double Stage1TicketPercentageToUnstackAdjustment = 0;
@@ -373,6 +374,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         public double Stage3TicketPercentageToUnstackAdjustment = 0;
         public double Stage4And5TicketPercentageToUnstackAdjustment = 0;
         public double SecondsToCheckForNewStage = 10;
+        public bool EnableAdvancedRushUnstacking = false;
         
         public bool isDefault = true; // not a setting
     } // end PerModeSettings
@@ -1223,7 +1225,7 @@ public MULTIbalancer() {
     fStageInProgress = false;
     fHost = String.Empty;
     fPort = String.Empty;
-    fRushMap3Stages = new List<String>(new String[6]{"MP_007", "XP4_Quake", "XP5_002", "MP_012", "XP4_Rubble", "MP_Damage"});
+    fRushMap3Stages = new List<String>(new String[8]{"MP_007", "XP4_Quake", "XP5_002", "MP_012", "XP4_Rubble", "MP_Damage", "XP0_Caspian", "XP0_Firestorm"});
     fRushMap5Stages = new List<String>(new String[6]{"MP_013", "XP3_Valley", "MP_017", "XP5_001", "MP_Prison", "MP_Siege"});
     fGroupAssignments = new int[5]{0,0,0,0,0};
     fDispersalGroups = new List<String>[5]{null, new List<String>(), new List<String>(), new List<String>(), new List<String>()};
@@ -1626,7 +1628,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.1.0.0";
+    return "1.1.1.0";
 }
 
 public String GetPluginAuthor() {
@@ -1946,6 +1948,8 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Max Unstacking Ticket Difference", oneSet.MaxUnstackingTicketDifference.GetType(), oneSet.MaxUnstackingTicketDifference));
 
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Enable Unstacking By Player Stats", oneSet.EnableUnstackingByPlayerStats.GetType(), oneSet.EnableUnstackingByPlayerStats));
+
                 var_name = "8 - Settings for " + sm + "|" + sm + ": " + "Determine Strong Players By";
                 var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(DefineStrong))) + ")";
 
@@ -1996,6 +2000,8 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Stage 4 And 5 Ticket Percentage To Unstack Adjustment", oneSet.Stage4And5TicketPercentageToUnstackAdjustment.GetType(), oneSet.Stage4And5TicketPercentageToUnstackAdjustment));
                 
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Seconds To Check For New Stage", oneSet.SecondsToCheckForNewStage.GetType(), oneSet.SecondsToCheckForNewStage));
+                
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Enable Advanced Rush Unstacking", oneSet.EnableAdvancedRushUnstacking.GetType(), oneSet.EnableAdvancedRushUnstacking));
             }
 
             if (isConquest) {
@@ -4063,12 +4069,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
 
         // Rush heuristic: if attacker tickets are higher than last check, new stage started
         if (isRush && fServerInfo != null && !String.IsNullOrEmpty(fServerInfo.Map)) {
-            int maxStages = 4;
-            if (fRushMap3Stages.Contains(fServerInfo.Map)) {
-                maxStages = 3;
-            } else if (fRushMap5Stages.Contains(fServerInfo.Map)) {
-                maxStages = 5;
-            }
+            int maxStages = GetRushMaxStages(fServerInfo.Map);
             if (fRushStage == 0) {
                 fRushMaxTickets = defender;
                 fMaxTickets = attacker;
@@ -4844,7 +4845,7 @@ private void BalanceAndUnstack(String name) {
     }
 
 
-    if ((fBalanceIsActive || mustMove) && toTeam != 0) {
+    if ((fBalanceIsActive || mustMove) && toTeam != 0 && balanceSpeed != Speed.Stop) {
         String ts = null;
         if (isSQDM) {
             ts = fTeam1.Count + "(A) vs " + fTeam2.Count + "(B) vs " + fTeam3.Count + "(C) vs " + fTeam4.Count + "(D)";
@@ -5065,6 +5066,25 @@ private void BalanceAndUnstack(String name) {
 
     String um = "Ticket ratio " + (ratio*100.0).ToString("F0") + " vs. unstack ratio of " + (unstackTicketRatio*100.0).ToString("F0");
 
+    // Using player stats instead of ticket ratio
+    if (perMode.EnableUnstackingByPlayerStats) {
+        double a1 = GetAveragePlayerStats(1, perMode.DetermineStrongPlayersBy);
+        double a2 = GetAveragePlayerStats(2, perMode.DetermineStrongPlayersBy);
+        ratio = (a1 > a2) ? (a1/Math.Max(0.01, a2)) : (a2/Math.Max(0.01, a1));
+        ratio = Math.Min(ratio, 50.0); // cap at 50x
+
+        // Don't unstack if the team with the lowest average stats is the winning team
+        // We don't want to send strong players to the team with the highest score!
+        if ((a1 < a2 && winningTeam == 1)
+        ||  (a2 < a1 && winningTeam == 2)) {
+            if (DebugLevel >= 7) DebugBalance("Team with lowest avg. stats is the winning team, do not unstack: " + a1.ToString("F1") + " vs " + a2.ToString("F1") + ", winning team is " + GetTeamName(winningTeam));
+            IncrementTotal();
+            return;
+        }
+        String cmp = (a1 > a2) ? (a1.ToString("F1") + "/" + a2.ToString("F1")) : (a2.ToString("F1") + "/" + a1.ToString("F1"));
+        um = "Average " + perMode.DetermineStrongPlayersBy + " stats ratio is " + (ratio*100.0).ToString("F0") + " (" + cmp + ") vs. unstack ratio of " + (unstackTicketRatio*100.0).ToString("F0");
+    }
+    
     // Using ticket loss instead of ticket ratio?
     if (perMode.EnableTicketLossRatio && false) { // disable for this release
         double a1 = GetAverageTicketLossRate(1, false);
@@ -5084,9 +5104,29 @@ private void BalanceAndUnstack(String name) {
     }
 
     if (unstackTicketRatio == 0 || ratio < unstackTicketRatio) {
-        if (DebugLevel >= 6) DebugBalance("No unstacking needed: " + um);
-        IncrementTotal(); // no matching stat, reflect total deaths handled
-        return;
+        bool ticketRatioOk = true;
+        bool scoreRatioOk = true;
+        int maxStages = 4;
+        bool isRush = IsRush();
+        if (fServerInfo != null && isRush) maxStages = GetRushMaxStages(fServerInfo.Map);
+        if (isRush && perMode.EnableAdvancedRushUnstacking && fRushStage > 0 && fRushStage < maxStages) {
+            // Check team points as well as tickets
+            double usPoints = GetTeamPoints(1);
+            double ruPoints = GetTeamPoints(2);
+            if (usPoints <= 0) usPoints = 1;
+            if (ruPoints <= 0) ruPoints = 1;
+            ratio = (usPoints > ruPoints) ? (usPoints/ruPoints) : (ruPoints/usPoints);
+            if (DebugLevel >= 6) DebugBalance("Checking Advanced Rush Unstacking (by score): stage = " + fRushStage);
+            scoreRatioOk = (unstackTicketRatio == 0 || ratio < unstackTicketRatio);
+            if (!scoreRatioOk) {
+                um = "(Advanced) score ratio is " + (ratio * 100.0).ToString("F0") + "% (" + usPoints.ToString("F0") + "/" + ruPoints.ToString("F0") + ") vs " + (unstackTicketRatio * 100.0).ToString("F0");
+            }
+        }
+        if (ticketRatioOk && scoreRatioOk) {
+            if (DebugLevel >= 6) DebugBalance("No unstacking needed: " + um);
+            IncrementTotal(); // no matching stat, reflect total deaths handled
+            return;
+        }
     }
 
     /*
@@ -5343,6 +5383,10 @@ private void FastBalance(String trigger) {
 
     // Select player
     if (DebugLevel >= 7) ConsoleDebug("FastBalance selecting player");
+    if (big.Count < 1) {
+        if (DebugLevel >= level) DebugFast("All players on " + GetTeamName(biggestTeam) + " team were excluded, unable to select the " + SelectFastBalanceBy + " player");
+        return;
+    }
     String kstat = String.Empty;
     switch (SelectFastBalanceBy) {
         case ForceMove.Weakest: {
@@ -5952,8 +5996,25 @@ private bool CheckTeamSwitch(String name, int toTeam) {
         }
     }
 
+    // Check switch to same team?
     if (toTeam == origTeam) {
         ConsoleDebug("CheckTeamSwitch: ^b" + name + "^n, can't forbid unswitch to same team " + GetTeamName(toTeam) + "?");
+        SetSpawnMessages(name, String.Empty, String.Empty, false);
+        CheckAbortMove(name);
+        return true;
+    }
+
+    /*
+    Too soon to move again.
+    
+    This can happen when another plugin, particularly another instance of MB, is moving players.
+    Players get into a ping-poing unswitch loop. Adding a time check will prevent this.
+    */
+    double esm = DateTime.Now.Subtract(player.MovedTimestamp).TotalSeconds;
+    if (esm < 15) {
+        DebugUnswitch("IGNORED: switch by ^b" + name + "^n, too soon (" + esm.ToString("F1") + " secs ago) since last move, maybe another plugin is switching this player?");
+        SetSpawnMessages(name, String.Empty, String.Empty, false);
+        CheckAbortMove(name);
         return true;
     }
 
@@ -9164,6 +9225,7 @@ private List<String> GetSimplifiedModes() {
                     case "Rush":
                     case "Squad Deathmatch":
                     case "Team Deathmatch":
+                    case "CTF":
                         simple = m.GameMode;
                         break;
                     case "Air Superiority":
@@ -11341,7 +11403,7 @@ private bool AdjustForMetro(PerModeSettings perMode) {
     if (!perMode.EnableMetroAdjustments) return false;
     if (perMode.EnableTicketLossRatio) return false;
     if (fServerInfo == null) return false;
-    return (fServerInfo.Map == "MP_Subway");
+    return (fServerInfo.Map == "MP_Subway" || fServerInfo.Map == "XP0_Metro");
 }
 
 private void LogExternal(String msg) {
@@ -12969,6 +13031,74 @@ private double ComputeTicketRatio(double a, double b, double goal, bool countDow
 }
 
 
+int GetRushMaxStages(String mapName) {
+    int maxStages = 4;
+    if (!String.IsNullOrEmpty(mapName)) {
+        if (fRushMap3Stages.Contains(mapName)) {
+            maxStages = 3;
+        } else if (fRushMap5Stages.Contains(mapName)) {
+            maxStages = 5;
+        }
+    }
+    return maxStages;
+}
+
+double GetAveragePlayerStats(int teamId, DefineStrong stat) {
+    double avg = 0;
+    List<PlayerModel> team = GetTeam(teamId);
+    if (team.Count < 1) return 0;
+    double n = Convert.ToDouble(team.Count);
+    switch (stat) {
+        case DefineStrong.BattlelogKDR:
+            foreach (PlayerModel player in team) {
+                avg = avg + player.KDR;
+            }
+            break;
+        case DefineStrong.BattlelogKPM:
+            foreach (PlayerModel player in team) {
+                avg = avg + player.KPM;
+            }
+            break;
+        case DefineStrong.BattlelogSPM:
+            foreach (PlayerModel player in team) {
+                avg = avg + player.SPM;
+            }
+            break;
+        case DefineStrong.PlayerRank:
+            foreach (PlayerModel player in team) {
+                avg = avg + player.Rank;
+            }
+            break;
+        case DefineStrong.RoundKDR:
+            foreach (PlayerModel player in team) {
+                avg = avg + player.KDRRound;
+            }
+            break;
+        case DefineStrong.RoundKills:
+            foreach (PlayerModel player in team) {
+                avg = avg + player.KillsRound;
+            }
+            break;
+        case DefineStrong.RoundKPM:
+            foreach (PlayerModel player in team) {
+                avg = avg + player.KPMRound;
+            }
+            break;
+        case DefineStrong.RoundScore:
+            foreach (PlayerModel player in team) {
+                avg = avg + player.ScoreRound;
+            }
+            break;
+        case DefineStrong.RoundSPM:
+            foreach (PlayerModel player in team) {
+                avg = avg + player.SPMRound;
+            }
+            break;
+        default: return 0;
+    }
+    return (avg / n);
+}
+
 /* === NEW_NEW_NEW === */
 
 
@@ -13241,8 +13371,9 @@ private void LogStatus(bool isFinal, int level) {
         rat = rat * 100.0;
         if (level >= useLevel) DebugWrite("^bStatus^n: Ticket difference = " + ticketGap + ", average ticket loss = " + a1.ToString("F2") + "(US) vs " + a2.ToString("F2") + " (RU)" + " for " + perMode.TicketLossSampleCount + " samples, ratio is " + rat.ToString("F0") + "%", 0);
     } else if (!IsSQDM() && fServerInfo.GameMode != "GunMaster0")  {
+        bool privIsRush = IsRush();
         double a1 = fTickets[1];
-        double a2 = (IsRush()) ? (Math.Max(fTickets[1]/2, fMaxTickets - (fRushMaxTickets - fTickets[2]))) : fTickets[2];
+        double a2 = (privIsRush) ? (Math.Max(fTickets[1]/2, fMaxTickets - (fRushMaxTickets - fTickets[2]))) : fTickets[2];
         double rat = (a1 > a2) ? (a1/Math.Max(1, a2)) : (a2/Math.Max(1, a1));
         // For end of round, use standard function for ratio
         if (fTickets[1] < 1 || fTickets[2] < 1) {
@@ -13254,7 +13385,26 @@ private void LogStatus(bool isFinal, int level) {
         }
         rat = Math.Min(rat, 50.0); // cap at 50x
         rat = rat * 100.0;
-        if (level >= useLevel) DebugWrite("^bStatus^n: Ticket difference = " + ticketGap + ", ticket ratio percentage is " + rat.ToString("F0") + "%", 0);
+        String extra = String.Empty;
+        if (perMode.EnableUnstackingByPlayerStats) {
+            a1 = GetAveragePlayerStats(1, perMode.DetermineStrongPlayersBy);
+            a2 = GetAveragePlayerStats(2, perMode.DetermineStrongPlayersBy);
+            double ratio = (a1 > a2) ? (a1/Math.Max(0.01, a2)) : (a2/Math.Max(0.01, a1));
+            ratio = Math.Min(ratio, 50.0); // cap at 50x
+
+            String cmp = (a1 > a2) ? (a1.ToString("F1") + "/" + a2.ToString("F1")) : (a2.ToString("F1") + "/" + a1.ToString("F1"));
+            extra = ", average " + perMode.DetermineStrongPlayersBy + " stats ratio = " + (ratio*100.0).ToString("F0") + "% (" + cmp + ")";
+        } else if (privIsRush && perMode.EnableAdvancedRushUnstacking) {
+            // Check team points as well as tickets
+            double usPoints = GetTeamPoints(1);
+            double ruPoints = GetTeamPoints(2);
+            if (usPoints <= 0) usPoints = 1;
+            if (ruPoints <= 0) ruPoints = 1;
+            double sratio = (usPoints > ruPoints) ? (usPoints/ruPoints) : (ruPoints/usPoints);
+            String cr = (usPoints > ruPoints) ? (usPoints.ToString("F0") + "/" + ruPoints.ToString("F0")) : (ruPoints.ToString("F0") + "/" + usPoints.ToString("F0")) ;
+            extra = ", score ratio = " + (sratio * 100).ToString("F0") + "% (" + cr + ")";
+        }
+        if (level >= useLevel) DebugWrite("^bStatus^n: Ticket difference = " + ticketGap + ", ticket ratio percentage is " + rat.ToString("F0") + "%" + extra, 0);
     }
 
     if (fPluginState == PluginState.Active) {
@@ -13922,6 +14072,8 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Max Unstacking Ticket Difference</b>: Number greater than or equal to 0. If the difference in tickets is greater than the number specified, unstacking will be disabled. Set to 0 to allow any difference for unstacking.</p>
 
+<p><b>Enable Unstacking By Player Stats</b>: True or False, default False. If set to True, the ratio of average player stats across each team is used instead of the ticket ratio for determining if unstacking is needed. You choose the stat to use with <b>Determine Strong Players By</b>. For example, if <b>Determine Strong Players By</b> is <i>RoundKills</i> and the average of team 1 kills per player is 13 and the average for team 2 is 10, the ratio of 13/10 is 130%. If the unstacking ratio is 120%, teams will be unstacked.</p>
+
 <p><b>Determine Strong Players By</b>: Choice based on method. The setting defines how strong players are determined. Any player that is not a strong player is a weak player. See the <b>Definition of Strong</b> section above for the list of settings. All players in a single team are sorted by the specified definition. Any player above the median position after sorting is considered strong. For example, suppose there are 31 players on a team and this setting is set to <i>RoundScore</i> and after sorting, the median is position #16. If this player is position #7, he is considered strong. If his position is #16 or #17, he is considered weak.</p>
 
 <p><b>Percent Of Top Of Team Is Strong</b>: Number greater than or equal to 5 and less than or equal to 50, or 0. After sorting a team with the <b>Determine Strong Players By</b> choice, this percentage determines the portion of the top players to define as strong. Default is 50 so that any player above the median counts as strong. CAUTION: This setting is changed when the <b>Preset</b> is changed, previous values are overwritten for all modes.</p>
@@ -13976,7 +14128,9 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Stage 4 And 5 Ticket Percentage To Unstack Adjustment</b>: Any positive or negative number whose absolute value is 0 or less than or equal to the corresponding <b>Ticket Percentage To Unstack</b> value. This is tricky, since a team that is stacked for attackers or evenly matched teams will both get to the last stage. To give the benefit of the doubt, aim for a ratio of 0. For example, if your normal ratio is 120, set the adjustment to -120 to get 0 for Rush.</p>
 
-<p><b>Seconds To Check For New Stage </b>: Number greater than or equal to 5 and less than or equal to 30, default is 10. Number of seconds between each check to see if a new stage has started. The check is a guess since BF3 does not report stage changes, so it is possible for the plugin to guess incorrectly.</p>
+<p><b>Seconds To Check For New Stage</b>: Number greater than or equal to 5 and less than or equal to 30, default is 10. Number of seconds between each check to see if a new stage has started. The check is a guess since BF3 does not report stage changes, so it is possible for the plugin to guess incorrectly.</p>
+
+<p><b>Enable Advanced Rush Unstacking</b>: True or False, default False. If set to True, an advanced method of determining unstacking is used for Rush. Do not use this unless you know what you are doing. See forum post for details.</p>
 
 
 <h3>9 - Debugging</h3>
