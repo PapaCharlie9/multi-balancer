@@ -1628,7 +1628,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.1.1.0";
+    return "1.1.1.1";
 }
 
 public String GetPluginAuthor() {
