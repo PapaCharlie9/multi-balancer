@@ -13420,7 +13420,7 @@ private void LogStatus(bool isFinal, int level) {
             balanceSpeed = GetBalanceSpeed(perMode);
             double unstackRatio = GetUnstackTicketRatio(perMode);
             String activeTime = (secs > 0) ? "^1active (" + secs.ToString("F0") + " secs)^0" : "not active";
-            if (level >= 4) DebugWrite("^bStatus^n: Autobalance is " + activeTime + ", phase = " + GetPhase(perMode, false) + ", population = " + GetPopulation(perMode, false) + ", speed = " + balanceSpeed + ", unstack when ticket ratio >= " + (unstackRatio * 100).ToString("F0") + "%", 0);
+            if (level >= 4) DebugWrite("^bStatus^n: Autobalance is " + activeTime + ", phase = " + GetPhase(perMode, false) + ", population = " + GetPopulation(perMode, false) + ", speed = " + balanceSpeed + ", unstack when ratio >= " + (unstackRatio * 100).ToString("F0") + "%", 0);
         }
     }
     if (!IsModelInSync()) {
