@@ -9623,6 +9623,19 @@ private void AnalyzeTeams(out int maxDiff, out int[] ascendingSize, out int[] de
 
     if (fServerInfo == null) return;
 
+    // special case, server is empty, always pick teamId 1
+    if (TotalPlayerCount() == 0) {
+        biggestTeam = 2;
+        smallestTeam = 1;
+        winningTeam = 2;
+        losingTeam = 1;
+        ascendingSize[0] = 1;
+        ascendingSize[1] = 2;
+        descendingTickets[0] = 2;
+        descendingTickets[1] = 1;
+        return;
+    }
+
     List<TeamRoster> teams = new List<TeamRoster>();
 
     teams.Add(new TeamRoster(1, fTeam1));
