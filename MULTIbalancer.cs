@@ -4511,19 +4511,19 @@ private void BalanceAndUnstack(String name) {
     if (isDisperseByList) {
         lenient = !perMode.EnableStrictDispersal; // the opposite of strict is lenient
         String dispersalMode = (lenient) ? "LENIENT MODE" : "STRICT MODE";
-        DebugBalance("ON MUST MOVE LIST ^b" + player.FullName + "^n T:" + player.Team + ", disperse evenly enabled, " + dispersalMode);
+        ConsoleDebug("ON MUST MOVE LIST ^b" + player.FullName + "^n T:" + player.Team + ", disperse evenly enabled, " + dispersalMode);
         mustMove = true;
         maxDispersalMoves = (lenient) ? 1 : 2;
     } else if (isDisperseByClanPop) {
         lenient = !perMode.EnableStrictDispersal; // the opposite of strict is lenient
         String dispersalMode = (lenient) ? "LENIENT MODE" : "STRICT MODE";
-        DebugBalance("ON MUST MOVE LIST ^b" + player.FullName + "^n T:" + player.Team + ", disperse clan tags evenly enabled, " + dispersalMode);
+        ConsoleDebug("ON MUST MOVE LIST ^b" + player.FullName + "^n T:" + player.Team + ", disperse clan tags evenly enabled, " + dispersalMode);
         mustMove = true;
         maxDispersalMoves = (lenient) ? 1 : 2;
     } else if (isDisperseByRank) {
         lenient = LenientRankDispersal;
         String dispersalMode = (lenient) ? "LENIENT MODE" : "STRICT MODE";
-        DebugBalance("ON MUST MOVE LIST ^b" + name + "^n T:" + player.Team + ", Rank " + player.Rank + " >= " + perMode.DisperseEvenlyByRank + ", " + dispersalMode);
+        ConsoleDebug("ON MUST MOVE LIST ^b" + name + "^n T:" + player.Team + ", Rank " + player.Rank + " >= " + perMode.DisperseEvenlyByRank + ", " + dispersalMode);
         mustMove = true;
         maxDispersalMoves = (lenient) ? 1 : 2;
     } 
@@ -4815,7 +4815,7 @@ private void BalanceAndUnstack(String name) {
 
     if (toTeam == 0 || toTeam == player.Team) {
         if (needsBalancing || mustMove) {
-            if (DebugLevel >= 8) DebugBalance("Exempting ^b" + name + "^n, target team selected is same or zero");
+            if (DebugLevel >= 7) DebugBalance("Exempting ^b" + name + "^n, target team selected is same or zero");
             fExemptRound = fExemptRound + 1;
             IncrementTotal();
             return;
