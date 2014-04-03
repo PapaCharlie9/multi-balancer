@@ -9118,7 +9118,7 @@ private String FormatMessage(String msg, MessageType type, int level) {
     else if (type.Equals(MessageType.Debug))
         prefix += "^9^bDEBUG^n: ";
 
-    return prefix + msg.Replace('{','(').Replace('}',')');
+    return prefix + msg.Replace('{','(').Replace('}',')') + "^n"; // close styling for every line with ^n
 }
 
 
