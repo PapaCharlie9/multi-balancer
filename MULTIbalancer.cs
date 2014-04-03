@@ -13420,7 +13420,7 @@ private void LogStatus(bool isFinal, int level) {
         }
         rat = Math.Min(rat, 50.0); // cap at 50x
         rat = rat * 100.0;
-        String extra = String.Empty;
+        String extra = ", score " + GetTeamPoints(1) + "/" + GetTeamPoints(2);
         if (perMode.EnableUnstackingByPlayerStats) {
             a1 = GetAveragePlayerStats(1, perMode.DetermineStrongPlayersBy);
             a2 = GetAveragePlayerStats(2, perMode.DetermineStrongPlayersBy);
