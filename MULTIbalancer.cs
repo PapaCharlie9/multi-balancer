@@ -1253,7 +1253,7 @@ public MULTIbalancer() {
     fStageInProgress = false;
     fHost = String.Empty;
     fPort = String.Empty;
-    fRushMap3Stages = new List<String>(new String[8]{"MP_007", "XP4_Quake", "XP5_002", "MP_012", "XP4_Rubble", "MP_Damage", "XP0_Caspian", "XP0_Firestorm"});
+    fRushMap3Stages = new List<String>(new String[11]{"MP_007", "XP4_Quake", "XP5_002", "MP_012", "XP4_Rubble", "MP_Damage", "XP0_Caspian", "XP0_Firestorm", "XP1_001" /* BF4 */, "XP1_003" /* BF4 */, "XP2_003"});
     fRushMap5Stages = new List<String>(new String[6]{"MP_013", "XP3_Valley", "MP_017", "XP5_001", "MP_Prison", "MP_Siege"});
     fGroupAssignments = new int[5]{0,0,0,0,0};
     fDispersalGroups = new List<String>[5]{null, new List<String>(), new List<String>(), new List<String>(), new List<String>()};
@@ -13136,7 +13136,11 @@ int GetRushMaxStages(String mapName) {
     int maxStages = 4;
     if (!String.IsNullOrEmpty(mapName)) {
         if (fRushMap3Stages.Contains(mapName)) {
-            maxStages = 3;
+            // Need to deal with BF3 and BF4 both having map codes that start XP1_
+            bool isXP1 = mapName.StartsWith("XP1_");
+            if (!isXP1 || (isXP1 && fGameVersion == GameVersion.BF4)) {
+                maxStages = 3;
+            }
         } else if (fRushMap5Stages.Contains(mapName)) {
             maxStages = 5;
         }
