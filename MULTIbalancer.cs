@@ -328,6 +328,30 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     DefinitionOfEarlyPhaseFromStart = 1;
                     DefinitionOfLatePhaseFromEnd = 1;
                     break;
+                case "NS Carrier Large": // BF4
+                    MaxPlayers = 64;
+                    CheckTeamStackingAfterFirstMinutes = 5;
+                    MaxUnstackingSwapsPerRound = 4;
+                    NumberOfSwapsPerGroup = 2;
+                    DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
+                    MaxUnstackingTicketDifference = 0;
+                    DefinitionOfHighPopulationForPlayers = 48;
+                    DefinitionOfLowPopulationForPlayers = 16;
+                    DefinitionOfEarlyPhaseFromStart = 5; // minutes
+                    DefinitionOfLatePhaseFromEnd = 15; // minutes
+                    break;
+                case "NS Carrier Small": // BF4
+                    MaxPlayers = 32;
+                    CheckTeamStackingAfterFirstMinutes = 5;
+                    MaxUnstackingSwapsPerRound = 4;
+                    NumberOfSwapsPerGroup = 2;
+                    DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
+                    MaxUnstackingTicketDifference = 0;
+                    DefinitionOfHighPopulationForPlayers = 24;
+                    DefinitionOfLowPopulationForPlayers = 8;
+                    DefinitionOfEarlyPhaseFromStart = 5; // minutes
+                    DefinitionOfLatePhaseFromEnd = 15; // minutes
+                    break;
                 case "Unknown or New Mode":
                 default:
                     MaxPlayers = 32;
@@ -967,6 +991,7 @@ private List<String> fAllFriends;
 private List<DelayedRequest> fTimerRequestList = null;
 private DateTime fLastValidationTimestamp;
 private int[] fFactionByTeam = null;
+private double fRoundTimeLimit = 1.0;
 
 // Operational statistics
 private int fReassignedRound = 0;
@@ -1247,6 +1272,7 @@ public MULTIbalancer() {
     fRevealSettings = false;
     fShowRiskySettings = false;
     fLastFastMoveTimestamp = DateTime.MinValue;
+    fRoundTimeLimit = 1.0;
     
     /* Settings */
 
@@ -1937,6 +1963,7 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
             bool isRush = (sm.Contains("Rush"));
             bool isSQDM = (sm == "Squad Deathmatch");
             bool isConquest = (sm.Contains("Conq"));
+            bool isCarrierAssault = (sm.Contains("Carrier"));
 
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Max Players", oneSet.MaxPlayers.GetType(), oneSet.MaxPlayers));
 
@@ -1978,7 +2005,7 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Low Population For Players <=", oneSet.DefinitionOfLowPopulationForPlayers.GetType(), oneSet.DefinitionOfLowPopulationForPlayers));
 
-            if (isCTF) {
+            if (isCTF || isCarrierAssault) {
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Early Phase As Minutes From Start", oneSet.DefinitionOfEarlyPhaseFromStart.GetType(), oneSet.DefinitionOfEarlyPhaseFromStart));
 
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Late Phase As Minutes From End", oneSet.DefinitionOfLatePhaseFromEnd.GetType(), oneSet.DefinitionOfLatePhaseFromEnd));
@@ -2425,8 +2452,8 @@ private bool ValidateSettings(String strVariable, String strValue) {
             else if (strVariable.Contains("Definition Of Early Phase")) ValidateInt(ref perMode.DefinitionOfEarlyPhaseFromStart, mode + ":" + "Definition Of Early Phase From Start", def.DefinitionOfEarlyPhaseFromStart);
             else if (strVariable.Contains("Metro Adjusted Definition Of Late Phase")) ValidateInt(ref perMode.MetroAdjustedDefinitionOfLatePhase, mode + ":" + "Metro Adjusted Definition Of Late Phase", def.MetroAdjustedDefinitionOfLatePhase);
             else if (strVariable.Contains("Definition Of Late Phase")) ValidateInt(ref perMode.DefinitionOfLatePhaseFromEnd, mode + ":" + "Definition Of Late Phase From End", def.DefinitionOfLatePhaseFromEnd);
-            if (mode == "CTF") {
-                int maxMinutes = 20; // TBD, might need to factor in gameModeCounter
+            if (mode == "CTF" || mode.Contains("Carrier")) {
+                int maxMinutes = (mode == "CTF") ? 60 : 90; // TBD, might need to factor in gameModeCounter
                 if (strVariable.Contains("Definition Of Late Phase") && perMode.DefinitionOfLatePhaseFromEnd > maxMinutes) {
                     ConsoleError("^b" + "Definition Of Late Phase" + "^n must be less than or equal to " + maxMinutes + " minutes, corrected to " + maxMinutes);
                     perMode.DefinitionOfEarlyPhaseFromStart = 0;
@@ -2673,7 +2700,7 @@ private void CommandToLog(string cmd) {
             return;
         }
 
-        m = Regex.Match(cmd, @"^gen\s+((?:cs|cl|ctf|gm|r|sqdm|sr|s|tdm|u|dom|ob|def)|[1234569])", RegexOptions.IgnoreCase);
+        m = Regex.Match(cmd, @"^gen\s+((?:cs|cl|ctf|gm|r|sqdm|sr|s|tdm|u|dom|ob|def|crl|crs)|[1234569])", RegexOptions.IgnoreCase);
         if (m.Success) {
             String what = m.Groups[1].Value;
             int section = 8;
@@ -2702,6 +2729,8 @@ private void CommandToLog(string cmd) {
                     case "def": sm = "for Defuse"; break; //bf4
                     case "dom": sm = "for Domination"; break; // bf4
                     case "ob": sm = "for Obliteration"; break; // bf4
+                    case "crl": sm = "for NS Carrier Large"; break; // bf4
+                    case "crs": sm = "for NS Carrier Small"; break; // bf4
                     default: ConsoleDump("Unknown mode: " + what); return;
                 }
             }
@@ -3275,7 +3304,7 @@ private void CommandToLog(string cmd) {
             ConsoleDump("^1^bbad tags^n^0: Examine list of players whose clan tag fetch failed");
             ConsoleDump("^1^bbad stats^n^0: Examine list of players whose stats fetch failed");
             ConsoleDump("^1^bdelay^n^0: Examine recommended scrambler delay time");
-            ConsoleDump("^1^bgen^n ^imode^n^0: Generate settings listing for ^imode^n (one of: cs, cl, ctf, gm, r, sqdm, sr, s, tdm, u)");
+            ConsoleDump("^1^bgen^n ^imode^n^0: Generate settings listing for ^imode^n (one of: cs, cl, ctf, gm, r, sqdm, sr, s, tdm, dom, ob, def, crl, crs, u)");
             ConsoleDump("^1^bgen^n ^isection^n^0: Generate settings listing for ^isection^n (1-6,9)");
             ConsoleDump("^1^bhistogram^n^0: Examine a histogram graph of ticket loss ratios");
             ConsoleDump("^1^blists^n^0: Examine all settings that are lists");
@@ -3501,7 +3530,8 @@ public void OnPluginLoaded(String strHostName, String strPort, String strPRoConV
         "OnRunNextLevel",
         "OnResponseError",
         "OnLogin",
-        "OnTeamFactionOverride"
+        "OnTeamFactionOverride",
+        "OnRoundTimeLimit"
     );
 }
 
@@ -3531,7 +3561,8 @@ public void OnPluginEnable() {
 
     ServerCommand("reservedSlotsList.list");
     ServerCommand("serverInfo");
-    ServerCommand("admin.listPlayers", "all"); 
+    ServerCommand("admin.listPlayers", "all");
+    UpdateRoundTimeLimit();
     if (fGameVersion == GameVersion.BF4) UpdateFactions(); 
 
     LaunchCheckForPluginUpdate();
@@ -4275,6 +4306,7 @@ public override void OnLevelLoaded(String mapFileName, String Gamemode, int roun
         fMaxTickets = -1; // flag to pay attention to next serverInfo
         ServerCommand("serverInfo");
 
+        UpdateRoundTimeLimit();
         if (fGameVersion == GameVersion.BF4) UpdateFactions();
     } catch (Exception e) {
         ConsoleException(e);
@@ -4307,6 +4339,7 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
             ResetRound();
             fIsFullRound = true;
             ServerCommand("serverInfo");
+            UpdateRoundTimeLimit();
             ScheduleListPlayers(2);
             fNeedPlayerListUpdate = (fGameState == GameState.Playing); 
             if (fGameVersion == GameVersion.BF4) UpdateFactions(); 
@@ -4364,6 +4397,14 @@ public override void OnTeamFactionOverride(int teamId, int faction) {
         fFactionByTeam[teamId] = faction;
     }
 }
+
+public override void OnRoundTimeLimit(int limit) {
+    if (!fIsEnabled) return;
+    
+    DebugWrite("^9^bGot OnRoundTimeLimit^n(" + limit + ")", 7);
+    fRoundTimeLimit = limit / 100.0;
+}
+
 
 
 
@@ -5046,7 +5087,7 @@ private void BalanceAndUnstack(String name) {
     double ratio = 1;
     double t1Tickets = 0;
     double t2Tickets = 0;
-    if (IsCTF()) {
+    if (IsCTF() || IsCarrierAssault()) {
         // Use team points, not tickets
         double usPoints = GetTeamPoints(1);
         double ruPoints = GetTeamPoints(2);
@@ -5914,7 +5955,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     double win = 0;
     double lose = 0;
     double margin = 100;
-    if (IsCTF()) {
+    if (IsCTF() || IsCarrierAssault()) {
         win = GetTeamPoints(winningTeam);
         if (win == 0) win = 1;
         lose = GetTeamPoints(losingTeam);
@@ -5922,7 +5963,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
         margin = ((win > lose) ? win/lose : lose/win);
         // margin is 110%
         if (!forbidden && (margin * 100) <= 110) {
-            DebugUnswitch("ALLOWED: CTF move by ^b" + name + "^n because margin is only " + (margin*100).ToString("F0") + "%");
+            DebugUnswitch("ALLOWED: move by ^b" + name + "^n because score margin is only " + (margin*100).ToString("F0") + "%");
             SetSpawnMessages(name, String.Empty, String.Empty, false);
             CheckAbortMove(name);
             return true;
@@ -6519,15 +6560,19 @@ private Phase GetPhase(PerModeSettings perMode, bool verbose) {
         lateTickets = perMode.MetroAdjustedDefinitionOfLatePhase;
     }
 
-    // Special handling for CTF mode
-    if (IsCTF()) {
+    // Special handling for CTF & Carrier Assault modes
+    bool isCTF = IsCTF();
+    bool isCarrierAssault = IsCarrierAssault();
+    if (isCTF || isCarrierAssault) {
         if (fRoundStartTimestamp == DateTime.MinValue) return Phase.Early;
 
         double earlyMinutes = earlyTickets;
         double lateMinutes = lateTickets;
 
-        // TBD - assume max round time is 20 minutes
-        double maxMinutes = 20;
+        // TBD - assume max round time is 20 minutes for CTF at 100%
+        // TBD - assume max round time is 30 minutes for CRL/CRS at 100%
+        double maxMinutes = ((isCTF) ? 20 : 30) * fRoundTimeLimit;
+        if (verbose && DebugLevel >= 8) ConsoleDebug("fRoundTimeLimit = " + (fRoundTimeLimit*100).ToString("F0") + ", maxMinutes = " + maxMinutes);
         //double totalRoundMins = DateTime.Now.Subtract(fRoundStartTimestamp).TotalMinutes;
         double totalRoundMins = GetTimeInRoundMinutes();
 
@@ -6890,7 +6935,7 @@ private void Scrambler(List<TeamScore> teamScores) {
         return;
     }
 
-    if (!IsCTF() && OnlyOnFinalTicketPercentage > 100) {
+    if (!IsCTF() && !IsCarrierAssault() && OnlyOnFinalTicketPercentage > 100) {
         if (teamScores == null || teamScores.Count < 2) {
             DebugScrambler("DEBUG: no final team scores");
             return;
@@ -9248,6 +9293,12 @@ private List<String> GetSimplifiedModes() {
                     case "Air Superiority":
                         simple = "Superiority";
                         break;
+                    case "Carrier Assault Large":
+                        simple = "NS Carrier Large";
+                        break;
+                    case "Carrier Assault Small":
+                        simple = "NS Carrier Small";
+                        break;
                     default:
                         simple = "Unknown or New Mode";
                         break;
@@ -9498,6 +9549,11 @@ private bool IsConquest() {
     return Regex.Match(fServerInfo.GameMode, @"(Conquest|Domination|Scavenger)", RegexOptions.IgnoreCase).Success;
 }
 
+private bool IsCarrierAssault() {
+    if (fServerInfo == null) return false;
+    return (fServerInfo.GameMode == "CarrierAssaultLarge0" || fServerInfo.GameMode == "CarrierAssaultSmall0");
+}
+
 private int MaxDiff() {
     if (fServerInfo == null) return 2;
     PerModeSettings perMode = null;
@@ -9688,7 +9744,8 @@ private void AnalyzeTeams(out int maxDiff, out int[] ascendingSize, out int[] de
     List<TeamScore> byScore = new List<TeamScore>();
     if (fServerInfo.TeamScores == null) return;
     bool isCTF = IsCTF();
-    if (!isCTF && fServerInfo.TeamScores.Count < 2) return;
+    bool isCarrierAssault = IsCarrierAssault();
+    if (!isCTF && !isCarrierAssault && fServerInfo.TeamScores.Count < 2) return;
     if (IsRush()) {
         // Normalize scores
         TeamScore attackers = null;
@@ -9706,11 +9763,11 @@ private void AnalyzeTeams(out int maxDiff, out int[] ascendingSize, out int[] de
         normalized = Math.Max(normalized, Convert.ToDouble(attackers.Score)/2);
         byScore.Add(attackers); // attackers
         byScore.Add(new TeamScore(defenders.TeamID, Convert.ToInt32(normalized), defenders.WinningScore));
-    } else if (isCTF) {
+    } else if (isCTF || isCarrierAssault) {
         // Base sort on team points rather than tickets
         int usPoints = Convert.ToInt32(GetTeamPoints(1));
         int ruPoints = Convert.ToInt32(GetTeamPoints(2));
-        DebugWrite("^9CTF analysis: US/RU points = " + usPoints + "/" + ruPoints, 8);
+        DebugWrite("^9Score analysis: US/RU points = " + usPoints + "/" + ruPoints, 8);
         byScore.Add(new TeamScore(1, usPoints, 0));
         byScore.Add(new TeamScore(2, ruPoints, 0));
     } else {
@@ -11494,6 +11551,7 @@ void ApplyWizardSettings() {
         }
         if (fPerMode.TryGetValue(modeName, out perMode) && perMode != null) {
             bool isCTF = (modeName == "CTF");
+            bool isCarrierAssault = modeName.Contains("Carrier");
 
             // Set the per mode Max Players
             perMode.MaxPlayers = MaximumPlayersForMode;
@@ -11529,7 +11587,7 @@ void ApplyWizardSettings() {
             ConsoleWrite("Set ^bDefinition Of Low Population For Players^n to " + perMode.DefinitionOfLowPopulationForPlayers, 0);
 
             // Set the Phase ranges
-            if (!isCTF) {
+            if (!isCTF && !isCarrierAssault) {
                 double high = HighestMaximumTicketsForMode;
                 double low = LowestMaximumTicketsForMode;
                 double late = low/4.0; // late always 25% of low
@@ -11547,8 +11605,10 @@ void ApplyWizardSettings() {
                 perMode.DefinitionOfLatePhaseFromEnd = Math.Min(300, Convert.ToInt32(late));
                 ConsoleWrite("Set ^bDefinition Of Early Phase As Tickets From Start^n to " + perMode.DefinitionOfEarlyPhaseFromStart, 0);
                 ConsoleWrite("Set ^bDefinition Of Late Phase As Tickets From End^n to " + perMode.DefinitionOfLatePhaseFromEnd, 0);
-            } else {
+            } else if (isCTF) {
                 ConsoleWrite("CTF Phase definitions cannot be set with the wizard, skipping.", 0);
+            } else if (isCarrierAssault) {
+                ConsoleWrite("Carrier Assault Phase definitions cannot be set with the wizard, skipping.", 0);
             }
 
             if (MetroIsInMapRotation && modeName.Contains("Conq")) {
@@ -11626,7 +11686,7 @@ void ApplyWizardSettings() {
             }
 
             // Set unstacking maximum ticket gap
-            if (!isCTF) {
+            if (!isCTF && !isCarrierAssault) {
                 perMode.MaxUnstackingTicketDifference = (HighestMaximumTicketsForMode / 2); // 50% of max
                 ConsoleWrite("Set ^bMax Unstacking Ticket Difference^n to " + perMode.MaxUnstackingTicketDifference, 0);
             }
@@ -12999,6 +13059,12 @@ private void UpdateFactions() {
     ServerCommand("vars.teamFactionOverride");
 }
 
+
+private void UpdateRoundTimeLimit() {
+    ServerCommand("vars.roundTimeLimit");
+}
+
+
 private int PriorityQueueCount() {
     int c = 0;
     lock (fPriorityFetchQ) {
@@ -13351,7 +13417,9 @@ private void LogStatus(bool isFinal, int level) {
     String tm = fTickets[1] + "/" + fTickets[2];
     if (IsSQDM()) tm = tm + "/" + fTickets[3] + "/" + fTickets[4];
     if (IsRush()) tm = tm  + "(" + Math.Max(fTickets[1]/2, fMaxTickets - (fRushMaxTickets - fTickets[2])) + ")";
-    if (IsCTF()) tm = GetTeamPoints(1) + "/" + GetTeamPoints(2);
+    bool isCTF = IsCTF();
+    bool isCarrierAssault = IsCarrierAssault();
+    if (isCTF || isCarrierAssault) tm = GetTeamPoints(1) + "/" + GetTeamPoints(2);
 
     double goal = 0;
     bool countDown = true;
@@ -13390,8 +13458,8 @@ private void LogStatus(bool isFinal, int level) {
     int useLevel = (isFinal) ? 2 : 4;
     if (IsRush()) {
         if (level >= useLevel) DebugWrite("^bStatus^n: Map = " + this.FriendlyMap + ", mode = " + this.FriendlyMode + ", stage = " + fRushStage + ", time in round = " + rt + ", tickets = " + tm, 0);
-    } else if (IsCTF()) {
-        if (level >= useLevel) DebugWrite("^bStatus^n: Map = " + this.FriendlyMap + ", mode = " + this.FriendlyMode + ", time in round = " + rt + ", points = " + tm, 0);
+    } else if (isCTF || isCarrierAssault) {
+        if (level >= useLevel) DebugWrite("^bStatus^n: Map = " + this.FriendlyMap + ", mode = " + this.FriendlyMode + ", time in round = " + rt + ", score = " + tm, 0);
     } else {
         if (level >= useLevel) DebugWrite("^bStatus^n: Map = " + this.FriendlyMap + ", mode = " + this.FriendlyMode + ", time in round = " + rt + ", tickets = " + tm, 0);
     }
@@ -13429,7 +13497,7 @@ private void LogStatus(bool isFinal, int level) {
 
             String cmp = (a1 > a2) ? (a1.ToString("F1") + "/" + a2.ToString("F1")) : (a2.ToString("F1") + "/" + a1.ToString("F1"));
             extra = ", average " + perMode.DetermineStrongPlayersBy + " stats ratio = " + (ratio*100.0).ToString("F0") + "% (" + cmp + ")";
-        } else if (privIsRush && perMode.EnableAdvancedRushUnstacking) {
+        } else if ((privIsRush && perMode.EnableAdvancedRushUnstacking) || isCTF || isCarrierAssault) {
             // Check team points as well as tickets
             double usPoints = GetTeamPoints(1);
             double ruPoints = GetTeamPoints(2);
@@ -13834,7 +13902,7 @@ static class MULTIbalancerUtils {
 <p>This plugin recognizes that a game round has a natural pattern and flow that depends on several factors. Play during the very beginning of a round is different from the very end. Play when the server is nearly empty is different from when the server is nearly full. The natural flow of a round of Conquest is very different from the flow of a game of Rush. Strong (good) players are not interchangeable with weak (bad) players. So with all these differences, how can one set of settings cover all of those different situations? They can't. So this plugin allows you to configure different settings for each combination of factors. The primary factors and concepts are described in the sections that follow.</p>
 
 <h3>Round Phase</h3>
-<p>To configure the factor of time, each round is divided into three time phases: <b>Early</b>, <b>Mid</b> (for Mid-phase), and <b>Late</b>. You define the phase based on ticket counts (or in the case of CTF, time in minutes) from the start of the round and the end of the round. You may define different settings for different modes, e.g., for <i>Conquest Large</i> you might define the early phase to be the first 200 tickets after the round starts, but for <i>Team Deathmatch</i> you might set early phase to be after the first 25 kills.</p>
+<p>To configure the factor of time, each round is divided into three time phases: <b>Early</b>, <b>Mid</b> (for Mid-phase), and <b>Late</b>. You define the phase based on ticket counts (or in the case of CTF or Carrier Assault, time in minutes) from the start of the round and the end of the round. You may define different settings for different modes, e.g., for <i>Conquest Large</i> you might define the early phase to be the first 200 tickets after the round starts, but for <i>Team Deathmatch</i> you might set early phase to be after the first 25 kills.</p>
 
 <h3>Population</h3>
 <p>To configure the factor of number of players, each round is divivded into three population levels: <b>Low</b>, <b>Medium</b>, and <b>High</b>. You define the population level based on total number of players in the server.</p>
@@ -14080,10 +14148,12 @@ For each phase, there are three unstacking settings for server population: Low, 
 <tr><td>Conq Small, Dom, Scav</td><td>BF3: Conquest Small, Conquest Assault Small #1 and #2, Conquest Domination, and Scavenger</td></tr>
 <tr><td>Conquest Large</td><td>Conquest Large and BF3:Conquest Assault Large</td></tr>
 <tr><td>Conquest Small</td><td>BF4: same as BF3 Conq Small, Dom, Scav</td></tr>
-<tr><td>CTF</td><td>BF3: Capture The Flag, uses minutes to define phase instead of tickets</td></tr>
+<tr><td>CTF</td><td>Capture The Flag, uses minutes to define phase instead of tickets</td></tr>
 <tr><td>Defuse</td><td>BF4: standard settings</td></tr>
 <tr><td>Domination</td><td>BF4: same as BF3 Conq Small, Dom, Scav</td></tr>
 <tr><td>Gun Master</td><td>BF3: Only has a few settings</td></tr>
+<tr><td>NS Carrier Large</td><td>Carrier Assault Large, uses minutes to define phase and score to define ratio difference instead of tickets</td></tr>
+<tr><td>NS Carrier Small</td><td>Carrier Assault Small, uses minutes to define phase and score to define ratio difference instead of tickets</td></tr>
 <tr><td>Obliteration</td><td>BF4: TBD</td></tr>
 <tr><td>Rush</td><td>Has unique settings shared with Squad Rush and no other modes</td></tr>
 <tr><td>Squad Deathmatch</td><td>Standard settings, similar to Conquest, except that unstacking is disabled (default 0)</td></tr>
@@ -14145,7 +14215,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Metro Adjusted Definition Of Late Phase</b>: Number greater than or equal to 0. This setting is visible only when <b>Enable Metro Adjustments</b> is set to True. When the map is Metro, the value specified here is used instead of <b>Definition Of Late Phase As Tickets From End</b>. This allows you to specify a much longer Late phase than for the other Conquest maps in your rotation. You generally want Metro Late phase to be the second half of your tickets, for example, if you have 1000 tickets, set this setting to 500.</p>
 
-<p>These settings are unique to CTF.</p>
+<p>These settings are unique to CTF and Carrier Assault.</p>
 
 <p><b>Definition Of Early Phase As Minutes From Start</b>: Number greater than or equal to 0. This is where you define the Early phase, as minutes from the start of the round. For example, if your round starts with 20 minutes on the clock and you set this to 5, the phase is Early until 20-5=15 minutes are left on the clock.</p>
 
