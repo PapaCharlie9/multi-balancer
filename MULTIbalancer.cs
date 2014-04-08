@@ -943,6 +943,7 @@ private bool fShowRiskySettings = false;
 private bool fTestFastBalance = false;
 private DateTime fLastFastMoveTimestamp = DateTime.MinValue;
 private bool fTestClanDispersal = false;
+private bool fTestMBCommand = false;
 
 // BF4
 private int fMaxSquadSize = 4;
@@ -992,6 +993,7 @@ private List<DelayedRequest> fTimerRequestList = null;
 private DateTime fLastValidationTimestamp;
 private int[] fFactionByTeam = null;
 private double fRoundTimeLimit = 1.0;
+private bool fScrambleByCommand = false;
 
 // Operational statistics
 private int fReassignedRound = 0;
@@ -1078,6 +1080,7 @@ public Speed[] EarlyPhaseBalanceSpeed;
 public Speed[] MidPhaseBalanceSpeed;
 public Speed[] LatePhaseBalanceSpeed;
 
+public bool OnlyByCommand; // true means hide override/hide OnlyOnNewMaps and OnlyOnFinalTicketPercentage
 public bool OnlyOnNewMaps; // false means scramble every round
 public double OnlyOnFinalTicketPercentage; // 0 means scramble regardless of final score
 public DefineStrong ScrambleBy;
@@ -1273,6 +1276,7 @@ public MULTIbalancer() {
     fShowRiskySettings = false;
     fLastFastMoveTimestamp = DateTime.MinValue;
     fRoundTimeLimit = 1.0;
+    fScrambleByCommand = false;
     
     /* Settings */
 
@@ -1348,6 +1352,7 @@ public MULTIbalancer() {
     
     /* ===== SECTION 4 - Scrambler ===== */
 
+    OnlyByCommand = false;
     OnlyOnNewMaps = true; // false means scramble every round
     OnlyOnFinalTicketPercentage = 120; // 0 means scramble regardless of final score
     ScrambleBy = DefineStrong.RoundScore;
@@ -1853,9 +1858,13 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
         /* ===== SECTION 4 - Scrambler ===== */
 
-        lstReturn.Add(new CPluginVariable("4 - Scrambler|Only On New Maps", OnlyOnNewMaps.GetType(), OnlyOnNewMaps));
+        lstReturn.Add(new CPluginVariable("4 - Scrambler|Only By Command", OnlyByCommand.GetType(), OnlyByCommand));
 
-        lstReturn.Add(new CPluginVariable("4 - Scrambler|Only On Final Ticket Percentage >=", OnlyOnFinalTicketPercentage.GetType(), OnlyOnFinalTicketPercentage));
+        if (!OnlyByCommand) {
+            lstReturn.Add(new CPluginVariable("4 - Scrambler|Only On New Maps", OnlyOnNewMaps.GetType(), OnlyOnNewMaps));
+
+            lstReturn.Add(new CPluginVariable("4 - Scrambler|Only On Final Ticket Percentage >=", OnlyOnFinalTicketPercentage.GetType(), OnlyOnFinalTicketPercentage));
+        }
 
         var_name = "4 - Scrambler|Scramble By";
         var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(DefineStrong))) + ")";
@@ -2536,6 +2545,7 @@ private void ResetSettings() {
 
     /* ===== SECTION 4 - Scrambler ===== */
 
+    OnlyByCommand = rhs.OnlyByCommand;
     OnlyOnNewMaps = rhs.OnlyOnNewMaps;
     OnlyOnFinalTicketPercentage = rhs.OnlyOnFinalTicketPercentage;
     ScrambleBy = rhs.ScrambleBy;
@@ -3244,6 +3254,21 @@ private void CommandToLog(string cmd) {
         if (Regex.Match(cmd, @"^test scrambler", RegexOptions.IgnoreCase).Success) {
             ConsoleDump("Testing scrambler:");
             ScrambleByCommand(true); // log only
+            return;
+        }
+        
+        // Undocumented command: test @mb ...
+        if (Regex.Match(cmd, @"^test @mb", RegexOptions.IgnoreCase).Success) {
+            ConsoleDump("Testing chat command:");
+            String tmp = cmd.Replace("test ", String.Empty);
+            try {
+                fTestMBCommand = true;
+                OnGlobalChat("[Plugin]", tmp);
+            } catch (Exception) {
+                // Do nothing
+            } finally {
+                fTestMBCommand = false;
+            }
             return;
         }
         
@@ -6911,15 +6936,14 @@ private void Scrambler(List<TeamScore> teamScores) {
         DebugScrambler("Enable Scrambler is False, no scramble this round");
         return;
     }
-    /*
-    else if (fGameVersion == GameVersion.BF4) {
-        ConsoleWarn("Scrambler not supported for BF4 yet!");
+
+    if (OnlyByCommand && !fScrambleByCommand) {
+        DebugScrambler("Only By Command is True and no command was issued, no scramble this round");
         return;
     }
-    */
 
     int current = fServerInfo.CurrentRound + 1; // zero based index
-    if (OnlyOnNewMaps && current < fServerInfo.TotalRounds) {
+    if (!OnlyByCommand && OnlyOnNewMaps && current < fServerInfo.TotalRounds) {
         DebugScrambler("Only scrambling new maps and this is only round " + current + " of " + fServerInfo.TotalRounds);
         return;
     }
@@ -6935,7 +6959,7 @@ private void Scrambler(List<TeamScore> teamScores) {
         return;
     }
 
-    if (!IsCTF() && !IsCarrierAssault() && OnlyOnFinalTicketPercentage > 100) {
+    if (!IsCTF() && !IsCarrierAssault() && !OnlyByCommand && OnlyOnFinalTicketPercentage > 100) {
         if (teamScores == null || teamScores.Count < 2) {
             DebugScrambler("DEBUG: no final team scores");
             return;
@@ -6989,7 +7013,7 @@ private void Scrambler(List<TeamScore> teamScores) {
         DebugScrambler(smsg);
 
         if ((ratio * 100) < OnlyOnFinalTicketPercentage) {
-            DebugScrambler("Only On Final Ticket Percentage >= " + OnlyOnFinalTicketPercentage.ToString("F0") + "%, but ratio is only " + (ratio * 100).ToString("F0") + "%");
+            DebugScrambler("Only On Final Ticket Percentage >= " + OnlyOnFinalTicketPercentage.ToString("F0") + "%, but ratio is only " + (ratio * 100).ToString("F0") + "%, no scramble this round");
             return;
         } else {
             DebugScrambler("Only On Final Ticket Percentage >= " + OnlyOnFinalTicketPercentage.ToString("F0") + "% and ratio is " + (ratio * 100).ToString("F0") + "%");
@@ -9522,6 +9546,7 @@ private void ResetRound() {
     fTotalQuits = 0;
     fGrandRageQuits = fGrandRageQuits + fRageQuits;
     fRageQuits = 0;
+    fScrambleByCommand = false;
 
     fLastBalancedTimestamp = DateTime.MinValue;
 
@@ -12131,7 +12156,7 @@ private int CountMatchingFriends(PlayerModel player, Scope scope) {
 }
 
 private void InGameCommand(String msg, ChatScope scope, int team, int squad, String name) {
-    if (EnableLoggingOnlyMode) {
+    if (EnableLoggingOnlyMode && !fTestMBCommand) {
         ConsoleDebug("EnableLoggingOnlyMode enabled, commands disabled");
         return;
     }
@@ -12140,7 +12165,7 @@ private void InGameCommand(String msg, ChatScope scope, int team, int squad, Str
         return;
     }
     CPrivileges p = this.GetAccountPrivileges(name);
-    if (p == null || !p.CanMovePlayers) {
+    if (!fTestMBCommand && (p == null || !p.CanMovePlayers)) {
         List<String> m = new List<String>();
         m.Add("You are not authorized to use @mb commands! Check your Procon account settings.");
         SayLines(m, name);
@@ -12150,7 +12175,10 @@ private void InGameCommand(String msg, ChatScope scope, int team, int squad, Str
     Match mbCmd = Regex.Match(msg, @"^\s*[@!#]mb\s+([\w]+)\s+(.*)$", RegexOptions.IgnoreCase);
     Match mbSubCmd = Regex.Match(msg, @"^\s*[@!#]mb\s+(sub|unsub)", RegexOptions.IgnoreCase);
     Match mbHelp = Regex.Match(msg, @"^\s*[@!#]mb\s+help\s*$", RegexOptions.IgnoreCase);
-    Match mbHelpCmd = Regex.Match(msg, @"^\s*[@!#]mb\s+help\s+(add|del|list|new|sub|unsub)", RegexOptions.IgnoreCase);
+    Match mbHelpCmd = Regex.Match(msg, @"^\s*[@!#]mb\s+help\s+(add|del|list|new|sub|unsub|scramble)", RegexOptions.IgnoreCase);
+    Match mbScrambleCmd = Regex.Match(msg, @"^\s*[@!#]mb\s+scramble\s+(on|off|true|false|yes|no|enable|disable)", RegexOptions.IgnoreCase);
+    Match mbScramInfoCmd = Regex.Match(msg, @"^\s*[@!#]mb\s+scramble\s*$", RegexOptions.IgnoreCase);
+
     List<String> lines = null;
     PlayerModel player = null;
     int dispersalGroup = 0;
@@ -12160,14 +12188,14 @@ private void InGameCommand(String msg, ChatScope scope, int team, int squad, Str
     if (mbHelp.Success) {
         lines = new List<String>();
         lines.Add("Type '@mb help' and one of the following:");
-        lines.Add("add, delete, list, new, subscribe, unsubscribe");
+        lines.Add("add, delete, list, new, subscribe, unsubscribe, scramble");
         SayLines(lines, name);
         return;
     }
 
     if (mbHelpCmd.Success) {
         lines = new List<String>();
-        String which = mbHelpCmd.Groups[1].Value;
+        String which = mbHelpCmd.Groups[1].Value.ToLower();
         switch (which.ToLower()) {
             case "add":
                 lines.Add("Add names to a matching name in the disperse, friends, or white list");
@@ -12191,6 +12219,11 @@ private void InGameCommand(String msg, ChatScope scope, int team, int squad, Str
             case "unsub":
                 lines.Add("Unsubscribe from all balancer chat messages");
                 break;
+            case "scramble":
+                lines.Add("Check if teams will be scrambled");
+                lines.Add("To scramble teams at end of round, use: @mb scramble on");
+                lines.Add("To not scramble teams at end of round, use: @mb scramble off");
+                break;
             default:
                 break;
         }
@@ -12200,7 +12233,7 @@ private void InGameCommand(String msg, ChatScope scope, int team, int squad, Str
 
     if (mbSubCmd.Success) {
         lines = new List<String>();
-        String which = mbSubCmd.Groups[1].Value;
+        String which = mbSubCmd.Groups[1].Value.ToLower();
         switch (which.ToLower()) {
             case "sub":
                 player = GetPlayer(name);
@@ -12215,6 +12248,42 @@ private void InGameCommand(String msg, ChatScope scope, int team, int squad, Str
                     player.Subscribed = false;
                     lines.Add("You will no longer see all balancer chat messages");
                 }
+                break;
+            default:
+                break;
+        }
+        SayLines(lines, name);
+        return;
+    }
+
+    if (mbScramInfoCmd.Success) {
+        lines = new List<String>();
+        if (fScrambleByCommand) {
+            lines.Add("Teams WILL be scrambled at end of round");
+        } else {
+            lines.Add("No scrambling of teams at end of round");
+        }
+        SayLines(lines, name);
+        return;
+    }
+
+    if (mbScrambleCmd.Success) {
+        lines = new List<String>();
+        String which = mbScrambleCmd.Groups[1].Value.ToLower();
+        switch (which.ToLower()) {
+            case "on":
+            case "yes":
+            case "true":
+            case "enable":
+                fScrambleByCommand = true;
+                lines.Add("Teams WILL be scrambled at end of round");
+                break;
+            case "off":
+            case "no":
+            case "false":
+            case "disable":
+                fScrambleByCommand = false;
+                lines.Add("No scrambling of teams at end of round");
                 break;
             default:
                 break;
@@ -12662,10 +12731,17 @@ private void SayLines(List<String> lines, String name) {
         if (String.IsNullOrEmpty(name)) {
             foreach (String chunk in chunks) {
                 ServerCommand("admin.say", chunk);
+                if (fTestMBCommand) {
+                    ProconChat(chunk);
+                    ConsoleDump("  " + chunk);
+                }
             }
         } else {
             foreach (String chunk in chunks) {
                 ServerCommand("admin.say", chunk, "player", name);
+                if (fTestMBCommand)
+                    ProconChatPlayer(name, chunk);
+                    ConsoleDump("  " + name + "> " + chunk);
             }
         }
     }
@@ -14073,6 +14149,8 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <h3>4 - Scrambler</h3>
 <p>These settings define options for between-round scrambling of teams. The setting <b>Enable Scrambler</b> is a per-mode setting, which allows you to decide on a mode-by-mode basis whether to use scrambling between rounds or not. See the per-mode settings in Section 8 below for more details. Note that whitelisted players are <b>not</b> excluded from scrambling and that scrambling is not possible with SQDM.</p>
+
+<p><b>Only By Command</b>: True or False, default False. If True, <b>Only On New Maps</b> and <b>Only On Final Ticket Percentage &gt;=</b> settings are ignored/hidden and scrambles will happen only after an admin types the <b>mb scramble on</b> command into chat.</p>
 
 <p><b>Only On New Maps</b>: True or False, default True. If True, scrambles will happen only after the last round of a map. For example, if a map has 2 rounds, there will be no scramble after round 1, only after round 2. If False, scrambling will be attempted at the end of every round.</p>
 
