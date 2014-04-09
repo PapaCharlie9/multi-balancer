@@ -3257,7 +3257,7 @@ private void CommandToLog(string cmd) {
         // Undocumented command: test scrambler
         if (Regex.Match(cmd, @"^test scrambler", RegexOptions.IgnoreCase).Success) {
             ConsoleDump("Testing scrambler:");
-            ScrambleByCommand(true); // log only
+            ScrambleByCommand(1, true); // log only, winner is always team 1
             return;
         }
         
@@ -7203,7 +7203,7 @@ private void Scrambler(List<TeamScore> teamScores) {
     }
 }
 
-private void ScrambleByCommand(bool logOnly) {
+private void ScrambleByCommand(int winner, bool logOnly) {
     try {
         fDebugScramblerBefore[0].Clear();
         fDebugScramblerBefore[1].Clear();
@@ -7217,6 +7217,8 @@ private void ScrambleByCommand(bool logOnly) {
     } catch (Exception e) {
         ConsoleException(e);
     }
+
+    fWinner = winner;
 
     // Activate the scrambler thread
     lock (fScramblerLock) {
@@ -13651,6 +13653,7 @@ private uint VersionToNumeric(String ver) {
 
 private void LogStatus(bool isFinal, int level) {
   try {
+    String tmsg = null;
     // If server is empty, log status only every 60 minutes
     int totalPlayers = TotalPlayerCount();
     if (!isFinal && level < 9 && totalPlayers == 0) {
@@ -13662,6 +13665,12 @@ private void LogStatus(bool isFinal, int level) {
     }
 
     if (!isFinal && (level == 4)) ConsoleWrite("+------------------------------------------------+", 0);
+
+    if (isFinal && fWinner != 0) {
+        tmsg = "^1^bWinner was team " + fWinner + " (" + GetTeamName(fWinner) + ")^n^0";
+        DebugWrite("^bStatus^n: " + tmsg, 2);
+        ProconChat(tmsg);
+    }
 
     Speed balanceSpeed = Speed.Adaptive;
 
@@ -13708,12 +13717,16 @@ private void LogStatus(bool isFinal, int level) {
     if (level >= 6) DebugWrite("^bStatus^n: Plugin state = " + fPluginState + ", game state = " + fGameState + fastBalance + weakOnly + metroAdj + unstackDisabled + logOnly, 0);
     int useLevel = (isFinal) ? 2 : 4;
     if (IsRush()) {
-        if (level >= useLevel) DebugWrite("^bStatus^n: Map = " + this.FriendlyMap + ", mode = " + this.FriendlyMode + ", stage = " + fRushStage + ", time in round = " + rt + ", tickets = " + tm, 0);
+        tmsg = "Map = " + this.FriendlyMap + ", mode = " + this.FriendlyMode + ", stage = " + fRushStage + ", time in round = " + rt + ", tickets = " + tm;
     } else if (isCTF || isCarrierAssault) {
-        if (level >= useLevel) DebugWrite("^bStatus^n: Map = " + this.FriendlyMap + ", mode = " + this.FriendlyMode + ", time in round = " + rt + ", score = " + tm, 0);
+        tmsg = "Map = " + this.FriendlyMap + ", mode = " + this.FriendlyMode + ", time in round = " + rt + ", score = " + tm;
     } else {
-        if (level >= useLevel) DebugWrite("^bStatus^n: Map = " + this.FriendlyMap + ", mode = " + this.FriendlyMode + ", time in round = " + rt + ", tickets = " + tm, 0);
+        tmsg = "Map = " + this.FriendlyMap + ", mode = " + this.FriendlyMode + ", time in round = " + rt + ", tickets = " + tm;
     }
+    if (level >= useLevel)
+        DebugWrite("^bStatus^n: " + tmsg, 0);
+    if (isFinal)
+        ProconChat(tmsg);
 
     int ticketGap = Math.Abs(fTickets[1] - fTickets[2]);
     if (IsRush()) ticketGap = Convert.ToInt32(Math.Abs(fTickets[1] - Math.Max(fTickets[1]/2, fMaxTickets - (fRushMaxTickets - fTickets[2]))));
