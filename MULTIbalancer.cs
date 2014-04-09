@@ -4462,11 +4462,167 @@ public override void OnResponseError(List<string> lstRequestWords, string strErr
 }
 
 
+/* Not really an override, but a hook for other plugins to call */
+
+public void UpdatePluginData(params String[] parms) {
+    /*
+    parms[0]: Name of caller (plugin class)
+    parms[1]: Name of the type of parm[3]: "bool", "double", "int", "string" (not possible to pass object type)
+    parms[2]: Key or Data Field name
+    parms[3]: Stringification of value
+    */
+    if (parms.Length != 4)
+    {
+        if (DebugLevel >= 5) ConsoleWarn("UpdatePluginData called with incorrect parameter count: " + parms.Length);
+        return;
+    }
+
+    if (String.IsNullOrEmpty(parms[0])) {
+        if (DebugLevel >= 5) ConsoleWarn("UpdatePluginData parms[0]: caller name is invalid!");
+        return;
+    }
+    if (String.IsNullOrEmpty(parms[1])) {
+        if (DebugLevel >= 5) ConsoleWarn("UpdatePluginData parms[1]: type is invalid!");
+        return;
+    }
+    if (String.IsNullOrEmpty(parms[2])) {
+        if (DebugLevel >= 5) ConsoleWarn("UpdatePluginData parms[2]: key is invalid!");
+        return;
+    }
+
+    try
+    {
+        String calledFrom = parms[0];
+        Type type = typeof(String);
+        switch (parms[1]) 
+        {
+            case "bool": type = typeof(bool); break;
+            case "double": type = typeof(double); break;
+            case "int": type = typeof(int); break;
+            default: break;
+        }
+        String key = parms[2];
+        Object value = parms[3];
+
+        if (type == typeof(bool))
+        {
+            bool v = false;
+            Boolean.TryParse(parms[3], out v);
+            value = (Boolean)v;
+        }
+        else if (type == typeof(double))
+        {
+            double v = 0;
+            Double.TryParse(parms[3], out v);
+            value = (Double)v;
+        }
+        else if (type == typeof(int))
+        {
+            int v = 0;
+            Int32.TryParse(parms[3], out v);
+            value = (Int32)v;
+        }
+
+        switch (key) {
+            case "SetScrambleByCommand":
+                if (type != typeof(bool)) {
+                    if (DebugLevel >= 5) ConsoleWarn("UpdatePluginData(" + calledFrom + ", " + key + ") expected bool, got " + parms[1]);
+                    return;
+                } else {
+                    fScrambleByCommand = (bool)value;
+                    if (fScrambleByCommand) {
+                        DebugScrambler("Plugin " + calledFrom + " turned team scrambling ON for this round!");
+                    } else {
+                        DebugScrambler("Plugin " + calledFrom + " turned team scrambling OFF for this round!");
+                    }
+                }
+                break;
+            default:
+                if (DebugLevel >= 5) ConsoleWarn("UpdatePluginData unknown key " + key + ", called from " + calledFrom);
+                return;
+        }
+        DebugWrite("Plugin ^b" + calledFrom + "^n, updated (" + parms[1] + ") " + key + " <- " + parms[3], 5);
+    } catch (Exception e) {
+        if (DebugLevel >= 5) ConsoleException(e);
+    }
+
+}
+
+/* JSON parameters entry point support */
+
+public void UpdatePluginJSON(params String[] parms) {
+    /*
+    parms[0]: Name of caller plugin
+    parms[1]: JSON with this format:
+        {
+            "plugin":"string",
+            "type":"string",
+            "key":"string",
+            "value":"string"
+        }
+    */
+    if (parms.Length != 2)
+    {
+        if (DebugLevel >= 5) ConsoleWarn("UpdatePluginJSON called with incorrect parameter count: " + parms.Length);
+        return;
+    }
+
+    if (String.IsNullOrEmpty(parms[0])) {
+        if (DebugLevel >= 5) ConsoleWarn("UpdatePluginJSON parms[0]: caller name is invalid!");
+        return;
+    }
 
 
+    if (String.IsNullOrEmpty(parms[1])) {
+        if (DebugLevel >= 5) ConsoleWarn("UpdatePluginJSON(" + parms[0] + ") parms[1]: JSON is invalid!");
+        return;
+    }
 
+    try {
 
+        Hashtable json = (Hashtable)JSON.JsonDecode(parms[1]);
 
+        String plugin = null;
+        String type = null;
+        String key = null;
+        String value = null;
+
+        if (json == null) {
+            String tmp = parms[1].Replace('{','(').Replace('}',')');
+            if (DebugLevel >= 5) ConsoleWarn("UpdatePluginJSON(" + parms[0] + "): JSON is invalid (null): " + tmp);
+            return;
+        }
+            
+        if (!json.ContainsKey("plugin")) {
+            if (DebugLevel >= 5) ConsoleWarn("UpdatePluginJSON(" + parms[0] + ") parms[1]: JSON does not contain 'plugin' key!");
+            return;
+        } else {
+            plugin = (String)json["plugin"];
+        }
+        if (!json.ContainsKey("type")) {
+            if (DebugLevel >= 5) ConsoleWarn("UpdatePluginJSON(" + parms[0] + ") parms[1]: JSON does not contain 'type' key!");
+            return;
+        } else {
+            type = (String)json["type"];
+        }
+        if (!json.ContainsKey("key")) {
+            if (DebugLevel >= 5) ConsoleWarn("UpdatePluginJSON(" + parms[0] + ") parms[1]: JSON does not contain 'key' key!");
+            return;
+        } else {
+            key = (String)json["key"];
+        }
+        if (!json.ContainsKey("value")) {
+            if (DebugLevel >= 5) ConsoleWarn("UpdatePluginJSON(" + parms[0] + ") parms[1]: JSON does not contain 'value' key!");
+            return;
+        } else {
+            value = (String)json["value"];
+        }
+
+        UpdatePluginData(plugin, type, key, value);
+    } catch (Exception e) {
+        if (DebugLevel >= 5) ConsoleException(e);
+    }
+}
 
 /* ======================== CORE ENGINE ============================= */
 
