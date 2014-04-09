@@ -6055,8 +6055,16 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     bool forbidden = (((isDispersal || isRank || isClanDispersal) && Forbid(perMode, ForbidSwitchingAfterDispersal)) || (player.MovesByMBRound > 0 && !isSQDM && Forbid(perMode, ForbidSwitchingAfterAutobalance)));
 
     // Unlimited time?
-    if (!forbidden && UnlimitedTeamSwitchingDuringFirstMinutesOfRound > 0 && GetTimeInRoundMinutes() < UnlimitedTeamSwitchingDuringFirstMinutesOfRound) {
-        DebugUnswitch("ALLOWED: Time in round " + GetTimeInRoundMinutes().ToString("F0") + " < " + UnlimitedTeamSwitchingDuringFirstMinutesOfRound.ToString("F0"));
+    if (!forbidden && UnlimitedTeamSwitchingDuringFirstMinutesOfRound > 0 && GetTimeInRoundMinutes() <= UnlimitedTeamSwitchingDuringFirstMinutesOfRound) {
+        DebugUnswitch("ALLOWED: Time in round " + GetTimeInRoundMinutes().ToString("F0") + " <= " + UnlimitedTeamSwitchingDuringFirstMinutesOfRound.ToString("F0") + ": ^b" + name);
+        SetSpawnMessages(name, String.Empty, String.Empty, false);
+        CheckAbortMove(name);
+        return true;
+    }
+
+    // Minutes after joining?
+    if (!forbidden && MinutesAfterJoining > 0 && GetPlayerJoinedTimeSpan(player).TotalMinutes <= MinutesAfterJoining) {
+        DebugUnswitch("ALLOWED: Time since joining " + GetPlayerJoinedTimeSpan(player).TotalMinutes.ToString("F0") + " <= " + MinutesAfterJoining.ToString("F0") + ": ^b" + name);
         SetSpawnMessages(name, String.Empty, String.Empty, false);
         CheckAbortMove(name);
         return true;
@@ -13667,7 +13675,7 @@ private void LogStatus(bool isFinal, int level) {
     if (!isFinal && (level == 4)) ConsoleWrite("+------------------------------------------------+", 0);
 
     if (isFinal && fWinner != 0) {
-        tmsg = "^1^bWinner was team " + fWinner + " (" + GetTeamName(fWinner) + ")^n^0";
+        tmsg = "^1Winner was team " + fWinner + " (" + GetTeamName(fWinner) + ")^0";
         DebugWrite("^bStatus^n: " + tmsg, 2);
         ProconChat(tmsg);
     }
