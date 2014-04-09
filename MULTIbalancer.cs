@@ -14309,7 +14309,7 @@ static class MULTIbalancerUtils {
 
 <p><b>Lenient Rank Dispersal</b>: True or False, default False. If False, dispersal by per-mode <b>Disperse Evenly By Rank &gt;=</b> will by applied strictly, ignored all exclusions except whitelisting. Teams may get unbalanced, but ranked players will be evenly dispersed. If True, dispersal by per-mode setting of ranked players will respect most exclusions, including <b>Minutes After Being Moved</b>. Teams will be kept in balance, but ranked players may not be dispersed evenly.</p>
 
-<p><b>Minutes After Joining</b>: Number greater than or equal to 0, default 5. After joining the server, a player is excluded from being moved for balance or unstacking for this number of minutes. Set to 0 to disable. Keep in mind that most joining players were already assigned to the team with the least players. They have already 'paid their dues'.</p>
+<p><b>Minutes After Joining</b>: Number greater than or equal to 0, default 5. After joining the server, a player is excluded from being moved for balance or unstacking for this number of minutes. The player is also allowed to switch teams freely during this time. Set to 0 to disable. Keep in mind that most joining players were already assigned to the team with the least players. They have already 'paid their dues'.</p>
 
 <p><b>Minutes After Being Moved</b>: Number greater than or equal to 0, default 90. After being moved for balance or unstacking, a player is excluded from being moved again for the specified number of minutes. Set to 0 to disable.</p>
 
