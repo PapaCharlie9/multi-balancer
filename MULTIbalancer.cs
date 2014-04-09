@@ -171,6 +171,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             EnableTicketLossRatio = false;
             TicketLossSampleCount = 180;
             DisperseEvenlyByClanPlayers = 0;
+            EnableLowPopulationAdjustments = false;
             // Rush only
             Stage1TicketPercentageToUnstackAdjustment = 0;
             Stage2TicketPercentageToUnstackAdjustment = 0;
@@ -391,6 +392,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         public int MaxUnstackingTicketDifference = 0;
         public int DisperseEvenlyByClanPlayers = 0;
         public bool EnableUnstackingByPlayerStats = false;
+        public bool EnableLowPopulationAdjustments = false;
 
         // Rush only
         public double Stage1TicketPercentageToUnstackAdjustment = 0;
@@ -2009,6 +2011,8 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
             if (oneSet.EnableDisperseEvenlyList || oneSet.DisperseEvenlyByClanPlayers > 1) {
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Enable Strict Dispersal", oneSet.EnableStrictDispersal.GetType(), oneSet.EnableStrictDispersal)); 
             }
+
+            lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Enable Low Population Adjustments", oneSet.EnableLowPopulationAdjustments.GetType(), oneSet.EnableLowPopulationAdjustments));
 
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of High Population For Players >=", oneSet.DefinitionOfHighPopulationForPlayers.GetType(), oneSet.DefinitionOfHighPopulationForPlayers));
 
@@ -4789,12 +4793,15 @@ private void BalanceAndUnstack(String name) {
     }
     String orSlow = (balanceSpeed == Speed.Slow) ? " or speed is Slow" : String.Empty;
 
-    // Do not disperse mustMove players if speed is Stop or Phase is Late
+    // Do not disperse mustMove players if speed is Stop or Phase is Late or Popluation is Low and Enable Low Population Adjustments is True
     if (mustMove && balanceSpeed == Speed.Stop) {
         DebugBalance("Removing MUST MOVE status from dispersal player ^b" + player.FullName + "^n T:" + player.Team + ", due to Balance Speed = Stop");
         mustMove = false;
     } else if (mustMove && GetPhase(perMode, false) == Phase.Late) {
         DebugBalance("Removing MUST MOVE status from dispersal player ^b" + player.FullName + "^n T:" + player.Team + ", due to Phase = Late");
+        mustMove = false;
+    } else if (mustMove && perMode.EnableLowPopulationAdjustments && GetPopulation(perMode, false) == Population.Low) {
+        DebugBalance("Removing MUST MOVE status from dispersal player ^b" + player.FullName + "^n T:" + player.Team + ", due to Population = Low");
         mustMove = false;
     }
 
@@ -6031,8 +6038,16 @@ private bool CheckTeamSwitch(String name, int toTeam) {
         }
     }
 
-    // Check forbidden cases
+    // Low population adjustments?
     PerModeSettings perMode = GetPerModeSettings();
+    if (perMode.EnableLowPopulationAdjustments && GetPopulation(perMode, true) == Population.Low) {
+        DebugUnswitch("ALLOWED: Enable Low Population Adjustments is True and population is low: ^b" + name);
+        SetSpawnMessages(name, String.Empty, String.Empty, false);
+        CheckAbortMove(name);
+        return true;        
+    }
+
+    // Check forbidden cases
     bool isSQDM = IsSQDM();
     bool isDispersal = IsInDispersalList(player, false);
     bool isRank = IsRankDispersal(player);
@@ -14430,6 +14445,8 @@ For each phase, there are three unstacking settings for server population: Low, 
 <p><b>Enable Disperse Evenly List</b>: True or False, default False. If set to true, the players are matched against the <b>Disperse Evenly List</b> and any that match will be dispersed evenly across teams. This is useful to insure that certain clans or groups of players don't always dominate whatever team they are not on.</p>
 
 <p><b>Enable Strict Dispersal</b>: True or False, default True. Only visible if <b>Disperse Evenly By Clan Players</b> or <b>Enable Disperse Evenly List</b> is set to True. If set to True, players will be moved for dispersal, ignoring all exclusions except whitelisting. This may result in wildly unbalanced teams, but absolutely guarantees that players are dispersed. If set to False, players will be moved for dispersal, but many exclusions will apply, such as <b>Same Clan Tags In Squad</b> and <b>Minutes After Being Moved</b>. The teams will be kept in balance, but players may not be dispersed evenly.</p>
+
+<p><b>Enable Low Population Adjustments</b>: True or False, default False. If set to True, when the population of a server is low, all <b>Forbid ...</b> settings in the Unswitcher section are treated as <i>Never</i> (meaning, team switching is allowed in all circumstances), and all disperse evenly settings, such as <b>Disperse Evenly By Rank &gt;=</b> are ignored, until the population rises above your <b>Definition Of Low Population For Players &lt;=</b> setting.</p>
 
 <p><b>Definition Of High Population For Players &gt;=</b>: Number greater than or equal to 0 and less than or equal to <b>Max&nbsp;Players</b>. This is where you define the High population level. If the total number of players in the server is greater than or equal to this number, population is High.</p>
 
