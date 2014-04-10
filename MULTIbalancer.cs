@@ -1664,7 +1664,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.1.2.0";
+    return "1.1.2.1";
 }
 
 public String GetPluginAuthor() {
@@ -14126,7 +14126,6 @@ static class MULTIbalancerUtils {
 <ul>
 <li><b>Official mode</b>: this plugin <b>WILL NOT WORK</b> on Official mode servers -- due to admin.movePlayer being disabled on Official mode.</li>
 <li><b>Battlelog Cache</b>: needs to be updated to BF4.</li>
-<li><b>Yell settings</b>: yell is not supported in BF4, as of patch R20.</li>
 </ul></p>
 
 <h2>NOTICE</h2>
