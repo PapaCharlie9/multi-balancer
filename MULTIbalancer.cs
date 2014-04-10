@@ -5310,7 +5310,7 @@ private void BalanceAndUnstack(String name) {
         return;
     }
 
-    String um = "Ticket ratio " + (ratio*100.0).ToString("F0") + " vs. unstack ratio of " + (unstackTicketRatio*100.0).ToString("F0");
+    String um = "Current ratio " + (ratio*100.0).ToString("F0") + " vs. unstack ratio of " + (unstackTicketRatio*100.0).ToString("F0");
 
     // Using player stats instead of ticket ratio
     if (perMode.EnableUnstackingByPlayerStats) {
