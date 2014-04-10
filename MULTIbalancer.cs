@@ -12439,10 +12439,14 @@ private void InGameCommand(String msg, ChatScope scope, int team, int squad, Str
 
     if (mbScramInfoCmd.Success) {
         lines = new List<String>();
-        if (fScrambleByCommand) {
-            lines.Add("Teams WILL be scrambled at end of round");
+        if (OnlyByCommand) {
+            if (fScrambleByCommand) {
+                lines.Add("Teams WILL be scrambled at end of round");
+            } else {
+                lines.Add("No scrambling of teams at end of round");
+            }
         } else {
-            lines.Add("No scrambling of teams at end of round");
+            lines.Add("Only By Command setting is False, in-game admin command is disabled");
         }
         SayLines(lines, name);
         return;
@@ -12450,6 +12454,10 @@ private void InGameCommand(String msg, ChatScope scope, int team, int squad, Str
 
     if (mbScrambleCmd.Success) {
         lines = new List<String>();
+        if (!OnlyByCommand) {
+            lines.Add("Only By Command setting is False, in-game admin command is disabled");
+            return;
+        }
         String which = mbScrambleCmd.Groups[1].Value.ToLower();
         switch (which.ToLower()) {
             case "on":
