@@ -14154,7 +14154,7 @@ static class MULTIbalancerUtils {
 <h3>Quick Start</h3>
 <p>Don't want to spend a lot of time learning all of the settings for this plugin? Just follow these quick start steps:
 
-<p>1) Select a <b>Preset</b> at the top of the plugin settings:
+<p>1) Select a <b>Preset</b> at the top of the plugin settings (<b>NOTE</b>: In all of the following presets, references to 'unstack teams' depend on the <b>Enable Unstacking</b> setting -- leave that set to False unless you are absolutely sure you want to use unstacking):
 <table>
 <tr><td><b>Standard</b></td><td>Autobalance and unstack teams, good for most server configurations</td></tr>
 <tr><td><b>Aggressive</b></td><td>Autobalance and unstack teams quickly, moving lots of players in a short amount of time</td></tr>
