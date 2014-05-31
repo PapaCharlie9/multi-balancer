@@ -14387,7 +14387,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Moved To Unstack</b>: Message sent after a player is moved to unstack teams.</p>
 
-<p><b>Detected Bad Team Switch</b>: Message sent after a player tries to make a forbidden team switch if [b]Enable Immediate Unswitch[/b] is set to False (see Section 6 below) or mode is Squad Deathmatch. The message is sent before the player is admin killed and sent back to his original team.</p>
+<p><b>Detected Bad Team Switch</b>: Message sent after a player tries to make a forbidden team switch if <b>Enable Immediate Unswitch</b> is set to False (see Section 6 below) or mode is Squad Deathmatch. The message is sent before the player is admin killed and sent back to his original team.</p>
 
 <p><b>Bad Because: Moved By Balancer</b>: Replacement for %reason% if the player tried to move to a different team from the one the plugin have moved them to for balance or unstacking.</p>
 
