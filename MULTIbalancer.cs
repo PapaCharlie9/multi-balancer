@@ -1112,6 +1112,8 @@ public String YellDetectedGoodTeamSwitch;
 public String ChatAfterUnswitching;
 public String YellAfterUnswitching;
 public String TeamsWillBeScrambled;
+public String ChatAutobalancing;
+public String YellAutobalancing;
 
 public String ShowInLog; // legacy variable, if defined as String.Empty, settings are pre-v1
 public String ShowCommandInLog; // command line to show info in plugin.log
@@ -1386,6 +1388,8 @@ public MULTIbalancer() {
     ChatAfterUnswitching = "%name%, please stay on the %toTeam% team for the rest of this round";
     YellAfterUnswitching = "Please stay on the %toTeam% team for the rest of this round";
     TeamsWillBeScrambled = "*** Teams will be SCRAMBLED next round!";
+    ChatAutobalancing = "Preparing to autobalance ... (%technicalDetails%)";
+    YellAutobalancing = String.Empty; // no yell by default
     
     /* ===== SECTION 6 - Unswitcher ===== */
 
@@ -1933,6 +1937,10 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         lstReturn.Add(new CPluginVariable("5 - Messages|Yell: After Unswitching", YellAfterUnswitching.GetType(), YellAfterUnswitching));
         
         lstReturn.Add(new CPluginVariable("5 - Messages|Teams Will Be Scrambled", TeamsWillBeScrambled.GetType(), TeamsWillBeScrambled));
+        
+        lstReturn.Add(new CPluginVariable("5 - Messages|Chat: Autobalancing", ChatAutobalancing.GetType(), ChatAutobalancing));
+        
+        lstReturn.Add(new CPluginVariable("5 - Messages|Yell: Autobalancing", YellAutobalancing.GetType(), YellAutobalancing));
 
 
         /* ===== SECTION 6 - Unswitcher ===== */
@@ -2580,6 +2588,8 @@ private void ResetSettings() {
     ChatAfterUnswitching = rhs.ChatAfterUnswitching;
     YellAfterUnswitching = rhs.YellAfterUnswitching;
     TeamsWillBeScrambled = rhs.TeamsWillBeScrambled;
+    ChatAutobalancing = rhs.ChatAutobalancing;
+    YellAutobalancing = rhs.YellAutobalancing;
     
     /* ===== SECTION 6 - Unswitcher ===== */
 
@@ -13833,21 +13843,47 @@ private void LogStatus(bool isFinal, int level) {
         counts.Add(fTeam3.Count);
         counts.Add(fTeam4.Count);
     }
+
+    // Announce autobalancing status
     
     counts.Sort();
     int diff = Math.Abs(counts[0] - counts[counts.Count-1]);
     String next = "^n";
+    String annType = null;
 
     if (EnableAdminKillForFastBalance && diff >= MaxFastDiff()) {
         next = "^n^0 ... fast balance with admin kills in progress!";
+        annType = "USING ADMIN KILL";
     } else if ((totalPlayers >= 6 && diff > MaxDiff() && fGameState == GameState.Playing && balanceSpeed != Speed.Stop && !fBalanceIsActive)) {
         next = "^n^0 ... autobalance will activate as soon as possible!";
+
+        if (fUnassigned.Count >= (diff - MaxDiff())) {
+            annType = "WAITING FOR " + fUnassigned.Count + " PLAYERS TO JOIN";
+        } else {
+            annType = "MOVE ON DEATH";
+        }
     }
+
+    // Team difference
     
     if (level >= 4) {
         String md = ((diff > MaxDiff()) ? "^8^b" : "^b") + diff + ((diff > MaxFastDiff() && EnableAdminKillForFastBalance) ? " (FAST)" : String.Empty);
         DebugWrite("^bStatus^n: Team difference = " + md + next, 0);
     }
+
+    // chats and yells
+
+    String cab = ChatAutobalancing;
+    String yab = YellAutobalancing;
+    if (!String.IsNullOrEmpty(cab) && cab.Contains("%technicalDetails%"))
+        cab = cab.Replace("%technicalDetails%", annType);
+    if (!String.IsNullOrEmpty(yab) && yab.Contains("%technicalDetails%"))
+        yab = yab.Replace("%technicalDetails%", annType);
+
+    if (annType != null && !String.IsNullOrEmpty(cab))
+        Chat("all", cab);
+    if (annType != null && !String.IsNullOrEmpty(yab))
+        Yell("all", yab);
 
   } catch (Exception e) {
     ConsoleException(e);
@@ -14380,6 +14416,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 <tr><td>%fromTeam%</td><td>team the player is currently on, as 'US' or 'RU', or 'Alpha', 'Bravo', 'Charlie', or 'Delta' for SQDM, or 'T1:US/RU' or 'T2:CN/RU' for BF4.</td></tr>
 <tr><td>%toTeam%</td><td>team the plugin will move the player to, same team name substitutions as for %fromTeam%</td></tr>
 <tr><td>%reason%</td><td>ONLY APPLIES TO BAD TEAM SWITCH: reason for switching the player back, may contain other replacements</td></tr>
+<tr><td>%technicalDetails%</td><td>THIS IS PROVIDED BY THE PLUGIN: Details about how the autobalancer is preparing to balance or why it is taking so long</td></tr>
 </table></p>
 
 <p><b>Quiet Mode</b>: True or False, default False. If False, chat messages are sent to all players and yells are sent to the player being moved. If True, chat and yell messages are only sent to the player being moved.</p>
