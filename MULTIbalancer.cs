@@ -996,6 +996,7 @@ private DateTime fLastValidationTimestamp;
 private int[] fFactionByTeam = null;
 private double fRoundTimeLimit = 1.0;
 private bool fScrambleByCommand = false;
+private bool fDisableUnswitcherByRemote = false;
 
 // Operational statistics
 private int fReassignedRound = 0;
@@ -1281,6 +1282,7 @@ public MULTIbalancer() {
     fLastFastMoveTimestamp = DateTime.MinValue;
     fRoundTimeLimit = 1.0;
     fScrambleByCommand = false;
+    fDisableUnswitcherByRemote = false;
     
     /* Settings */
 
@@ -3753,6 +3755,20 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
             // If this was an MB move, finish it
             bool wasPluginMove = FinishMove(soldierName, teamId);
 
+            // Handle remote disabling of unswitcher
+            bool dontDoubleCount = false;
+            if (fDisableUnswitcherByRemote) {
+                DebugWrite("^nPlayer ^b" + soldierName + "^n moved to team " + teamId + ": ^8another plugin DISABLED the unswitcher!^0^n", 4);
+                PlayerModel lucky = GetPlayer(soldierName);
+                if (lucky != null) {
+                    lucky.MovesRound = lucky.MovesRound + 1;
+                    UpdatePlayerTeam(soldierName, teamId);
+                    UpdateTeams();
+                    dontDoubleCount = true;
+                    // Do not increment stats
+                }
+            }
+
             /*
              * We need to determine if this team change was instigated by a player or by an admin (plugin).
              * We want to ignore moves by admin. This is tricky due to the events possibly being 
@@ -3767,9 +3783,11 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
                 if (!wasPluginMove) {
                     // Some other admin.movePlayer, so update to account for it
                     DebugWrite("^4^bADMIN^n moved player ^b" + soldierName + "^n, " + GetPluginName() + " will respect this move", 2);
-                    ConditionalIncrementMoves(soldierName);
-                    UpdatePlayerTeam(soldierName, teamId);
-                    UpdateTeams();
+                    if (dontDoubleCount) {
+                        ConditionalIncrementMoves(soldierName);
+                        UpdatePlayerTeam(soldierName, teamId);
+                        UpdateTeams();
+                    }
                 } // MB moves incremented by FinishMove, so nothing to do here
                 return;
             }
@@ -3807,10 +3825,15 @@ public override void OnPlayerIsAlive(string soldierName, bool isAlive) {
 
             // Check if player is allowed to switch teams
             // Unswitch is handled in CheckTeamSwitch
-            if (CheckTeamSwitch(soldierName, team)) {
-                UpdatePlayerTeam(soldierName, team);
-                UpdateTeams();        
-                IncrementTotal(); // No matching stat, reflects allowed team switches
+            // Unswitch is skipped if disabled by remote
+            if (!fDisableUnswitcherByRemote) {
+                if (CheckTeamSwitch(soldierName, team)) {
+                    UpdatePlayerTeam(soldierName, team);
+                    UpdateTeams();        
+                    IncrementTotal(); // No matching stat, reflects allowed team switches
+                }
+            } else {
+                DebugWrite("^nSkipped check for unswitch for ^b" + soldierName + "^n: ^8another plugin DISABLED the Unswitcher!", 4);
             }
         }
     } catch (Exception e) {
@@ -3825,6 +3848,9 @@ public override void OnPlayerMovedByAdmin(string soldierName, int destinationTea
 
     try {
         if (fPluginState == PluginState.Active && fGameState == GameState.Playing) {
+            if (fDisableUnswitcherByRemote) {
+                DebugWrite("^nADMIN MOVED ^b" + soldierName + "^n to team " + destinationTeamId + ": ^8another plugin DISABLED the Unswitcher!", 4);
+            }
             if (fPendingTeamChange.ContainsKey(soldierName)) {
                 // this is an admin move in reversed order, clear from pending table
                 fPendingTeamChange.Remove(soldierName);
@@ -4547,9 +4573,22 @@ public void UpdatePluginData(params String[] parms) {
                 } else {
                     fScrambleByCommand = (bool)value;
                     if (fScrambleByCommand) {
-                        DebugScrambler("Plugin " + calledFrom + " turned team scrambling ON for this round!");
+                        DebugWrite("Plugin " + calledFrom + " turned team scrambling ON for this round!", 4);
                     } else {
-                        DebugScrambler("Plugin " + calledFrom + " turned team scrambling OFF for this round!");
+                        DebugWrite("Plugin " + calledFrom + " turned team scrambling OFF for this round!", 4);
+                    }
+                }
+                break;
+            case "DisableUnswitcher":
+                if (type != typeof(bool)) {
+                    if (DebugLevel >= 5) ConsoleWarn("UpdatePluginData(" + calledFrom + ", " + key + ") expected bool, got " + parms[1]);
+                    return;
+                } else {
+                    fDisableUnswitcherByRemote = (bool)value;
+                    if (fDisableUnswitcherByRemote) {
+                        DebugWrite("Plugin " + calledFrom + " turned unswitching OFF for this round!", 4);
+                    } else {
+                        DebugWrite("Plugin " + calledFrom + " turned unswitching ON for this round!", 4);
                     }
                 }
                 break;
@@ -9796,6 +9835,7 @@ private void ResetRound() {
     fGrandRageQuits = fGrandRageQuits + fRageQuits;
     fRageQuits = 0;
     fScrambleByCommand = false;
+    fDisableUnswitcherByRemote = false;
 
     fLastBalancedTimestamp = DateTime.MinValue;
 
