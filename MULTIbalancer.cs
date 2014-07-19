@@ -1664,7 +1664,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.1.2.1";
+    return "1.1.3.0";
 }
 
 public String GetPluginAuthor() {
@@ -4226,7 +4226,7 @@ public override void OnGlobalChat(String speaker, String message) {
     if (DebugLevel >= 8) ConsoleDebug("OnGlobalChat(" + speaker + ", '" + message + ")");
 
     try {
-        if (Regex.Match(message, @"^\s*[!@#]mb", RegexOptions.IgnoreCase).Success) {
+        if (Regex.Match(message, @"^\s*/?[!@#]mb", RegexOptions.IgnoreCase).Success) {
             InGameCommand(message, ChatScope.Global, 0, 0, speaker);
         } else {
             if (EnableAdminKillForFastBalance && speaker != "Server") {
@@ -4243,7 +4243,7 @@ public override void OnTeamChat(String speaker, String message, int teamId) {
     if (DebugLevel >= 8) ConsoleDebug("OnTeamChat(" + speaker + ", '" + message + "', " +teamId + ")");
 
     try {
-        if (Regex.Match(message, @"^\s*[!@#]mb", RegexOptions.IgnoreCase).Success) {
+        if (Regex.Match(message, @"^\s*/?[!@#]mb", RegexOptions.IgnoreCase).Success) {
             InGameCommand(message, ChatScope.Team, teamId, 0, speaker);
         } else {
             if (EnableAdminKillForFastBalance && speaker != "Server" && !message.StartsWith("ID_CHAT")) {
@@ -4259,7 +4259,7 @@ public override void OnSquadChat(String speaker, String message, int teamId, int
     if (!fIsEnabled) return;
 
     try {
-        if (Regex.Match(message, @"^\s*[!@#]mb", RegexOptions.IgnoreCase).Success) {
+        if (Regex.Match(message, @"^\s*/?[!@#]mb", RegexOptions.IgnoreCase).Success) {
             InGameCommand(message, ChatScope.Squad, teamId, squadId, speaker);
         }
     } catch (Exception e) {
@@ -12353,12 +12353,12 @@ private void InGameCommand(String msg, ChatScope scope, int team, int squad, Str
         return;
     }
 
-    Match mbCmd = Regex.Match(msg, @"^\s*[@!#]mb\s+([\w]+)\s+(.*)$", RegexOptions.IgnoreCase);
-    Match mbSubCmd = Regex.Match(msg, @"^\s*[@!#]mb\s+(sub|unsub)", RegexOptions.IgnoreCase);
-    Match mbHelp = Regex.Match(msg, @"^\s*[@!#]mb\s+help\s*$", RegexOptions.IgnoreCase);
-    Match mbHelpCmd = Regex.Match(msg, @"^\s*[@!#]mb\s+help\s+(add|del|list|new|sub|unsub|scramble)", RegexOptions.IgnoreCase);
-    Match mbScrambleCmd = Regex.Match(msg, @"^\s*[@!#]mb\s+scramble\s+(on|off|true|false|yes|no|enable|disable)", RegexOptions.IgnoreCase);
-    Match mbScramInfoCmd = Regex.Match(msg, @"^\s*[@!#]mb\s+scramble\s*$", RegexOptions.IgnoreCase);
+    Match mbCmd = Regex.Match(msg, @"^\s*/?[@!#]mb\s+([\w]+)\s+(.*)$", RegexOptions.IgnoreCase);
+    Match mbSubCmd = Regex.Match(msg, @"^\s*/?[@!#]mb\s+(sub|unsub)", RegexOptions.IgnoreCase);
+    Match mbHelp = Regex.Match(msg, @"^\s*/?[@!#]mb\s+help\s*$", RegexOptions.IgnoreCase);
+    Match mbHelpCmd = Regex.Match(msg, @"^\s*/?[@!#]mb\s+help\s+(add|del|list|new|sub|unsub|scramble)", RegexOptions.IgnoreCase);
+    Match mbScrambleCmd = Regex.Match(msg, @"^\s*/?[@!#]mb\s+scramble\s+(on|off|true|false|yes|no|enable|disable)", RegexOptions.IgnoreCase);
+    Match mbScramInfoCmd = Regex.Match(msg, @"^\s*/?[@!#]mb\s+scramble\s*$", RegexOptions.IgnoreCase);
 
     List<String> lines = null;
     PlayerModel player = null;
