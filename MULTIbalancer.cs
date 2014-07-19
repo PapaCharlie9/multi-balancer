@@ -1987,17 +1987,19 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Max Players", oneSet.MaxPlayers.GetType(), oneSet.MaxPlayers));
 
             if (!isGM) {
-                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Check Team Stacking After First Minutes", oneSet.CheckTeamStackingAfterFirstMinutes.GetType(), oneSet.CheckTeamStackingAfterFirstMinutes));
+                if (EnableUnstacking) {
+                    lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Check Team Stacking After First Minutes", oneSet.CheckTeamStackingAfterFirstMinutes.GetType(), oneSet.CheckTeamStackingAfterFirstMinutes));
 
-                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Max Unstacking Swaps Per Round", oneSet.MaxUnstackingSwapsPerRound.GetType(), oneSet.MaxUnstackingSwapsPerRound));
+                    lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Max Unstacking Swaps Per Round", oneSet.MaxUnstackingSwapsPerRound.GetType(), oneSet.MaxUnstackingSwapsPerRound));
 
-                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Number Of Swaps Per Group", oneSet.NumberOfSwapsPerGroup.GetType(), oneSet.NumberOfSwapsPerGroup));
+                    lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Number Of Swaps Per Group", oneSet.NumberOfSwapsPerGroup.GetType(), oneSet.NumberOfSwapsPerGroup));
 
-                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Delay Seconds Between Swap Groups", oneSet.DelaySecondsBetweenSwapGroups.GetType(), oneSet.DelaySecondsBetweenSwapGroups));
+                    lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Delay Seconds Between Swap Groups", oneSet.DelaySecondsBetweenSwapGroups.GetType(), oneSet.DelaySecondsBetweenSwapGroups));
 
-                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Max Unstacking Ticket Difference", oneSet.MaxUnstackingTicketDifference.GetType(), oneSet.MaxUnstackingTicketDifference));
+                    lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Max Unstacking Ticket Difference", oneSet.MaxUnstackingTicketDifference.GetType(), oneSet.MaxUnstackingTicketDifference));
 
-                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Enable Unstacking By Player Stats", oneSet.EnableUnstackingByPlayerStats.GetType(), oneSet.EnableUnstackingByPlayerStats));
+                    lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Enable Unstacking By Player Stats", oneSet.EnableUnstackingByPlayerStats.GetType(), oneSet.EnableUnstackingByPlayerStats));
+                }
 
                 var_name = "8 - Settings for " + sm + "|" + sm + ": " + "Determine Strong Players By";
                 var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(DefineStrong))) + ")";
@@ -2041,7 +2043,7 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
             }
 
-            if (isRush) {
+            if (isRush && EnableUnstacking) {
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Stage 1 Ticket Percentage To Unstack Adjustment", oneSet.Stage1TicketPercentageToUnstackAdjustment.GetType(), oneSet.Stage1TicketPercentageToUnstackAdjustment));
 
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Stage 2 Ticket Percentage To Unstack Adjustment", oneSet.Stage2TicketPercentageToUnstackAdjustment.GetType(), oneSet.Stage2TicketPercentageToUnstackAdjustment));
@@ -7143,8 +7145,13 @@ private void Scrambler(List<TeamScore> teamScores) {
     }
 
     int totalPlayers = TotalPlayerCount();
-    if (!fScrambleByCommand && totalPlayers < 16) {
-        DebugScrambler("Not enough players to scramble, at least 16 required: " + totalPlayers);
+    int minNeeded = (perMode.EnableLowPopulationAdjustments) ? 6 : 16;
+    if (!KeepSquadsTogether && !KeepClanTagsInSameTeam && !KeepFriendsInSameTeam) {
+        DebugScrambler("All Keep settings are False, relaxing min needed requirement!");
+        minNeeded = 6;
+    }
+    if (!fScrambleByCommand && totalPlayers < minNeeded) {
+        DebugScrambler("Not enough players to scramble, at least " + minNeeded + " required: " + totalPlayers);
         return;
     }
 
@@ -7218,6 +7225,49 @@ private void Scrambler(List<TeamScore> teamScores) {
         fScramblerLock.MaxDelay = DelaySeconds;
         fScramblerLock.LastUpdate = DateTime.Now;
         Monitor.Pulse(fScramblerLock);
+    }
+}
+
+
+private void ScrambleLoneWolves(List<PlayerModel> loneWolves, Dictionary<int,SquadRoster> squads, int whichTeam) {
+    // Add lone wolves to empty squads
+    int key = 0;
+    int emptyId = 1;
+    SquadRoster home = null;
+    bool filling = false;
+    // Do Team 1 first
+    foreach (PlayerModel wolf in loneWolves) {
+        if (wolf.Team != whichTeam)
+            continue;
+        bool goback = true;
+        while (goback) {
+            if (!filling) {
+                // Need to find an empty squad
+                key = (wolf.Team * 1000) + emptyId;
+                while (squads.ContainsKey(key)) {
+                    emptyId = emptyId + 1;
+                    if (emptyId > (SQUAD_NAMES.Length - 1)) break;
+                    key = (wolf.Team * 1000) + emptyId;
+                }
+                filling = true;
+            }
+            if (emptyId > (SQUAD_NAMES.Length - 1)) break;
+            if (filling) {
+                // Add wolf to the squad we are filling until full
+                key = (wolf.Team * 1000) + emptyId;
+                home = AddPlayerToSquadRoster(squads, wolf, key, emptyId, false);
+                if (home == null || !home.Roster.Contains(wolf)) {
+                    // Full
+                    filling = false;
+                    continue;
+                } else {
+                    // Next wolf
+                    DebugScrambler("Lone wolf ^b" + wolf.Name + "^n filled in empty squad " + wolf.Team + "/" + emptyId);
+                    goback = false;
+                    continue;
+                }
+            }
+        }
     }
 }
 
@@ -7423,10 +7473,14 @@ private void ScramblerLoop () {
                 }
 
                 // Add lone wolves to empty squads
-                int emptyId = 1;
-                SquadRoster home = null;
+                ScrambleLoneWolves(loneWolves, squads, 1);
+                ScrambleLoneWolves(loneWolves, squads, 2);
+                /*
                 bool filling = false;
+                // Do Team 1 first
                 foreach (PlayerModel wolf in loneWolves) {
+                    if (wolf.Team != 1)
+                        continue;
                     bool goback = true;
                     while (goback) {
                         if (!filling) {
@@ -7457,6 +7511,7 @@ private void ScramblerLoop () {
                         }
                     }
                 }
+                */
 
                 // Sum up the metric for each squad
                 foreach (int k in squads.Keys) {
