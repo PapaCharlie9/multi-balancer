@@ -9504,6 +9504,9 @@ private List<String> GetSimplifiedModes() {
                     case "Carrier Assault Small":
                         simple = "NS Carrier Small";
                         break;
+                    case "Chain Link":
+                        simple = "DT Chain Link";
+                        break;
                     default:
                         simple = "Unknown or New Mode";
                         break;
@@ -9752,7 +9755,7 @@ private bool IsCTF() {
 
 private bool IsConquest() {
     if (fServerInfo == null) return false;
-    return Regex.Match(fServerInfo.GameMode, @"(Conquest|Domination|Scavenger)", RegexOptions.IgnoreCase).Success;
+    return Regex.Match(fServerInfo.GameMode, @"(Conquest|Domination|Scavenger|Chain)", RegexOptions.IgnoreCase).Success;
 }
 
 private bool IsCarrierAssault() {
