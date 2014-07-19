@@ -7132,7 +7132,7 @@ private void Scrambler(List<TeamScore> teamScores) {
     }
 
     int current = fServerInfo.CurrentRound + 1; // zero based index
-    if (!OnlyByCommand && OnlyOnNewMaps && current < fServerInfo.TotalRounds) {
+    if (!fScrambleByCommand && OnlyOnNewMaps && current < fServerInfo.TotalRounds) {
         DebugScrambler("Only scrambling new maps and this is only round " + current + " of " + fServerInfo.TotalRounds);
         return;
     }
@@ -7143,12 +7143,12 @@ private void Scrambler(List<TeamScore> teamScores) {
     }
 
     int totalPlayers = TotalPlayerCount();
-    if (totalPlayers < 16) {
+    if (!fScrambleByCommand && totalPlayers < 16) {
         DebugScrambler("Not enough players to scramble, at least 16 required: " + totalPlayers);
         return;
     }
 
-    if (!IsCTF() && !IsCarrierAssault() && !OnlyByCommand && OnlyOnFinalTicketPercentage > 100) {
+    if (!IsCTF() && !IsCarrierAssault() && !fScrambleByCommand && OnlyOnFinalTicketPercentage > 100) {
         if (teamScores == null || teamScores.Count < 2) {
             DebugScrambler("DEBUG: no final team scores");
             return;
