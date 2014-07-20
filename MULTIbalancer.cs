@@ -4844,9 +4844,12 @@ private void BalanceAndUnstack(String name) {
     }
     String orSlow = (balanceSpeed == Speed.Slow) ? " or speed is Slow" : String.Empty;
 
-    // Do not disperse mustMove players if speed is Stop or Phase is Late or Popluation is Low and Enable Low Population Adjustments is True
+    // Do not disperse mustMove players if speed is Stop or Slow or Phase is Late or Popluation is Low and Enable Low Population Adjustments is True
     if (mustMove && balanceSpeed == Speed.Stop) {
         DebugBalance("Removing MUST MOVE status from dispersal player ^b" + player.FullName + "^n T:" + player.Team + ", due to Balance Speed = Stop");
+        mustMove = false;
+    } else if (mustMove && balanceSpeed == Speed.Slow) {
+        DebugBalance("Removing MUST MOVE status from dispersal player ^b" + player.FullName + "^n T:" + player.Team + ", due to Balance Speed = Slow");
         mustMove = false;
     } else if (mustMove && GetPhase(perMode, false) == Phase.Late) {
         DebugBalance("Removing MUST MOVE status from dispersal player ^b" + player.FullName + "^n T:" + player.Team + ", due to Phase = Late");
