@@ -3762,6 +3762,7 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
                 PlayerModel lucky = GetPlayer(soldierName);
                 if (lucky != null) {
                     lucky.MovesRound = lucky.MovesRound + 1;
+                    UpdateMoveTime(soldierName);
                     UpdatePlayerTeam(soldierName, teamId);
                     UpdateTeams();
                     dontDoubleCount = true;
@@ -6095,7 +6096,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     // Low population adjustments?
     PerModeSettings perMode = GetPerModeSettings();
     if (perMode.EnableLowPopulationAdjustments && GetPopulation(perMode, true) == Population.Low) {
-        DebugUnswitch("ALLOWED: Enable Low Population Adjustments is True and population is low: ^b" + name);
+        DebugUnswitch("ALLOWED: Enable Low Population Adjustments is True and population is Low: ^b" + name);
         SetSpawnMessages(name, String.Empty, String.Empty, false);
         CheckAbortMove(name);
         return true;        
