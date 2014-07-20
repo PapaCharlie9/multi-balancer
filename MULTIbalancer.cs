@@ -996,6 +996,7 @@ private DateTime fLastValidationTimestamp;
 private int[] fFactionByTeam = null;
 private double fRoundTimeLimit = 1.0;
 private bool fScrambleByCommand = false;
+private bool fDisableUnswitcherByRemote = false;
 
 // Operational statistics
 private int fReassignedRound = 0;
@@ -1112,6 +1113,8 @@ public String YellDetectedGoodTeamSwitch;
 public String ChatAfterUnswitching;
 public String YellAfterUnswitching;
 public String TeamsWillBeScrambled;
+public String ChatAutobalancing;
+public String YellAutobalancing;
 
 public String ShowInLog; // legacy variable, if defined as String.Empty, settings are pre-v1
 public String ShowCommandInLog; // command line to show info in plugin.log
@@ -1279,6 +1282,7 @@ public MULTIbalancer() {
     fLastFastMoveTimestamp = DateTime.MinValue;
     fRoundTimeLimit = 1.0;
     fScrambleByCommand = false;
+    fDisableUnswitcherByRemote = false;
     
     /* Settings */
 
@@ -1386,6 +1390,8 @@ public MULTIbalancer() {
     ChatAfterUnswitching = "%name%, please stay on the %toTeam% team for the rest of this round";
     YellAfterUnswitching = "Please stay on the %toTeam% team for the rest of this round";
     TeamsWillBeScrambled = "*** Teams will be SCRAMBLED next round!";
+    ChatAutobalancing = "Preparing to autobalance ... (%technicalDetails%)";
+    YellAutobalancing = String.Empty; // no yell by default
     
     /* ===== SECTION 6 - Unswitcher ===== */
 
@@ -1664,7 +1670,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.1.2.0";
+    return "1.1.3.0";
 }
 
 public String GetPluginAuthor() {
@@ -1933,6 +1939,10 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         lstReturn.Add(new CPluginVariable("5 - Messages|Yell: After Unswitching", YellAfterUnswitching.GetType(), YellAfterUnswitching));
         
         lstReturn.Add(new CPluginVariable("5 - Messages|Teams Will Be Scrambled", TeamsWillBeScrambled.GetType(), TeamsWillBeScrambled));
+        
+        lstReturn.Add(new CPluginVariable("5 - Messages|Chat: Autobalancing", ChatAutobalancing.GetType(), ChatAutobalancing));
+        
+        lstReturn.Add(new CPluginVariable("5 - Messages|Yell: Autobalancing", YellAutobalancing.GetType(), YellAutobalancing));
 
 
         /* ===== SECTION 6 - Unswitcher ===== */
@@ -1979,17 +1989,19 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Max Players", oneSet.MaxPlayers.GetType(), oneSet.MaxPlayers));
 
             if (!isGM) {
-                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Check Team Stacking After First Minutes", oneSet.CheckTeamStackingAfterFirstMinutes.GetType(), oneSet.CheckTeamStackingAfterFirstMinutes));
+                if (EnableUnstacking) {
+                    lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Check Team Stacking After First Minutes", oneSet.CheckTeamStackingAfterFirstMinutes.GetType(), oneSet.CheckTeamStackingAfterFirstMinutes));
 
-                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Max Unstacking Swaps Per Round", oneSet.MaxUnstackingSwapsPerRound.GetType(), oneSet.MaxUnstackingSwapsPerRound));
+                    lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Max Unstacking Swaps Per Round", oneSet.MaxUnstackingSwapsPerRound.GetType(), oneSet.MaxUnstackingSwapsPerRound));
 
-                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Number Of Swaps Per Group", oneSet.NumberOfSwapsPerGroup.GetType(), oneSet.NumberOfSwapsPerGroup));
+                    lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Number Of Swaps Per Group", oneSet.NumberOfSwapsPerGroup.GetType(), oneSet.NumberOfSwapsPerGroup));
 
-                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Delay Seconds Between Swap Groups", oneSet.DelaySecondsBetweenSwapGroups.GetType(), oneSet.DelaySecondsBetweenSwapGroups));
+                    lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Delay Seconds Between Swap Groups", oneSet.DelaySecondsBetweenSwapGroups.GetType(), oneSet.DelaySecondsBetweenSwapGroups));
 
-                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Max Unstacking Ticket Difference", oneSet.MaxUnstackingTicketDifference.GetType(), oneSet.MaxUnstackingTicketDifference));
+                    lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Max Unstacking Ticket Difference", oneSet.MaxUnstackingTicketDifference.GetType(), oneSet.MaxUnstackingTicketDifference));
 
-                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Enable Unstacking By Player Stats", oneSet.EnableUnstackingByPlayerStats.GetType(), oneSet.EnableUnstackingByPlayerStats));
+                    lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Enable Unstacking By Player Stats", oneSet.EnableUnstackingByPlayerStats.GetType(), oneSet.EnableUnstackingByPlayerStats));
+                }
 
                 var_name = "8 - Settings for " + sm + "|" + sm + ": " + "Determine Strong Players By";
                 var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(DefineStrong))) + ")";
@@ -2033,7 +2045,7 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
             }
 
-            if (isRush) {
+            if (isRush && EnableUnstacking) {
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Stage 1 Ticket Percentage To Unstack Adjustment", oneSet.Stage1TicketPercentageToUnstackAdjustment.GetType(), oneSet.Stage1TicketPercentageToUnstackAdjustment));
 
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Stage 2 Ticket Percentage To Unstack Adjustment", oneSet.Stage2TicketPercentageToUnstackAdjustment.GetType(), oneSet.Stage2TicketPercentageToUnstackAdjustment));
@@ -2580,6 +2592,8 @@ private void ResetSettings() {
     ChatAfterUnswitching = rhs.ChatAfterUnswitching;
     YellAfterUnswitching = rhs.YellAfterUnswitching;
     TeamsWillBeScrambled = rhs.TeamsWillBeScrambled;
+    ChatAutobalancing = rhs.ChatAutobalancing;
+    YellAutobalancing = rhs.YellAutobalancing;
     
     /* ===== SECTION 6 - Unswitcher ===== */
 
@@ -3741,6 +3755,21 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
             // If this was an MB move, finish it
             bool wasPluginMove = FinishMove(soldierName, teamId);
 
+            // Handle remote disabling of unswitcher
+            bool dontDoubleCount = false;
+            if (fDisableUnswitcherByRemote) {
+                DebugWrite("^nPlayer ^b" + soldierName + "^n moved to team " + teamId + ": ^8another plugin DISABLED the unswitcher!^0^n", 4);
+                PlayerModel lucky = GetPlayer(soldierName);
+                if (lucky != null) {
+                    lucky.MovesRound = lucky.MovesRound + 1;
+                    UpdateMoveTime(soldierName);
+                    UpdatePlayerTeam(soldierName, teamId);
+                    UpdateTeams();
+                    dontDoubleCount = true;
+                    // Do not increment stats
+                }
+            }
+
             /*
              * We need to determine if this team change was instigated by a player or by an admin (plugin).
              * We want to ignore moves by admin. This is tricky due to the events possibly being 
@@ -3755,9 +3784,11 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
                 if (!wasPluginMove) {
                     // Some other admin.movePlayer, so update to account for it
                     DebugWrite("^4^bADMIN^n moved player ^b" + soldierName + "^n, " + GetPluginName() + " will respect this move", 2);
-                    ConditionalIncrementMoves(soldierName);
-                    UpdatePlayerTeam(soldierName, teamId);
-                    UpdateTeams();
+                    if (dontDoubleCount) {
+                        ConditionalIncrementMoves(soldierName);
+                        UpdatePlayerTeam(soldierName, teamId);
+                        UpdateTeams();
+                    }
                 } // MB moves incremented by FinishMove, so nothing to do here
                 return;
             }
@@ -3795,10 +3826,15 @@ public override void OnPlayerIsAlive(string soldierName, bool isAlive) {
 
             // Check if player is allowed to switch teams
             // Unswitch is handled in CheckTeamSwitch
-            if (CheckTeamSwitch(soldierName, team)) {
-                UpdatePlayerTeam(soldierName, team);
-                UpdateTeams();        
-                IncrementTotal(); // No matching stat, reflects allowed team switches
+            // Unswitch is skipped if disabled by remote
+            if (!fDisableUnswitcherByRemote) {
+                if (CheckTeamSwitch(soldierName, team)) {
+                    UpdatePlayerTeam(soldierName, team);
+                    UpdateTeams();        
+                    IncrementTotal(); // No matching stat, reflects allowed team switches
+                }
+            } else {
+                DebugWrite("^nSkipped check for unswitch for ^b" + soldierName + "^n: ^8another plugin DISABLED the Unswitcher!", 4);
             }
         }
     } catch (Exception e) {
@@ -3813,6 +3849,9 @@ public override void OnPlayerMovedByAdmin(string soldierName, int destinationTea
 
     try {
         if (fPluginState == PluginState.Active && fGameState == GameState.Playing) {
+            if (fDisableUnswitcherByRemote) {
+                DebugWrite("^nADMIN MOVED ^b" + soldierName + "^n to team " + destinationTeamId + ": ^8another plugin DISABLED the Unswitcher!", 4);
+            }
             if (fPendingTeamChange.ContainsKey(soldierName)) {
                 // this is an admin move in reversed order, clear from pending table
                 fPendingTeamChange.Remove(soldierName);
@@ -4226,7 +4265,7 @@ public override void OnGlobalChat(String speaker, String message) {
     if (DebugLevel >= 8) ConsoleDebug("OnGlobalChat(" + speaker + ", '" + message + ")");
 
     try {
-        if (Regex.Match(message, @"^\s*[!@#]mb", RegexOptions.IgnoreCase).Success) {
+        if (Regex.Match(message, @"^\s*/?[!@#]mb", RegexOptions.IgnoreCase).Success) {
             InGameCommand(message, ChatScope.Global, 0, 0, speaker);
         } else {
             if (EnableAdminKillForFastBalance && speaker != "Server") {
@@ -4243,7 +4282,7 @@ public override void OnTeamChat(String speaker, String message, int teamId) {
     if (DebugLevel >= 8) ConsoleDebug("OnTeamChat(" + speaker + ", '" + message + "', " +teamId + ")");
 
     try {
-        if (Regex.Match(message, @"^\s*[!@#]mb", RegexOptions.IgnoreCase).Success) {
+        if (Regex.Match(message, @"^\s*/?[!@#]mb", RegexOptions.IgnoreCase).Success) {
             InGameCommand(message, ChatScope.Team, teamId, 0, speaker);
         } else {
             if (EnableAdminKillForFastBalance && speaker != "Server" && !message.StartsWith("ID_CHAT")) {
@@ -4259,7 +4298,7 @@ public override void OnSquadChat(String speaker, String message, int teamId, int
     if (!fIsEnabled) return;
 
     try {
-        if (Regex.Match(message, @"^\s*[!@#]mb", RegexOptions.IgnoreCase).Success) {
+        if (Regex.Match(message, @"^\s*/?[!@#]mb", RegexOptions.IgnoreCase).Success) {
             InGameCommand(message, ChatScope.Squad, teamId, squadId, speaker);
         }
     } catch (Exception e) {
@@ -4535,9 +4574,22 @@ public void UpdatePluginData(params String[] parms) {
                 } else {
                     fScrambleByCommand = (bool)value;
                     if (fScrambleByCommand) {
-                        DebugScrambler("Plugin " + calledFrom + " turned team scrambling ON for this round!");
+                        DebugWrite("Plugin " + calledFrom + " turned team scrambling ON for this round!", 4);
                     } else {
-                        DebugScrambler("Plugin " + calledFrom + " turned team scrambling OFF for this round!");
+                        DebugWrite("Plugin " + calledFrom + " turned team scrambling OFF for this round!", 4);
+                    }
+                }
+                break;
+            case "DisableUnswitcher":
+                if (type != typeof(bool)) {
+                    if (DebugLevel >= 5) ConsoleWarn("UpdatePluginData(" + calledFrom + ", " + key + ") expected bool, got " + parms[1]);
+                    return;
+                } else {
+                    fDisableUnswitcherByRemote = (bool)value;
+                    if (fDisableUnswitcherByRemote) {
+                        DebugWrite("Plugin " + calledFrom + " turned unswitching OFF for this round!", 4);
+                    } else {
+                        DebugWrite("Plugin " + calledFrom + " turned unswitching ON for this round!", 4);
                     }
                 }
                 break;
@@ -4793,9 +4845,12 @@ private void BalanceAndUnstack(String name) {
     }
     String orSlow = (balanceSpeed == Speed.Slow) ? " or speed is Slow" : String.Empty;
 
-    // Do not disperse mustMove players if speed is Stop or Phase is Late or Popluation is Low and Enable Low Population Adjustments is True
+    // Do not disperse mustMove players if speed is Stop or Slow or Phase is Late or Popluation is Low and Enable Low Population Adjustments is True
     if (mustMove && balanceSpeed == Speed.Stop) {
         DebugBalance("Removing MUST MOVE status from dispersal player ^b" + player.FullName + "^n T:" + player.Team + ", due to Balance Speed = Stop");
+        mustMove = false;
+    } else if (mustMove && balanceSpeed == Speed.Slow) {
+        DebugBalance("Removing MUST MOVE status from dispersal player ^b" + player.FullName + "^n T:" + player.Team + ", due to Balance Speed = Slow");
         mustMove = false;
     } else if (mustMove && GetPhase(perMode, false) == Phase.Late) {
         DebugBalance("Removing MUST MOVE status from dispersal player ^b" + player.FullName + "^n T:" + player.Team + ", due to Phase = Late");
@@ -6041,7 +6096,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     // Low population adjustments?
     PerModeSettings perMode = GetPerModeSettings();
     if (perMode.EnableLowPopulationAdjustments && GetPopulation(perMode, true) == Population.Low) {
-        DebugUnswitch("ALLOWED: Enable Low Population Adjustments is True and population is low: ^b" + name);
+        DebugUnswitch("ALLOWED: Enable Low Population Adjustments is True and population is Low: ^b" + name);
         SetSpawnMessages(name, String.Empty, String.Empty, false);
         CheckAbortMove(name);
         return true;        
@@ -7122,7 +7177,7 @@ private void Scrambler(List<TeamScore> teamScores) {
     }
 
     int current = fServerInfo.CurrentRound + 1; // zero based index
-    if (!OnlyByCommand && OnlyOnNewMaps && current < fServerInfo.TotalRounds) {
+    if (!fScrambleByCommand && OnlyOnNewMaps && current < fServerInfo.TotalRounds) {
         DebugScrambler("Only scrambling new maps and this is only round " + current + " of " + fServerInfo.TotalRounds);
         return;
     }
@@ -7133,12 +7188,17 @@ private void Scrambler(List<TeamScore> teamScores) {
     }
 
     int totalPlayers = TotalPlayerCount();
-    if (totalPlayers < 16) {
-        DebugScrambler("Not enough players to scramble, at least 16 required: " + totalPlayers);
+    int minNeeded = (perMode.EnableLowPopulationAdjustments) ? 6 : 16;
+    if (!KeepSquadsTogether && !KeepClanTagsInSameTeam && !KeepFriendsInSameTeam) {
+        DebugScrambler("All Keep settings are False, relaxing min needed requirement!");
+        minNeeded = 6;
+    }
+    if (!fScrambleByCommand && totalPlayers < minNeeded) {
+        DebugScrambler("Not enough players to scramble, at least " + minNeeded + " required: " + totalPlayers);
         return;
     }
 
-    if (!IsCTF() && !IsCarrierAssault() && !OnlyByCommand && OnlyOnFinalTicketPercentage > 100) {
+    if (!IsCTF() && !IsCarrierAssault() && !fScrambleByCommand && OnlyOnFinalTicketPercentage > 100) {
         if (teamScores == null || teamScores.Count < 2) {
             DebugScrambler("DEBUG: no final team scores");
             return;
@@ -7208,6 +7268,49 @@ private void Scrambler(List<TeamScore> teamScores) {
         fScramblerLock.MaxDelay = DelaySeconds;
         fScramblerLock.LastUpdate = DateTime.Now;
         Monitor.Pulse(fScramblerLock);
+    }
+}
+
+
+private void ScrambleLoneWolves(List<PlayerModel> loneWolves, Dictionary<int,SquadRoster> squads, int whichTeam) {
+    // Add lone wolves to empty squads
+    int key = 0;
+    int emptyId = 1;
+    SquadRoster home = null;
+    bool filling = false;
+    // Do Team 1 first
+    foreach (PlayerModel wolf in loneWolves) {
+        if (wolf.Team != whichTeam)
+            continue;
+        bool goback = true;
+        while (goback) {
+            if (!filling) {
+                // Need to find an empty squad
+                key = (wolf.Team * 1000) + emptyId;
+                while (squads.ContainsKey(key)) {
+                    emptyId = emptyId + 1;
+                    if (emptyId > (SQUAD_NAMES.Length - 1)) break;
+                    key = (wolf.Team * 1000) + emptyId;
+                }
+                filling = true;
+            }
+            if (emptyId > (SQUAD_NAMES.Length - 1)) break;
+            if (filling) {
+                // Add wolf to the squad we are filling until full
+                key = (wolf.Team * 1000) + emptyId;
+                home = AddPlayerToSquadRoster(squads, wolf, key, emptyId, false);
+                if (home == null || !home.Roster.Contains(wolf)) {
+                    // Full
+                    filling = false;
+                    continue;
+                } else {
+                    // Next wolf
+                    DebugScrambler("Lone wolf ^b" + wolf.Name + "^n filled in empty squad " + wolf.Team + "/" + emptyId);
+                    goback = false;
+                    continue;
+                }
+            }
+        }
     }
 }
 
@@ -7413,10 +7516,14 @@ private void ScramblerLoop () {
                 }
 
                 // Add lone wolves to empty squads
-                int emptyId = 1;
-                SquadRoster home = null;
+                ScrambleLoneWolves(loneWolves, squads, 1);
+                ScrambleLoneWolves(loneWolves, squads, 2);
+                /*
                 bool filling = false;
+                // Do Team 1 first
                 foreach (PlayerModel wolf in loneWolves) {
+                    if (wolf.Team != 1)
+                        continue;
                     bool goback = true;
                     while (goback) {
                         if (!filling) {
@@ -7447,6 +7554,7 @@ private void ScramblerLoop () {
                         }
                     }
                 }
+                */
 
                 // Sum up the metric for each squad
                 foreach (int k in squads.Keys) {
@@ -9504,6 +9612,9 @@ private List<String> GetSimplifiedModes() {
                     case "Carrier Assault Small":
                         simple = "NS Carrier Small";
                         break;
+                    case "Chain Link":
+                        simple = "DT Chain Link";
+                        break;
                     default:
                         simple = "Unknown or New Mode";
                         break;
@@ -9728,6 +9839,7 @@ private void ResetRound() {
     fGrandRageQuits = fGrandRageQuits + fRageQuits;
     fRageQuits = 0;
     fScrambleByCommand = false;
+    fDisableUnswitcherByRemote = false;
 
     fLastBalancedTimestamp = DateTime.MinValue;
 
@@ -9752,7 +9864,7 @@ private bool IsCTF() {
 
 private bool IsConquest() {
     if (fServerInfo == null) return false;
-    return Regex.Match(fServerInfo.GameMode, @"(Conquest|Domination|Scavenger)", RegexOptions.IgnoreCase).Success;
+    return Regex.Match(fServerInfo.GameMode, @"(Conquest|Domination|Scavenger|Chain)", RegexOptions.IgnoreCase).Success;
 }
 
 private bool IsCarrierAssault() {
@@ -12353,12 +12465,12 @@ private void InGameCommand(String msg, ChatScope scope, int team, int squad, Str
         return;
     }
 
-    Match mbCmd = Regex.Match(msg, @"^\s*[@!#]mb\s+([\w]+)\s+(.*)$", RegexOptions.IgnoreCase);
-    Match mbSubCmd = Regex.Match(msg, @"^\s*[@!#]mb\s+(sub|unsub)", RegexOptions.IgnoreCase);
-    Match mbHelp = Regex.Match(msg, @"^\s*[@!#]mb\s+help\s*$", RegexOptions.IgnoreCase);
-    Match mbHelpCmd = Regex.Match(msg, @"^\s*[@!#]mb\s+help\s+(add|del|list|new|sub|unsub|scramble)", RegexOptions.IgnoreCase);
-    Match mbScrambleCmd = Regex.Match(msg, @"^\s*[@!#]mb\s+scramble\s+(on|off|true|false|yes|no|enable|disable)", RegexOptions.IgnoreCase);
-    Match mbScramInfoCmd = Regex.Match(msg, @"^\s*[@!#]mb\s+scramble\s*$", RegexOptions.IgnoreCase);
+    Match mbCmd = Regex.Match(msg, @"^\s*/?[@!#]mb\s+([\w]+)\s+(.*)$", RegexOptions.IgnoreCase);
+    Match mbSubCmd = Regex.Match(msg, @"^\s*/?[@!#]mb\s+(sub|unsub)", RegexOptions.IgnoreCase);
+    Match mbHelp = Regex.Match(msg, @"^\s*/?[@!#]mb\s+help\s*$", RegexOptions.IgnoreCase);
+    Match mbHelpCmd = Regex.Match(msg, @"^\s*/?[@!#]mb\s+help\s+(add|del|list|new|sub|unsub|scramble)", RegexOptions.IgnoreCase);
+    Match mbScrambleCmd = Regex.Match(msg, @"^\s*/?[@!#]mb\s+scramble\s+(on|off|true|false|yes|no|enable|disable)", RegexOptions.IgnoreCase);
+    Match mbScramInfoCmd = Regex.Match(msg, @"^\s*/?[@!#]mb\s+scramble\s*$", RegexOptions.IgnoreCase);
 
     List<String> lines = null;
     PlayerModel player = null;
@@ -12439,10 +12551,14 @@ private void InGameCommand(String msg, ChatScope scope, int team, int squad, Str
 
     if (mbScramInfoCmd.Success) {
         lines = new List<String>();
-        if (fScrambleByCommand) {
-            lines.Add("Teams WILL be scrambled at end of round");
+        if (OnlyByCommand) {
+            if (fScrambleByCommand) {
+                lines.Add("Teams WILL be scrambled at end of round");
+            } else {
+                lines.Add("No scrambling of teams at end of round");
+            }
         } else {
-            lines.Add("No scrambling of teams at end of round");
+            lines.Add("Only By Command setting is False, in-game admin command is disabled");
         }
         SayLines(lines, name);
         return;
@@ -12450,6 +12566,10 @@ private void InGameCommand(String msg, ChatScope scope, int team, int squad, Str
 
     if (mbScrambleCmd.Success) {
         lines = new List<String>();
+        if (!OnlyByCommand) {
+            lines.Add("Only By Command setting is False, in-game admin command is disabled");
+            return;
+        }
         String which = mbScrambleCmd.Groups[1].Value.ToLower();
         switch (which.ToLower()) {
             case "on":
@@ -13822,21 +13942,47 @@ private void LogStatus(bool isFinal, int level) {
         counts.Add(fTeam3.Count);
         counts.Add(fTeam4.Count);
     }
+
+    // Announce autobalancing status
     
     counts.Sort();
     int diff = Math.Abs(counts[0] - counts[counts.Count-1]);
     String next = "^n";
+    String annType = null;
 
     if (EnableAdminKillForFastBalance && diff >= MaxFastDiff()) {
         next = "^n^0 ... fast balance with admin kills in progress!";
+        annType = "USING ADMIN KILL";
     } else if ((totalPlayers >= 6 && diff > MaxDiff() && fGameState == GameState.Playing && balanceSpeed != Speed.Stop && !fBalanceIsActive)) {
         next = "^n^0 ... autobalance will activate as soon as possible!";
+
+        if (fUnassigned.Count >= (diff - MaxDiff())) {
+            annType = "WAITING FOR " + fUnassigned.Count + " PLAYERS TO JOIN";
+        } else {
+            annType = "MOVE ON DEATH";
+        }
     }
+
+    // Team difference
     
     if (level >= 4) {
         String md = ((diff > MaxDiff()) ? "^8^b" : "^b") + diff + ((diff > MaxFastDiff() && EnableAdminKillForFastBalance) ? " (FAST)" : String.Empty);
         DebugWrite("^bStatus^n: Team difference = " + md + next, 0);
     }
+
+    // chats and yells
+
+    String cab = ChatAutobalancing;
+    String yab = YellAutobalancing;
+    if (!String.IsNullOrEmpty(cab) && cab.Contains("%technicalDetails%"))
+        cab = cab.Replace("%technicalDetails%", annType);
+    if (!String.IsNullOrEmpty(yab) && yab.Contains("%technicalDetails%"))
+        yab = yab.Replace("%technicalDetails%", annType);
+
+    if (annType != null && !String.IsNullOrEmpty(cab))
+        Chat("all", cab);
+    if (annType != null && !String.IsNullOrEmpty(yab))
+        Yell("all", yab);
 
   } catch (Exception e) {
     ConsoleException(e);
@@ -14126,7 +14272,6 @@ static class MULTIbalancerUtils {
 <ul>
 <li><b>Official mode</b>: this plugin <b>WILL NOT WORK</b> on Official mode servers -- due to admin.movePlayer being disabled on Official mode.</li>
 <li><b>Battlelog Cache</b>: needs to be updated to BF4.</li>
-<li><b>Yell settings</b>: yell is not supported in BF4, as of patch R20.</li>
 </ul></p>
 
 <h2>NOTICE</h2>
@@ -14147,7 +14292,7 @@ static class MULTIbalancerUtils {
 <h3>Quick Start</h3>
 <p>Don't want to spend a lot of time learning all of the settings for this plugin? Just follow these quick start steps:
 
-<p>1) Select a <b>Preset</b> at the top of the plugin settings:
+<p>1) Select a <b>Preset</b> at the top of the plugin settings (<b>NOTE</b>: In all of the following presets, references to 'unstack teams' depend on the <b>Enable Unstacking</b> setting -- leave that set to False unless you are absolutely sure you want to use unstacking):
 <table>
 <tr><td><b>Standard</b></td><td>Autobalance and unstack teams, good for most server configurations</td></tr>
 <tr><td><b>Aggressive</b></td><td>Autobalance and unstack teams quickly, moving lots of players in a short amount of time</td></tr>
@@ -14370,6 +14515,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 <tr><td>%fromTeam%</td><td>team the player is currently on, as 'US' or 'RU', or 'Alpha', 'Bravo', 'Charlie', or 'Delta' for SQDM, or 'T1:US/RU' or 'T2:CN/RU' for BF4.</td></tr>
 <tr><td>%toTeam%</td><td>team the plugin will move the player to, same team name substitutions as for %fromTeam%</td></tr>
 <tr><td>%reason%</td><td>ONLY APPLIES TO BAD TEAM SWITCH: reason for switching the player back, may contain other replacements</td></tr>
+<tr><td>%technicalDetails%</td><td>THIS IS PROVIDED BY THE PLUGIN: Details about how the autobalancer is preparing to balance or why it is taking so long</td></tr>
 </table></p>
 
 <p><b>Quiet Mode</b>: True or False, default False. If False, chat messages are sent to all players and yells are sent to the player being moved. If True, chat and yell messages are only sent to the player being moved.</p>
@@ -14380,7 +14526,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Moved To Unstack</b>: Message sent after a player is moved to unstack teams.</p>
 
-<p><b>Detected Bad Team Switch</b>: Message sent after a player tries to make a forbidden team switch if [b]Enable Immediate Unswitch[/b] is set to False (see Section 6 below) or mode is Squad Deathmatch. The message is sent before the player is admin killed and sent back to his original team.</p>
+<p><b>Detected Bad Team Switch</b>: Message sent after a player tries to make a forbidden team switch if <b>Enable Immediate Unswitch</b> is set to False (see Section 6 below) or mode is Squad Deathmatch. The message is sent before the player is admin killed and sent back to his original team.</p>
 
 <p><b>Bad Because: Moved By Balancer</b>: Replacement for %reason% if the player tried to move to a different team from the one the plugin have moved them to for balance or unstacking.</p>
 
