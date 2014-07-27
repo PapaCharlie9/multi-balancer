@@ -14366,7 +14366,7 @@ static class MULTIbalancerUtils {
 <h3>0 - Presets</h3>
 <p>See the <b>Quick Start</b> section above.</p>
 
-<p><b>Enable Unstacking</b>: True or False, default False. Enables the per-mode unstacking features described in sections 3 and 8. Setting to False will not reset individual unstacking settings, it just disables the unstacking-related settings from operating. Setting to True enables all of your untacking-related settings.</p>
+<p><b>Enable Unstacking</b>: True or False, default False. Enables the per-mode unstacking features described in sections 3 and 8. Setting to False will not reset individual unstacking settings, it just disables the unstacking-related settings from operating and hides per-mode settings that are relevant only to unstacking. Setting to True enables all of your untacking-related settings.</p>
 
 <p><b>Enable Settings Wizard</b>: True or False, default False. If set to True, the plugin will automatically change your per-mode settings based on some basic information that you provide. Several additional settings are displayed. The first is <b>Which Mode</b>. Select the mode you want to apply changes to. Fill in the rest of the settings below <b>Which Mode</b>; they are self-explanatory. When you are done, change the <b>Apply Settings Changes</b> from False to True. The changes will be applied, information for review will be displayed in the plugin.log window, and the wizard will set itself to False and hide itself again.</p>
 
@@ -14545,6 +14545,8 @@ For each phase, there are three unstacking settings for server population: Low, 
 <p><b>After Unswitching</b>: Message sent after a player is killed by admin and moved back to the team he was assigned to. This message is sent after the <b>Detected Bad Team Switch</b> message.</p>
 
 <p><b>Teams Will Be Scrambled</b>: <font color=#FF0000>BF4 only, chat only.</font> Message sent after the round ends if scrambling is enabled and teams require scrambling for the next round.</p>
+
+<p><b>Autobalancing</b>: Message sent when teams are out of balance and the balancer is waiting for the right conditions to move a player. The %technicalDetails% give further details about what the balancer is doing, like waiting for a new player to join or waiting for a player to die.</p>
 
 <h3>6 - Unswitcher</h3>
 <p>This section controls the unswitcher. Every time a player tries to switch to a different team, the unswitcher checks if the switch is allowed or forbidden. If forbidden, he will be moved back by the plugin (see <b>Enable Immediate Unswitch</b> for details about how). The possible values are <i>Always</i>, which means do not allow (always forbid) this type of team switching, <i>Never</i>, which means allow team switching of this type, and <i>LatePhaseOnly</i>, which means allow team switching of this type until Late Phase, then no longer allow it (forbid it). Note that setting any of the <b>Forbid ...</b> settings to <i>Never</i> will reduce the effectiveness of the balancer and unstacker.</p>
