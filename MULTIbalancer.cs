@@ -4762,7 +4762,7 @@ private void BalanceAndUnstack(String name) {
         return;
     }
 
-    if (EnableAdminKillForFastBalance && diff >= MaxFastDiff()) {
+    if (EnableAdminKillForFastBalance && diff > MaxFastDiff()) {
         DebugBalance("Fast balance is enabled and active, skipping normal balancing and unstacking");
         CheckDeativateBalancer("Fast balance is active");
         return;
@@ -5701,7 +5701,7 @@ private void FastBalance(String trigger) {
         return;
     }
 
-    int floorPlayers = 5; // minimum number for which a team difference of 3 minimum is possible
+    int floorPlayers = (perMode.EnableLowPopulationAdjustments) ? 4 : 5;
     if (totalPlayerCount < floorPlayers) {
         if (DebugLevel >= (level + adj)) DebugFast("Not enough players in server, minimum is " + floorPlayers);
         return;
@@ -5713,12 +5713,12 @@ private void FastBalance(String trigger) {
 
     // Adjust speed to Fast?
     if (balanceSpeed != Speed.Fast) {
-        if (diff >= MaxFastDiff()) {
+        if (diff > MaxFastDiff()) {
             balanceSpeed = Speed.Fast;
         }
     }
-    if (balanceSpeed != Speed.Fast || diff < MaxFastDiff()) {
-        if (diff > 1 && DebugLevel >= level) DebugFast("Fast balance not active, diff is only " + diff + ", requires " + MaxFastDiff());
+    if (balanceSpeed != Speed.Fast || diff <= MaxFastDiff()) {
+        if (diff > 1 && DebugLevel >= level) DebugFast("Fast balance not active, diff is only " + diff + ", requires more than " + MaxFastDiff());
         return;
     }
 
@@ -9972,31 +9972,36 @@ private bool IsCarrierAssault() {
     return (fServerInfo.GameMode == "CarrierAssaultLarge0" || fServerInfo.GameMode == "CarrierAssaultSmall0");
 }
 
-private int MaxDiff() {
+private int MaxDiff() { // maximum difference that is still considered balanced, for normal balancing
     if (fServerInfo == null) return 2;
     PerModeSettings perMode = null;
     String simpleMode = String.Empty;
+
     if (IsSQDM()) {
         return ((TotalPlayerCount() <= 32) ? 1 : 2);
     }
-    perMode = GetPerModeSettings();
 
-    if (!perMode.isDefault) return ((GetPopulation(perMode, false) == Population.High) ? 2 : 1);
+    perMode = GetPerModeSettings();
+    if (!perMode.isDefault) 
+        return ((GetPopulation(perMode, false) == Population.High) ? 2 : 1);
 
     return 2;
 }
 
-private int MaxFastDiff() {
+private int MaxFastDiff() { // maximum difference that is still considered balanced, for fast balancing
     if (fTestFastBalance) return 1;
-    if (fServerInfo == null) return 4;
+    if (fServerInfo == null) return 2;
     PerModeSettings perMode = null;
     String simpleMode = String.Empty;
-    if (IsSQDM()) {
-        return ((TotalPlayerCount() <= 32) ? 3 : 4);
-    }
-    perMode = GetPerModeSettings();
 
-    if (!perMode.isDefault) return ((GetPopulation(perMode, false) == Population.Low) ? 3 : 4);
+    perMode = GetPerModeSettings();
+    int lowFloor = (perMode.EnableLowPopulationAdjustments) ? 1 : 2;
+
+    if (IsSQDM()) {
+        return ((TotalPlayerCount() <= 32) ? lowFloor : 3);
+    }
+    if (!perMode.isDefault) 
+        return ((GetPopulation(perMode, false) == Population.Low) ? lowFloor : 3);
 
     return 2;
 }
@@ -14050,7 +14055,7 @@ private void LogStatus(bool isFinal, int level) {
     String next = "^n";
     String annType = null;
 
-    if (EnableAdminKillForFastBalance && diff >= MaxFastDiff()) {
+    if (EnableAdminKillForFastBalance && diff > MaxFastDiff()) {
         next = "^n^0 ... fast balance with admin kills in progress!";
         annType = "USING ADMIN KILL";
     } else if ((totalPlayers >= 6 && diff > MaxDiff() && fGameState == GameState.Playing && balanceSpeed != Speed.Stop && !fBalanceIsActive)) {
