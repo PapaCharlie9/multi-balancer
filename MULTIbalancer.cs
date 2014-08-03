@@ -2643,6 +2643,8 @@ private void CommandToLog(string cmd) {
             lock (fKnownPlayers) {
                 foreach (String name in fKnownPlayers.Keys) {
                     PlayerModel p = fKnownPlayers[name];
+                    if (p.Role != ROLE_PLAYER)
+                        continue;
 
                     double joinedMinutesAgo = GetPlayerJoinedTimeSpan(p).TotalMinutes;
                     double enabledForMinutes = DateTime.Now.Subtract(fEnabledTimestamp).TotalMinutes;
@@ -2682,6 +2684,8 @@ private void CommandToLog(string cmd) {
             lock (fKnownPlayers) {
                 foreach (String name in fKnownPlayers.Keys) {
                     PlayerModel p = fKnownPlayers[name];
+                    if (p.Role != ROLE_PLAYER)
+                        continue;
 
                     double joinedMinutesAgo = GetPlayerJoinedTimeSpan(p).TotalMinutes;
                     double enabledForMinutes = DateTime.Now.Subtract(fEnabledTimestamp).TotalMinutes;
@@ -2837,6 +2841,8 @@ private void CommandToLog(string cmd) {
                 ConsoleDump("^bMoved by " + GetPluginName() + ":");
                 foreach (String name in fKnownPlayers.Keys) {
                     PlayerModel p = fKnownPlayers[name];
+                    if (p.Role != ROLE_PLAYER)
+                        continue;
                     if ((p.MovesByMBTotal + p.MovesByMBRound) < 1) continue;
                     String minsAgo = "(reset)";
                     String interval = "(never)";
@@ -2859,6 +2865,8 @@ private void CommandToLog(string cmd) {
                 ConsoleDump("^bMoved by someone or something else:");
                 foreach (String name in fKnownPlayers.Keys) {
                     PlayerModel p = fKnownPlayers[name];
+                    if (p.Role != ROLE_PLAYER)
+                        continue;
                     if (p.MovesRound > 0) {
                         ConsoleDump("^b" + p.FullName + "^n was moved " + p.MovesRound + " times this round, " + (p.MovesTotal + p.MovesRound) + " total");
                     }
@@ -2958,6 +2966,8 @@ private void CommandToLog(string cmd) {
             int ap = fAllPlayers.Count;
             int old = 0;
             int validTags = 0;
+            int commanders = 0;
+            int spectators = 0;
             lock (fKnownPlayers) {
                 // count player records more than 12 hours old
                 foreach (String name in fKnownPlayers.Keys) {
@@ -2968,10 +2978,14 @@ private void CommandToLog(string cmd) {
                         } 
                     }
                     if (p.TagVerified) ++validTags;
+                    if (p.Role == ROLE_SPECTATOR)
+                        ++spectators;
+                    else if (p.Role == ROLE_COMMANDER_MOBILE || p.Role == ROLE_COMMANDER_PC)
+                        ++commanders;
                 }
             }
             ConsoleDump("Plugin has been enabled for " + fRoundsEnabled + " rounds");
-            ConsoleDump("fKnownPlayers.Count = " + kp + ", not playing = " + (kp-ap) + ", more than 12 hours old = " + old);
+            ConsoleDump("fKnownPlayers.Count = " + kp + ", not playing = " + (kp-ap) + ", more than 12 hours old = " + old + ", commanders = " + commanders + ", spectators = " + spectators);
             ConsoleDump("fPriorityFetchQ.Count = " + PriorityQueueCount() + ", verified tags = " + validTags);
             ConsoleDump("MULTIbalancerUtils.HTML_DOC.Length = " + MULTIbalancerUtils.HTML_DOC.Length);
             return;
@@ -4026,7 +4040,7 @@ public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subs
     
             foreach (CPlayerInfo p in players) {
                 try {
-                    int bf4Type = (fGameVersion == GameVersion.BF4) ? p.Type : 0;
+                    int bf4Type = (fGameVersion == GameVersion.BF4) ? p.Type : ROLE_PLAYER;
                     UpdatePlayerModel(p.SoldierName, p.TeamID, p.SquadID, p.GUID, p.Score, p.Kills, p.Deaths, p.Rank, bf4Type);
                 } catch (Exception e) {
                     ConsoleException(e);
@@ -5958,9 +5972,16 @@ private void UpdatePlayerModel(String name, int team, int squad, String eaGUID, 
                 }
                 break;
             case PluginState.Active:
-                DebugWrite("Update waiting for ^b" + name + "^n to be assigned a team", 4);
-                if (!fUnassigned.Contains(name)) fUnassigned.Add(name);
-                return;
+                if (role == ROLE_PLAYER) {
+                    DebugWrite("Update waiting for ^b" + name + "^n to be assigned a team", 4);
+                    if (!fUnassigned.Contains(name)) fUnassigned.Add(name);
+                    return;
+                } else {
+                    String sRole = (role == ROLE_SPECTATOR) ? "spectator" : "commander";
+                    DebugWrite("Update adding " + sRole + " ^b" + name, 4);
+                    AddNewPlayer(name, team); // add commanders and spectators
+                }
+                break;
             case PluginState.Error:
                 DebugWrite("Error state, adding new player: ^b" + name, 4);
                 AddNewPlayer(name, team);
@@ -5992,6 +6013,9 @@ private void UpdatePlayerModel(String name, int team, int squad, String eaGUID, 
     m.DeathsRound = deaths;
     m.Rank = rank;
     m.Role = role;
+
+    if (m.Role != ROLE_PLAYER)
+        DebugWrite("UpdatePlayerModel: " + name + " has role = " + m.Role, 8);
 
     m.LastSeenTimestamp = DateTime.Now;
 
@@ -6030,6 +6054,8 @@ private void UpdatePlayerTeam(String name, int team) {
     
     PlayerModel m = GetPlayer(name);
     if (m == null) return;
+    if (m.Role != ROLE_PLAYER)
+        return;
     
     m.LastMoveFrom = 0; // reset
 
@@ -6075,7 +6101,7 @@ private void ValidateModel(List<CPlayerInfo> players, String revWhy) {
         // rebuild the data model and cancel any pending moves
         foreach (CPlayerInfo p in players) {
             try {
-                int bf4Type = (fGameVersion == GameVersion.BF4) ? p.Type : 0;
+                int bf4Type = (fGameVersion == GameVersion.BF4) ? p.Type : ROLE_PLAYER;
                 UpdatePlayerModel(p.SoldierName, p.TeamID, p.SquadID, p.GUID, p.Score, p.Kills, p.Deaths, p.Rank, bf4Type);
                 CheckAbortMove(p.SoldierName);
             } catch (Exception e) {
@@ -6464,6 +6490,8 @@ private void SpawnUpdate(String name) {
     lock (fKnownPlayers) {
         PlayerModel m = null;
         if (fKnownPlayers.TryGetValue(name, out m)) {
+            if (m.Role != ROLE_PLAYER)
+                return;
             ok = true;
             // If first spawn timestamp is earlier than round start, update it
             if (m.FirstSpawnTimestamp == DateTime.MinValue || DateTime.Compare(m.FirstSpawnTimestamp, fRoundStartTimestamp) < 0) {
@@ -6493,19 +6521,27 @@ private void KillUpdate(String killer, String victim) {
     TimeSpan tir = TimeSpan.FromSeconds(0); // Time In Round
     lock (fKnownPlayers) {
         PlayerModel m = null;
-        if (killer != victim && fKnownPlayers.TryGetValue(killer, out m)) {
-            okKiller = true;
-            m.LastSeenTimestamp = now;
-            m.IsDeployed = true;
-        } else if (killer == victim) {
+        
+        if (fKnownPlayers.TryGetValue(killer, out m)) {
+            if (m.Role == ROLE_PLAYER) {
+                m.LastSeenTimestamp = now;
+                m.IsDeployed = true;
+            }
             okKiller = true;
         }
-        if (fKnownPlayers.TryGetValue(victim, out m)) {
-            okVictim = true;
-            m.LastSeenTimestamp = now;
-            m.IsDeployed = false;
-            tir = now.Subtract((m.FirstSpawnTimestamp != DateTime.MinValue) ? m.FirstSpawnTimestamp : now);
+        if (killer == victim) {
+            okVictim = okKiller;
+        } else {
+            if (fKnownPlayers.TryGetValue(victim, out m)) {
+                if (m.Role == ROLE_PLAYER) {
+                    m.LastSeenTimestamp = now;
+                    m.IsDeployed = false;
+                    tir = now.Subtract((m.FirstSpawnTimestamp != DateTime.MinValue) ? m.FirstSpawnTimestamp : now);
+                }
+                okVictim = true;
+            }
         }
+
     }
 
     if (!okKiller) {
@@ -8492,12 +8528,14 @@ private ScrambleStatus ScrambleTeams(List<PlayerModel> usOrig, List<PlayerModel>
     lock (fAllPlayers) {
         allCopy.AddRange(fAllPlayers);
     }
-    lock (fKnownPlayers) {
-        foreach (String name in allCopy) {
-            if (fKnownPlayers[name].Team == 1) { ++usCount; }
-            else if (fKnownPlayers[name].Team == 2) { ++ruCount; }
-        }
+    foreach (String name in allCopy) {
+        PlayerModel m = GetPlayer(name);
+        if (m == null || m.Role != ROLE_PLAYER)
+            continue;
+        if (m.Team == 1) { ++usCount; }
+        else if (m.Team == 2) { ++ruCount; }
     }
+
 
     // Check for full server
     if (usCount >= maxTeam && ruCount >= maxTeam) {
