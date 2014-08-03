@@ -393,6 +393,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         public int DisperseEvenlyByClanPlayers = 0;
         public bool EnableUnstackingByPlayerStats = false;
         public bool EnableLowPopulationAdjustments = false;
+        public double RoutPercentage = 0;
 
         // Rush only
         public double Stage1TicketPercentageToUnstackAdjustment = 0;
@@ -1670,7 +1671,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.1.3.0";
+    return "1.1.3.1";
 }
 
 public String GetPluginAuthor() {
@@ -1989,6 +1990,9 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Max Players", oneSet.MaxPlayers.GetType(), oneSet.MaxPlayers));
 
             if (!isGM) {
+
+                lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Rout Percentage", oneSet.RoutPercentage.GetType(), oneSet.RoutPercentage));
+
                 if (EnableUnstacking) {
                     lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Check Team Stacking After First Minutes", oneSet.CheckTeamStackingAfterFirstMinutes.GetType(), oneSet.CheckTeamStackingAfterFirstMinutes));
 
@@ -2463,6 +2467,7 @@ private bool ValidateSettings(String strVariable, String strValue) {
             def.DefinitionOfHighPopulationForPlayers = Math.Min(def.DefinitionOfHighPopulationForPlayers, perMode.MaxPlayers);
             def.DefinitionOfLowPopulationForPlayers = Math.Min(def.DefinitionOfLowPopulationForPlayers, perMode.MaxPlayers);
             if (strVariable.Contains("Max Players")) ValidateIntRange(ref perMode.MaxPlayers, mode + ":" + "Max Players", 8, MaximumServerSize, def.MaxPlayers, false);
+            else if (strVariable.Contains("Rout Percentage")) ValidateDoubleRange(ref perMode.RoutPercentage, mode + ":" + "Rout Percentage", 101, 10000, def.RoutPercentage, true);
             else if (strVariable.Contains("Check Team Stacking After First Minutes")) ValidateDouble(ref perMode.CheckTeamStackingAfterFirstMinutes, mode + ":" + "Check Team Stacking After First Minutes", def.CheckTeamStackingAfterFirstMinutes);
             else if (strVariable.Contains("Max Unstacking Swaps Per Round")) ValidateInt(ref perMode.MaxUnstackingSwapsPerRound, mode + ":" + "Max Unstacking Swaps Per Round", def.MaxUnstackingSwapsPerRound);
             else if (strVariable.Contains("Number Of Swaps Per Group")) ValidateIntRange(ref perMode.NumberOfSwapsPerGroup, mode + ":" + "Number Of Swaps Per Group", 0, perMode.MaxUnstackingSwapsPerRound, def.NumberOfSwapsPerGroup, false);
@@ -4816,7 +4821,7 @@ private void BalanceAndUnstack(String name) {
         mustMove = true;
         maxDispersalMoves = (lenient) ? 1 : 2;
     } else if (isDisperseByRank) {
-        lenient = LenientRankDispersal;
+        lenient = LenientRankDispersal || !perMode.EnableStrictDispersal;
         String dispersalMode = (lenient) ? "LENIENT MODE" : "STRICT MODE";
         ConsoleDebug("ON MUST MOVE LIST ^b" + name + "^n T:" + player.Team + ", Rank " + player.Rank + " >= " + perMode.DisperseEvenlyByRank + ", " + dispersalMode);
         mustMove = true;
@@ -5145,6 +5150,53 @@ private void BalanceAndUnstack(String name) {
         return;
     }
 
+    /* Moved ticket ratios up here for Rout Percentage exemption */
+    double ratio = 1;
+    double t1Tickets = 0;
+    double t2Tickets = 0;
+    if (IsCTF() || IsCarrierAssault()) {
+        // Use team points, not tickets
+        double usPoints = GetTeamPoints(1);
+        double ruPoints = GetTeamPoints(2);
+        if (usPoints <= 0) usPoints = 1;
+        if (ruPoints <= 0) ruPoints = 1;
+        ratio = (usPoints > ruPoints) ? (usPoints/ruPoints) : (ruPoints/usPoints);
+    } else {
+        // Otherwise use ticket ratio
+        if (fTickets[losingTeam] >= 1) {
+            if (IsRush()) {
+                // normalize Rush ticket ratio
+                double attackers = fTickets[1];
+                double defenders = fMaxTickets - (fRushMaxTickets - fTickets[2]);
+                defenders = Math.Max(defenders, attackers/2);
+                ratio = (attackers > defenders) ? (attackers/Math.Max(1, defenders)) : (defenders/Math.Max(1, attackers));
+                t1Tickets = attackers;
+                t2Tickets = defenders;
+            } else {
+                t1Tickets = Convert.ToDouble(fTickets[winningTeam]);
+                t2Tickets = Convert.ToDouble(fTickets[losingTeam]);
+                ratio =  t1Tickets / Math.Max(1, t2Tickets);
+            }
+        }
+    }
+
+    // Handle Rout exemptions
+    double ratioPercentage = ratio * 100;
+    if (perMode.RoutPercentage > 100 && ratioPercentage >= perMode.RoutPercentage) {
+        DebugBalance("Rout detected, winning/losing ratio of " + ratioPercentage.ToString("F0") + " is greater than " + perMode.RoutPercentage.ToString("F0")); 
+        if (isStrong) {
+            DebugBalance("Exempting ^b" + name + "^n, strong players are not moved during a rout");
+            fExemptRound = fExemptRound + 1;
+            IncrementTotal();
+            return;
+        } else if (mustMove && lenient) {
+            DebugBalance("Exempting ^b" + name + "^n, dispersal players are not moved during a rout when dispersal is lenient");
+            fExemptRound = fExemptRound + 1;
+            IncrementTotal();
+            return;
+        }
+    }
+
 
     if ((fBalanceIsActive || mustMove) && toTeam != 0 && balanceSpeed != Speed.Stop) {
         String ts = null;
@@ -5327,6 +5379,7 @@ private void BalanceAndUnstack(String name) {
         }
     }
 
+    /* - moved earlier, left here in case need to restore:
     double ratio = 1;
     double t1Tickets = 0;
     double t2Tickets = 0;
@@ -5355,6 +5408,7 @@ private void BalanceAndUnstack(String name) {
             }
         }
     }
+    */
 
     // Ticket difference greater than per-mode maximum for unstacking
     int ticketGap = Convert.ToInt32(Math.Abs(t1Tickets - t2Tickets));
@@ -5428,6 +5482,14 @@ private void BalanceAndUnstack(String name) {
             IncrementTotal(); // no matching stat, reflect total deaths handled
             return;
         }
+    }
+
+    // Handle Rout exemptions
+    if (perMode.RoutPercentage > 100 && ratio >= perMode.RoutPercentage) {
+        DebugBalance("No unstacking during a rout, skipping ^b" + name + "^n");
+        fExemptRound = fExemptRound + 1;
+        IncrementTotal();
+        return;
     }
 
     /*
@@ -14452,7 +14514,7 @@ static class MULTIbalancerUtils {
 
 <p><b>Same Clan Tags For Rank Dispersal</b>: True or False, default False. If True, dispersal by per-mode <b>Disperse Evenly By Rank &gt;=</b> will not be applied if the player has a clan tag that at least one other player on the same team has. This option is a special case of <b>Lenient Rank Dispersal</b>, enabling just one specific exclusion to be applied leniently.</p>
 
-<p><b>Lenient Rank Dispersal</b>: True or False, default False. If False, dispersal by per-mode <b>Disperse Evenly By Rank &gt;=</b> will by applied strictly, ignored all exclusions except whitelisting. Teams may get unbalanced, but ranked players will be evenly dispersed. If True, dispersal by per-mode setting of ranked players will respect most exclusions, including <b>Minutes After Being Moved</b>. Teams will be kept in balance, but ranked players may not be dispersed evenly.</p>
+<p><b>Lenient Rank Dispersal</b>: True or False, default False. If False, dispersal by per-mode <b>Disperse Evenly By Rank &gt;=</b> only will by applied strictly, ignoring all exclusions except whitelisting. Teams may get unbalanced, but ranked players will be evenly dispersed. If True, dispersal by per-mode setting of ranked players will respect most exclusions, including <b>Minutes After Being Moved</b> and <b>Rout Percentage</b>. Teams will be kept in balance, but ranked players may not be dispersed evenly.</p>
 
 <p><b>Minutes After Joining</b>: Number greater than or equal to 0, default 5. After joining the server, a player is excluded from being moved for balance or unstacking for this number of minutes. The player is also allowed to switch teams freely during this time. Set to 0 to disable. Keep in mind that most joining players were already assigned to the team with the least players. They have already 'paid their dues'.</p>
 
@@ -14589,6 +14651,8 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Max Players</b>: Number greater than or equal to 8 and less than or equal to <b>Maximum Server Size</b>. Some modes might be set up in UMM or Adaptive Server Size or other plugins with a lower maximum than the server maximum. If you set a lower value in your server settings or in a plugin, set the same setting here. This is important for calculating population size correctly.</p>
 
+<p><b>Rout Percentage</b>: Number greater than or equal to 101 and less than or equal to 100000, or 0, default is 0. When one team is so far behind another team (called a 'rout'), it is unfair to move strong or dispersal players to the losing team. Use this setting to define when to stop moving strong or dispersal players. For example, if set to 200 for Conquest, the losing team is routed when the winner has at least twice as many tickets as the loser, e.g., 201 vs 100. Movement of strong players for balance or unstacking will be suspended. In the case of dispersal, the suspension applies to both strong and weak players and <b>Enable Strict Dispersal<b> must be False, or if generally strict except for rank dispersal, <b>Lenient Rank Dispersal</b> must be True.</p>
+
 <p><b>Check Team Stacking After First Minutes</b>: Number greater than or equal to 0. From the start of the round, this setting is the number of minutes to wait before activating unstacking. If set to 0, no unstacking will occur for this mode.</p>
 
 <p><b>Max Unstacking Swaps Per Round</b>: Number greater than or equal to 0. To prevent the plugin from swapping every player on every team for unstacking, a maximum per round is set here. If set to 0, no unstacking will occur for this mode.</p>
@@ -14613,7 +14677,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Enable Disperse Evenly List</b>: True or False, default False. If set to true, the players are matched against the <b>Disperse Evenly List</b> and any that match will be dispersed evenly across teams. This is useful to insure that certain clans or groups of players don't always dominate whatever team they are not on.</p>
 
-<p><b>Enable Strict Dispersal</b>: True or False, default True. Only visible if <b>Disperse Evenly By Clan Players</b> or <b>Enable Disperse Evenly List</b> is set to True. If set to True, players will be moved for dispersal, ignoring all exclusions except whitelisting. This may result in wildly unbalanced teams, but absolutely guarantees that players are dispersed. If set to False, players will be moved for dispersal, but many exclusions will apply, such as <b>Same Clan Tags In Squad</b> and <b>Minutes After Being Moved</b>. The teams will be kept in balance, but players may not be dispersed evenly.</p>
+<p><b>Enable Strict Dispersal</b>: True or False, default True. Only visible if <b>Disperse Evenly By Clan Players</b> or <b>Enable Disperse Evenly List</b> is set to True. If set to True, players will be moved for dispersal, ignoring all exclusions except whitelisting. This may result in wildly unbalanced teams, but absolutely guarantees that players are dispersed. If set to False, players will be moved for dispersal, but many exclusions will apply, such as <b>Same Clan Tags In Squad</b>,  <b>Minutes After Being Moved</b> and <b>Rout Percentage</b>. The teams will be kept in balance, but players may not be dispersed evenly.</p>
 
 <p><b>Enable Low Population Adjustments</b>: True or False, default False. If set to True, when the population of a server is low, all <b>Forbid ...</b> settings in the Unswitcher section are treated as <i>Never</i> (meaning, team switching is allowed in all circumstances), and all disperse evenly settings, such as <b>Disperse Evenly By Rank &gt;=</b> are ignored, until the population rises above your <b>Definition Of Low Population For Players &lt;=</b> setting.</p>
 
