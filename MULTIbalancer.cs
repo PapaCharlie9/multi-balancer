@@ -5180,24 +5180,6 @@ private void BalanceAndUnstack(String name) {
         }
     }
 
-    // Handle Rout exemptions
-    double ratioPercentage = ratio * 100;
-    if (perMode.RoutPercentage > 100 && ratioPercentage >= perMode.RoutPercentage) {
-        DebugBalance("Rout detected, winning/losing ratio of " + ratioPercentage.ToString("F0") + " is greater than " + perMode.RoutPercentage.ToString("F0")); 
-        if (isStrong) {
-            DebugBalance("Exempting ^b" + name + "^n, strong players are not moved during a rout");
-            fExemptRound = fExemptRound + 1;
-            IncrementTotal();
-            return;
-        } else if (mustMove && lenient) {
-            DebugBalance("Exempting ^b" + name + "^n, dispersal players are not moved during a rout when dispersal is lenient");
-            fExemptRound = fExemptRound + 1;
-            IncrementTotal();
-            return;
-        }
-    }
-
-
     if ((fBalanceIsActive || mustMove) && toTeam != 0 && balanceSpeed != Speed.Stop) {
         String ts = null;
         if (isSQDM) {
@@ -5221,6 +5203,24 @@ private void BalanceAndUnstack(String name) {
         }
 
         /* Exemptions */
+
+        // Handle Rout exemptions
+        double ratioPercentage = ratio * 100;
+        if (perMode.RoutPercentage > 100 && ratioPercentage >= perMode.RoutPercentage) {
+            DebugBalance("Rout detected, winning/losing ratio of " + ratioPercentage.ToString("F0") + " is greater than " + perMode.RoutPercentage.ToString("F0")); 
+            if (isStrong) {
+                String si = "(" + playerIndex + " of " + strongest + ")";
+                DebugBalance("Exempting ^b" + name + "^n^9 " + si + ", strong players are not moved during a rout");
+                fExemptRound = fExemptRound + 1;
+                IncrementTotal();
+                return;
+            } else if (mustMove && lenient) {
+                DebugBalance("Exempting ^b" + name + "^n^9, dispersal players are not moved during a rout when dispersal is lenient");
+                fExemptRound = fExemptRound + 1;
+                IncrementTotal();
+                return;
+            }
+        }
 
         // Already on the smallest team
         if ((!mustMove || lenient) && player.Team == smallestTeam) {
@@ -14651,7 +14651,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Max Players</b>: Number greater than or equal to 8 and less than or equal to <b>Maximum Server Size</b>. Some modes might be set up in UMM or Adaptive Server Size or other plugins with a lower maximum than the server maximum. If you set a lower value in your server settings or in a plugin, set the same setting here. This is important for calculating population size correctly.</p>
 
-<p><b>Rout Percentage</b>: Number greater than or equal to 101 and less than or equal to 100000, or 0, default is 0. When one team is so far behind another team (called a 'rout'), it is unfair to move strong or dispersal players to the losing team. Use this setting to define when to stop moving strong or dispersal players. For example, if set to 200 for Conquest, the losing team is routed when the winner has at least twice as many tickets as the loser, e.g., 201 vs 100. Movement of strong players for balance or unstacking will be suspended. In the case of dispersal, the suspension applies to both strong and weak players and <b>Enable Strict Dispersal<b> must be False, or if generally strict except for rank dispersal, <b>Lenient Rank Dispersal</b> must be True.</p>
+<p><b>Rout Percentage</b>: Number greater than or equal to 101 and less than or equal to 100000, or 0, default is 0. When one team is so far behind another team (called a 'rout'), it is unfair to move strong or dispersal players to the losing team. Use this setting to define when to stop moving strong or dispersal players. For example, if set to 200 for Conquest, the losing team is routed when the winner has at least twice as many tickets as the loser, e.g., 201 vs 100. Movement of strong players for balance or unstacking will be suspended. In the case of dispersal, the suspension applies to both strong and weak players and <b>Enable Strict Dispersal</b> must be False, or if generally strict except for rank dispersal, <b>Lenient Rank Dispersal</b> must be True.</p>
 
 <p><b>Check Team Stacking After First Minutes</b>: Number greater than or equal to 0. From the start of the round, this setting is the number of minutes to wait before activating unstacking. If set to 0, no unstacking will occur for this mode.</p>
 
