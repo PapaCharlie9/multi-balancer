@@ -4756,10 +4756,9 @@ private void BalanceAndUnstack(String name) {
         return;
     }
 
-    int floorPlayers = (perMode.EnableLowPopulationAdjustments) ? 4 : 6;
-    if (totalPlayerCount < floorPlayers) {
-        if (DebugLevel >= 6) DebugBalance("Not enough players in server, minimum is " + floorPlayers);
-        CheckDeativateBalancer("Not enough players");
+    if (totalPlayerCount < 4) {
+        if (DebugLevel >= 6) DebugBalance("Server is in warmup, less than 4 players");
+        CheckDeativateBalancer("Warmup");
         return;
     }
 
@@ -4814,6 +4813,14 @@ private void BalanceAndUnstack(String name) {
         if (DebugLevel >= 6) DebugBalance("Server is full by per-mode Max Players, no balancing or unstacking will be attempted!");
         IncrementTotal(); // no matching stat, reflect total deaths handled
         CheckDeativateBalancer("Full per-mode");
+        return;
+    }
+
+    int floorPlayers = (perMode.EnableLowPopulationAdjustments) ? 4 : 6;
+    if (totalPlayerCount < floorPlayers) {
+        if (DebugLevel >= 6) DebugBalance("Not enough players in server, minimum is " + floorPlayers);
+        IncrementTotal(); // no matching stat, reflect total deaths handled
+        CheckDeativateBalancer("Not enough players");
         return;
     }
 
