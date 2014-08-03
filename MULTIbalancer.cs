@@ -2980,14 +2980,20 @@ private void CommandToLog(string cmd) {
                         } 
                     }
                     if (p.TagVerified) ++validTags;
-                    if (p.Role == ROLE_SPECTATOR)
-                        ++spectators;
-                    else if (p.Role == ROLE_COMMANDER_MOBILE || p.Role == ROLE_COMMANDER_PC)
-                        ++commanders;
+                    bool playing = false;
+                    lock (fAllPlayers) {
+                        playing = fAllPlayers.Contains(name);
+                    }
+                    if (playing) {
+                        if (p.Role == ROLE_SPECTATOR)
+                            ++spectators;
+                        else if (p.Role == ROLE_COMMANDER_MOBILE || p.Role == ROLE_COMMANDER_PC)
+                            ++commanders;
+                    }
                 }
             }
             ConsoleDump("Plugin has been enabled for " + fRoundsEnabled + " rounds");
-            ConsoleDump("fKnownPlayers.Count = " + kp + ", not playing = " + (kp-ap) + ", more than 12 hours old = " + old + ", commanders = " + commanders + ", spectators = " + spectators);
+            ConsoleDump("fKnownPlayers.Count = " + kp + ", not playing = " + (kp-ap) + ", more than 12 hours old = " + old + ", current commanders = " + commanders + ", current spectators = " + spectators);
             ConsoleDump("fPriorityFetchQ.Count = " + PriorityQueueCount() + ", verified tags = " + validTags);
             ConsoleDump("MULTIbalancerUtils.HTML_DOC.Length = " + MULTIbalancerUtils.HTML_DOC.Length);
             return;
