@@ -1848,11 +1848,13 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
         /* ===== SECTION 3 - Round Phase & Population Setttings ===== */
         
-        lstReturn.Add(new CPluginVariable("3 - Round Phase and Population Settings|Early Phase: Ticket Percentage To Unstack (Low, Med, High population)", typeof(String), MULTIbalancerUtils.ArrayToString(EarlyPhaseTicketPercentageToUnstack)));
+        if (EnableUnstacking) {
+            lstReturn.Add(new CPluginVariable("3 - Round Phase and Population Settings|Early Phase: Ticket Percentage To Unstack (Low, Med, High population)", typeof(String), MULTIbalancerUtils.ArrayToString(EarlyPhaseTicketPercentageToUnstack)));
 
-        lstReturn.Add(new CPluginVariable("3 - Round Phase and Population Settings|Mid Phase: Ticket Percentage To Unstack (Low, Med, High population)", typeof(String), MULTIbalancerUtils.ArrayToString(MidPhaseTicketPercentageToUnstack)));
+            lstReturn.Add(new CPluginVariable("3 - Round Phase and Population Settings|Mid Phase: Ticket Percentage To Unstack (Low, Med, High population)", typeof(String), MULTIbalancerUtils.ArrayToString(MidPhaseTicketPercentageToUnstack)));
 
-        lstReturn.Add(new CPluginVariable("3 - Round Phase and Population Settings|Late Phase: Ticket Percentage To Unstack (Low, Med, High population)", typeof(String), MULTIbalancerUtils.ArrayToString(LatePhaseTicketPercentageToUnstack)));
+            lstReturn.Add(new CPluginVariable("3 - Round Phase and Population Settings|Late Phase: Ticket Percentage To Unstack (Low, Med, High population)", typeof(String), MULTIbalancerUtils.ArrayToString(LatePhaseTicketPercentageToUnstack)));
+        }
         
         var_name = "3 - Round Phase and Population Settings|Spelling Of Speed Names Reminder";
         var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(Speed))) + ")";
