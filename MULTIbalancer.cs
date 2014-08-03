@@ -4750,7 +4750,7 @@ private void BalanceAndUnstack(String name) {
         return;
     }
 
-    int floorPlayers = 6;
+    int floorPlayers = (perMode.EnableLowPopulationAdjustments) ? 4 : 6;
     if (totalPlayerCount < floorPlayers) {
         if (DebugLevel >= 6) DebugBalance("Not enough players in server, minimum is " + floorPlayers);
         CheckDeativateBalancer("Not enough players");
