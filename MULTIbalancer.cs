@@ -1671,7 +1671,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.1.3.1";
+    return "1.1.3.2";
 }
 
 public String GetPluginAuthor() {
@@ -14711,7 +14711,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Max Players</b>: Number greater than or equal to 8 and less than or equal to <b>Maximum Server Size</b>. Some modes might be set up in UMM or Adaptive Server Size or other plugins with a lower maximum than the server maximum. If you set a lower value in your server settings or in a plugin, set the same setting here. This is important for calculating population size correctly.</p>
 
-<p><b>Rout Percentage</b>: Number greater than or equal to 101 and less than or equal to 100000, or 0, default is 0. When one team is so far behind another team (called a 'rout'), it is unfair to move strong or dispersal players to the losing team. Use this setting to define when to stop moving strong or dispersal players. For example, if set to 200 for Conquest, the losing team is routed when the winner has at least twice as many tickets as the loser, e.g., 201 vs 100. Movement of strong players for balance or unstacking will be suspended. In the case of dispersal, the suspension applies to both strong and weak players and <b>Enable Strict Dispersal</b> must be False, or if generally strict except for rank dispersal, <b>Lenient Rank Dispersal</b> must be True.</p>
+<p><b>Rout Percentage</b>: Number greater than or equal to 101 and less than or equal to 100000, or 0, default is 0. When one team is so far behind another team (called a 'rout'), it is unfair to move strong or dispersal players to the losing team. Use this setting to define when to stop moving strong or dispersal players. For example, if set to 200 for Conquest, the losing team is routed when the winner has at least twice as many tickets as the loser, e.g., 301 vs 150. Movement of strong players for balance or unstacking will be suspended. In the case of dispersal, the suspension applies to both strong and weak players and <b>Enable Strict Dispersal</b> must be False, or if generally strict except for rank dispersal, <b>Lenient Rank Dispersal</b> must be True.</p>
 
 <p><b>Check Team Stacking After First Minutes</b>: Number greater than or equal to 0. From the start of the round, this setting is the number of minutes to wait before activating unstacking. If set to 0, no unstacking will occur for this mode.</p>
 
@@ -14739,7 +14739,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Enable Strict Dispersal</b>: True or False, default True. Only visible if <b>Disperse Evenly By Clan Players</b> or <b>Enable Disperse Evenly List</b> is set to True. If set to True, players will be moved for dispersal, ignoring all exclusions except whitelisting. This may result in wildly unbalanced teams, but absolutely guarantees that players are dispersed. If set to False, players will be moved for dispersal, but many exclusions will apply, such as <b>Same Clan Tags In Squad</b>,  <b>Minutes After Being Moved</b> and <b>Rout Percentage</b>. The teams will be kept in balance, but players may not be dispersed evenly.</p>
 
-<p><b>Enable Low Population Adjustments</b>: True or False, default False. If set to True, when the population of a server is low, all <b>Forbid ...</b> settings in the Unswitcher section are treated as <i>Never</i> (meaning, team switching is allowed in all circumstances), and all disperse evenly settings, such as <b>Disperse Evenly By Rank &gt;=</b> are ignored, until the population rises above your <b>Definition Of Low Population For Players &lt;=</b> setting.</p>
+<p><b>Enable Low Population Adjustments</b>: True or False, default False. If set to True, when the population of a server is low, all <b>Forbid ...</b> settings in the Unswitcher section are treated as <i>Never</i> (meaning, team switching is allowed in all circumstances), all disperse evenly settings, such as <b>Disperse Evenly By Rank &gt;=</b> are ignored, the maximum difference between team counts that is considered balanced is reduced to 1, and the minimum number of players required for balancing is reduced to 4, until the population rises above your <b>Definition Of Low Population For Players &lt;=</b> setting.</p>
 
 <p><b>Definition Of High Population For Players &gt;=</b>: Number greater than or equal to 0 and less than or equal to <b>Max&nbsp;Players</b>. This is where you define the High population level. If the total number of players in the server is greater than or equal to this number, population is High.</p>
 
