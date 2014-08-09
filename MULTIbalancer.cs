@@ -1671,7 +1671,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.1.3.2";
+    return "1.1.4.0";
 }
 
 public String GetPluginAuthor() {
@@ -6171,6 +6171,24 @@ private bool CheckTeamSwitch(String name, int toTeam) {
         }
     } else {
         DebugUnswitch("Player team switch: ^b" + name + "^n from " + GetTeamName(player.Team) + " team to " + GetTeamName(toTeam) + " team");
+    }
+
+    // Allow special cases
+    if (player.Role != ROLE_PLAYER) {
+        DebugUnswitch("ALLOWED: not a player role (Role = " + player.Role + ")");
+        SetSpawnMessages(name, String.Empty, String.Empty, false);
+        CheckAbortMove(name);
+        return true;
+    } else if (player.Team == 0) {
+        DebugUnswitch("ALLOWED: switching from team 0 (Neutral)");
+        SetSpawnMessages(name, String.Empty, String.Empty, false);
+        CheckAbortMove(name);
+        return true;        
+    } else if (lastMoveFrom == 0) {
+        DebugUnswitch("ALLOWED: last move was from team 0 (Neutral)");
+        SetSpawnMessages(name, String.Empty, String.Empty, false);
+        CheckAbortMove(name);
+        return true;
     }
 
     // Check if move already in progress for this player and abort it
