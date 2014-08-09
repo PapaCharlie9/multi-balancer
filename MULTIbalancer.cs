@@ -6184,11 +6184,6 @@ private bool CheckTeamSwitch(String name, int toTeam) {
         SetSpawnMessages(name, String.Empty, String.Empty, false);
         CheckAbortMove(name);
         return true;        
-    } else if (lastMoveFrom == 0) {
-        DebugUnswitch("ALLOWED: last move was from team 0 (Neutral)");
-        SetSpawnMessages(name, String.Empty, String.Empty, false);
-        CheckAbortMove(name);
-        return true;
     }
 
     // Check if move already in progress for this player and abort it
