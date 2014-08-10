@@ -998,6 +998,7 @@ private int[] fFactionByTeam = null;
 private double fRoundTimeLimit = 1.0;
 private bool fScrambleByCommand = false;
 private bool fDisableUnswitcherByRemote = false;
+private DateTime fLastAutoChatTimestamp;
 
 // Operational statistics
 private int fReassignedRound = 0;
@@ -1284,6 +1285,7 @@ public MULTIbalancer() {
     fRoundTimeLimit = 1.0;
     fScrambleByCommand = false;
     fDisableUnswitcherByRemote = false;
+    fLastAutoChatTimestamp = DateTime.MinValue;
     
     /* Settings */
 
@@ -4879,6 +4881,14 @@ private void BalanceAndUnstack(String name) {
             balanceSpeed = Speed.Fast;
         }
     }
+
+    // Adjust speed to Fast if teams differ by 4 or more
+    if (needsBalancing && balanceSpeed != Speed.Fast && balanceSpeed != Speed.Stop && !isSQDM && diff >= 4) {
+        DebugBalance("^8^bTeam count difference is 4 or more (" + diff + ")!^n^0 Forcing to Fast balance speed.");
+        balanceSpeed = Speed.Fast;
+    }
+
+
     String orSlow = (balanceSpeed == Speed.Slow) ? " or speed is Slow" : String.Empty;
 
     // Do not disperse mustMove players if speed is Stop or Slow or Phase is Late or Popluation is Low and Enable Low Population Adjustments is True
@@ -9913,6 +9923,7 @@ private void Reset() {
     fUpdateTicketsRequest = null;
     fTotalRoundEndingRounds = 0;
     fTotalRoundEndingSeconds = 0;
+    fLastAutoChatTimestamp = DateTime.MinValue;
 
     fDebugScramblerBefore[0].Clear();
     fDebugScramblerBefore[1].Clear();
@@ -14106,18 +14117,23 @@ private void LogStatus(bool isFinal, int level) {
     }
 
     // chats and yells
+    if (fLastAutoChatTimestamp == DateTime.MinValue || DateTime.Now.Subtract(fLastAutoChatTimestamp).TotalSeconds > (YellDurationSeconds + 2.0)) {
+        String cab = ChatAutobalancing;
+        String yab = YellAutobalancing;
+        if (!String.IsNullOrEmpty(cab) && cab.Contains("%technicalDetails%"))
+            cab = cab.Replace("%technicalDetails%", annType);
+        if (!String.IsNullOrEmpty(yab) && yab.Contains("%technicalDetails%"))
+            yab = yab.Replace("%technicalDetails%", annType);
 
-    String cab = ChatAutobalancing;
-    String yab = YellAutobalancing;
-    if (!String.IsNullOrEmpty(cab) && cab.Contains("%technicalDetails%"))
-        cab = cab.Replace("%technicalDetails%", annType);
-    if (!String.IsNullOrEmpty(yab) && yab.Contains("%technicalDetails%"))
-        yab = yab.Replace("%technicalDetails%", annType);
-
-    if (annType != null && !String.IsNullOrEmpty(cab))
-        Chat("all", cab);
-    if (annType != null && !String.IsNullOrEmpty(yab))
-        Yell("all", yab);
+        if (annType != null && !String.IsNullOrEmpty(cab)) {
+            fLastAutoChatTimestamp = DateTime.Now;
+            Chat("all", cab);
+        }
+        if (annType != null && !String.IsNullOrEmpty(yab)) {
+            fLastAutoChatTimestamp = DateTime.Now;
+            Yell("all", yab);
+        }
+    }
 
   } catch (Exception e) {
     ConsoleException(e);
@@ -14724,7 +14740,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Max Players</b>: Number greater than or equal to 8 and less than or equal to <b>Maximum Server Size</b>. Some modes might be set up in UMM or Adaptive Server Size or other plugins with a lower maximum than the server maximum. If you set a lower value in your server settings or in a plugin, set the same setting here. This is important for calculating population size correctly.</p>
 
-<p><b>Rout Percentage</b>: Number greater than or equal to 101 and less than or equal to 100000, or 0, default is 0. When one team is so far behind another team (called a 'rout'), it is unfair to move strong or dispersal players to the losing team. Use this setting to define when to stop moving strong or dispersal players. For example, if set to 200 for Conquest, the losing team is routed when the winner has at least twice as many tickets as the loser, e.g., 301 vs 150. Movement of strong players for balance or unstacking will be suspended. In the case of dispersal, the suspension applies to both strong and weak players and <b>Enable Strict Dispersal</b> must be False, or if generally strict except for rank dispersal, <b>Lenient Rank Dispersal</b> must be True.</p>
+<p><b>Rout Percentage</b>: Number greater than or equal to 101 and less than or equal to 100000, or 0, default is 0. When one team is so far behind another team (called a 'rout'), it is unfair to move strong or dispersal players in either direction. Use this setting to define when to stop moving strong or dispersal players. For example, if set to 200 for Conquest, the losing team is routed when the winner has at least twice as many tickets as the loser, e.g., 301 vs 150. Movement of strong players for balance or unstacking will be suspended. In the case of dispersal, the suspension applies to both strong and weak players and <b>Enable Strict Dispersal</b> must be False, or if generally strict except for rank dispersal, <b>Lenient Rank Dispersal</b> must be True.</p>
 
 <p><b>Check Team Stacking After First Minutes</b>: Number greater than or equal to 0. From the start of the round, this setting is the number of minutes to wait before activating unstacking. If set to 0, no unstacking will occur for this mode.</p>
 
