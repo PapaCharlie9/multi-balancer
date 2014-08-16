@@ -644,6 +644,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         public List<PlayerModel> Roster = null;
         public int ClanTagCount = 0;
         public int DispersalGroup = 0;
+        public int WhitelistCount = 0;
 
         public SquadRoster(int squad) {
             Squad = squad;
@@ -651,6 +652,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             Roster = new List<PlayerModel>();
             ClanTagCount = 0;
             DispersalGroup = 0;
+            WhitelistCount = 0;
         }
 
         public SquadRoster(int squad, List<PlayerModel> roster) {
@@ -658,6 +660,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             Roster = roster;
             ClanTagCount = 0;
             DispersalGroup = 0;
+            WhitelistCount = 0;
         }
     } // end SquadRoster
 
@@ -3170,6 +3173,19 @@ private void CommandToLog(string cmd) {
             List<String> plist = null;
             lock (fAllPlayers) {
                 plist = new List<String>(fAllPlayers);
+            }
+
+            foreach (String item in fSettingWhitelist) {
+                List<String> tokens = new List<String>(Regex.Split(item, @"\s+"));
+                if (tokens.Count < 1) {
+                    ConsoleError("tokens.Count < 1!");
+                    continue;
+                }
+                String line = String.Empty;
+                for (int i = 0; i < tokens.Count ; ++i) {
+                    line = line + tokens[i] + " ";
+                }
+                ConsoleDump("WL: " + line);
             }
 
             foreach (String name in plist) {
@@ -7443,7 +7459,7 @@ private void ScrambleLoneWolves(List<PlayerModel> loneWolves, Dictionary<int,Squ
                     continue;
                 } else {
                     // Next wolf
-                    DebugScrambler("Lone wolf ^b" + wolf.Name + "^n filled in empty squad " + wolf.Team + "/" + emptyId);
+                    DebugScrambler("Lone wolf ^b" + wolf.FullName + "^n filled in empty squad " + wolf.Team + "/" + emptyId);
                     goback = false;
                     continue;
                 }
@@ -7629,7 +7645,7 @@ private void ScramblerLoop () {
                             String tt = ExtractTag(clone);
                             if (tt == null) tt = String.Empty;
                             int numInSquad = CountMatchingTags(clone, Scope.SameSquad);
-                            // Keep players with same clan tag in the same squad
+                            // Keep players with same clan tag in the same team
                             //if (numInSquad >= 2) {
                                 key = (Math.Max(0, clone.Team) * 1000) + Math.Max(0, clone.Squad); // 0 is okay, makes lone-wolf pool
                                 if (String.IsNullOrEmpty(tt) || key < 1000) {
@@ -7645,6 +7661,14 @@ private void ScramblerLoop () {
                             */
                             //}
                             AddPlayerToSquadRoster(squads, clone, key, squadId, true);
+                        } else if (CheckWhitelist(clone, WL_BALANCE)) { // Leave Whitelisted players in same team and squad
+                            key = (Math.Max(0, clone.Team) * 1000) + Math.Max(0, clone.Squad); // 0 is okay, makes lone-wolf pool
+                            DebugScrambler("Keeping whitelisted ^b" + clone.FullName + "^n in same team and squad, using key " + key);
+
+                            SquadRoster tsr = AddPlayerToSquadRoster(squads, clone, key, squadId, true);
+                            if (tsr != null) {
+                                tsr.WhitelistCount = tsr.WhitelistCount + 1;
+                            }
                         } else {
                             loneWolves.Add(clone);
                         }
@@ -8007,7 +8031,8 @@ private void ScramblerLoop () {
                         // Loop through the rearranged copy of opposing team to find a filler player to move to the target team
                         // We use a copy since the original list has to be modified
                         foreach (PlayerModel f in opposingCopy) {
-                            if (filler == null) break;
+                            if (f == null) break;
+                            filler = f;
 
                             // Check to make sure Dispersal isn't violated
                             if (DivideBy == DivideByChoices.DispersalGroup && IsInDispersalList(filler, true) && filler.DispersalGroup != targetDispersalGroup) {
@@ -8039,6 +8064,12 @@ private void ScramblerLoop () {
                                 }
 
                                 // TBD same check for friends if KeepFriendsInSameTeam is true
+                            }
+
+                            // Make sure player isn't whitelisted
+                            if (CheckWhitelist(filler, WL_BALANCE)) {
+                                filler = null;
+                                continue;
                             }
 
                             // Otherwise, our candidate filler player is the one to go
@@ -8209,13 +8240,14 @@ private void ScramblerLoop () {
 }
 
 
-private void AssignSquadToTeam(SquadRoster squad, Dictionary<int,SquadRoster> squadTable, List<PlayerModel> usScrambled, List<PlayerModel> ruScrambled, List<PlayerModel> target) {
+private void AssignSquadToTeam(SquadRoster squad, Dictionary<int,SquadRoster> squadTable, List<PlayerModel> usScrambled, List<PlayerModel> ruScrambled, List<PlayerModel> origTarget) {
         /*
         The PlayerModel object is still live, so we can't change managed properties like Team or Squad.
         Instead, the assigned team is implied by the list (usScrambled or ruScrambled) the player is added to
         and the squad is remembered in the ScrambledSquad property. This is later used during the move
         command to assign the player to that squad in the destination team.
         */
+        List<PlayerModel> target = origTarget;
         int teamMax = MaximumServerSize/2;
 
         if (usScrambled.Count >= teamMax && ruScrambled.Count >= teamMax) {
@@ -8230,9 +8262,16 @@ private void AssignSquadToTeam(SquadRoster squad, Dictionary<int,SquadRoster> sq
         }
         squadTable[squad.Squad] = squad;
         int wasTeam = squad.Roster[0].Team;
+
+        String special = String.Empty;
+        if (squad.WhitelistCount > 0 && (wasTeam == 1 || wasTeam == 2)) {
+            target = (wasTeam == 1) ? usScrambled : ruScrambled;
+            special = " (" + squad.WhitelistCount + " on Whitelist)";
+        }
+
         String st = GetTeamName(wasTeam);
         String gt = GetTeamName((target == usScrambled) ? 1 : 2);
-        DebugScrambler(st + "/" + GetSquadName(wasSquad) + " scrambled to " + gt + "/" + GetSquadName(squad.Squad));
+        DebugScrambler(st + "/" + GetSquadName(wasSquad) + " scrambled to " + gt + "/" + GetSquadName(squad.Squad) + special);
 
         // Assign the squad to the target team
         int toTeam = (target == usScrambled) ? 1 : 2;
