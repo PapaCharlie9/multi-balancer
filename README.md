@@ -7,4 +7,5 @@ Version: 1.1.4.0
 
 https://forum.myrcon.com/showthread.php?6012
 
+See post #2 in the plugin thread for release notes.
 
