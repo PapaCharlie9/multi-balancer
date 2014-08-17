@@ -644,6 +644,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
         public List<PlayerModel> Roster = null;
         public int ClanTagCount = 0;
         public int DispersalGroup = 0;
+        public int WhitelistCount = 0;
 
         public SquadRoster(int squad) {
             Squad = squad;
@@ -651,6 +652,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             Roster = new List<PlayerModel>();
             ClanTagCount = 0;
             DispersalGroup = 0;
+            WhitelistCount = 0;
         }
 
         public SquadRoster(int squad, List<PlayerModel> roster) {
@@ -658,6 +660,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             Roster = roster;
             ClanTagCount = 0;
             DispersalGroup = 0;
+            WhitelistCount = 0;
         }
     } // end SquadRoster
 
@@ -998,6 +1001,7 @@ private int[] fFactionByTeam = null;
 private double fRoundTimeLimit = 1.0;
 private bool fScrambleByCommand = false;
 private bool fDisableUnswitcherByRemote = false;
+private DateTime fLastAutoChatTimestamp;
 
 // Operational statistics
 private int fReassignedRound = 0;
@@ -1284,6 +1288,7 @@ public MULTIbalancer() {
     fRoundTimeLimit = 1.0;
     fScrambleByCommand = false;
     fDisableUnswitcherByRemote = false;
+    fLastAutoChatTimestamp = DateTime.MinValue;
     
     /* Settings */
 
@@ -3170,6 +3175,19 @@ private void CommandToLog(string cmd) {
                 plist = new List<String>(fAllPlayers);
             }
 
+            foreach (String item in fSettingWhitelist) {
+                List<String> tokens = new List<String>(Regex.Split(item, @"\s+"));
+                if (tokens.Count < 1) {
+                    ConsoleError("tokens.Count < 1!");
+                    continue;
+                }
+                String line = String.Empty;
+                for (int i = 0; i < tokens.Count ; ++i) {
+                    line = line + tokens[i] + " ";
+                }
+                ConsoleDump("WL: " + line);
+            }
+
             foreach (String name in plist) {
                 try {
                     PlayerModel player = GetPlayer(name);
@@ -4879,6 +4897,14 @@ private void BalanceAndUnstack(String name) {
             balanceSpeed = Speed.Fast;
         }
     }
+
+    // Adjust speed to Fast if teams differ by 4 or more
+    if (needsBalancing && balanceSpeed != Speed.Fast && balanceSpeed != Speed.Stop && !isSQDM && diff >= 4) {
+        DebugBalance("^8^bTeam count difference is 4 or more (" + diff + ")!^n^0 Forcing to Fast balance speed.");
+        balanceSpeed = Speed.Fast;
+    }
+
+
     String orSlow = (balanceSpeed == Speed.Slow) ? " or speed is Slow" : String.Empty;
 
     // Do not disperse mustMove players if speed is Stop or Slow or Phase is Late or Popluation is Low and Enable Low Population Adjustments is True
@@ -7433,7 +7459,7 @@ private void ScrambleLoneWolves(List<PlayerModel> loneWolves, Dictionary<int,Squ
                     continue;
                 } else {
                     // Next wolf
-                    DebugScrambler("Lone wolf ^b" + wolf.Name + "^n filled in empty squad " + wolf.Team + "/" + emptyId);
+                    DebugScrambler("Lone wolf ^b" + wolf.FullName + "^n filled in empty squad " + wolf.Team + "/" + emptyId);
                     goback = false;
                     continue;
                 }
@@ -7619,7 +7645,7 @@ private void ScramblerLoop () {
                             String tt = ExtractTag(clone);
                             if (tt == null) tt = String.Empty;
                             int numInSquad = CountMatchingTags(clone, Scope.SameSquad);
-                            // Keep players with same clan tag in the same squad
+                            // Keep players with same clan tag in the same team
                             //if (numInSquad >= 2) {
                                 key = (Math.Max(0, clone.Team) * 1000) + Math.Max(0, clone.Squad); // 0 is okay, makes lone-wolf pool
                                 if (String.IsNullOrEmpty(tt) || key < 1000) {
@@ -7635,6 +7661,14 @@ private void ScramblerLoop () {
                             */
                             //}
                             AddPlayerToSquadRoster(squads, clone, key, squadId, true);
+                        } else if (CheckWhitelist(clone, WL_BALANCE)) { // Leave Whitelisted players in same team and squad
+                            key = (Math.Max(0, clone.Team) * 1000) + Math.Max(0, clone.Squad); // 0 is okay, makes lone-wolf pool
+                            DebugScrambler("Keeping whitelisted ^b" + clone.FullName + "^n in same team and squad, using key " + key);
+
+                            SquadRoster tsr = AddPlayerToSquadRoster(squads, clone, key, squadId, true);
+                            if (tsr != null) {
+                                tsr.WhitelistCount = tsr.WhitelistCount + 1;
+                            }
                         } else {
                             loneWolves.Add(clone);
                         }
@@ -7997,7 +8031,8 @@ private void ScramblerLoop () {
                         // Loop through the rearranged copy of opposing team to find a filler player to move to the target team
                         // We use a copy since the original list has to be modified
                         foreach (PlayerModel f in opposingCopy) {
-                            if (filler == null) break;
+                            if (f == null) break;
+                            filler = f;
 
                             // Check to make sure Dispersal isn't violated
                             if (DivideBy == DivideByChoices.DispersalGroup && IsInDispersalList(filler, true) && filler.DispersalGroup != targetDispersalGroup) {
@@ -8029,6 +8064,12 @@ private void ScramblerLoop () {
                                 }
 
                                 // TBD same check for friends if KeepFriendsInSameTeam is true
+                            }
+
+                            // Make sure player isn't whitelisted
+                            if (CheckWhitelist(filler, WL_BALANCE)) {
+                                filler = null;
+                                continue;
                             }
 
                             // Otherwise, our candidate filler player is the one to go
@@ -8199,13 +8240,14 @@ private void ScramblerLoop () {
 }
 
 
-private void AssignSquadToTeam(SquadRoster squad, Dictionary<int,SquadRoster> squadTable, List<PlayerModel> usScrambled, List<PlayerModel> ruScrambled, List<PlayerModel> target) {
+private void AssignSquadToTeam(SquadRoster squad, Dictionary<int,SquadRoster> squadTable, List<PlayerModel> usScrambled, List<PlayerModel> ruScrambled, List<PlayerModel> origTarget) {
         /*
         The PlayerModel object is still live, so we can't change managed properties like Team or Squad.
         Instead, the assigned team is implied by the list (usScrambled or ruScrambled) the player is added to
         and the squad is remembered in the ScrambledSquad property. This is later used during the move
         command to assign the player to that squad in the destination team.
         */
+        List<PlayerModel> target = origTarget;
         int teamMax = MaximumServerSize/2;
 
         if (usScrambled.Count >= teamMax && ruScrambled.Count >= teamMax) {
@@ -8220,9 +8262,16 @@ private void AssignSquadToTeam(SquadRoster squad, Dictionary<int,SquadRoster> sq
         }
         squadTable[squad.Squad] = squad;
         int wasTeam = squad.Roster[0].Team;
+
+        String special = String.Empty;
+        if (squad.WhitelistCount > 0 && (wasTeam == 1 || wasTeam == 2)) {
+            target = (wasTeam == 1) ? usScrambled : ruScrambled;
+            special = " (" + squad.WhitelistCount + " on Whitelist)";
+        }
+
         String st = GetTeamName(wasTeam);
         String gt = GetTeamName((target == usScrambled) ? 1 : 2);
-        DebugScrambler(st + "/" + GetSquadName(wasSquad) + " scrambled to " + gt + "/" + GetSquadName(squad.Squad));
+        DebugScrambler(st + "/" + GetSquadName(wasSquad) + " scrambled to " + gt + "/" + GetSquadName(squad.Squad) + special);
 
         // Assign the squad to the target team
         int toTeam = (target == usScrambled) ? 1 : 2;
@@ -9913,6 +9962,7 @@ private void Reset() {
     fUpdateTicketsRequest = null;
     fTotalRoundEndingRounds = 0;
     fTotalRoundEndingSeconds = 0;
+    fLastAutoChatTimestamp = DateTime.MinValue;
 
     fDebugScramblerBefore[0].Clear();
     fDebugScramblerBefore[1].Clear();
@@ -14106,18 +14156,23 @@ private void LogStatus(bool isFinal, int level) {
     }
 
     // chats and yells
+    if (fLastAutoChatTimestamp == DateTime.MinValue || DateTime.Now.Subtract(fLastAutoChatTimestamp).TotalSeconds > (YellDurationSeconds + 2.0)) {
+        String cab = ChatAutobalancing;
+        String yab = YellAutobalancing;
+        if (!String.IsNullOrEmpty(cab) && cab.Contains("%technicalDetails%"))
+            cab = cab.Replace("%technicalDetails%", annType);
+        if (!String.IsNullOrEmpty(yab) && yab.Contains("%technicalDetails%"))
+            yab = yab.Replace("%technicalDetails%", annType);
 
-    String cab = ChatAutobalancing;
-    String yab = YellAutobalancing;
-    if (!String.IsNullOrEmpty(cab) && cab.Contains("%technicalDetails%"))
-        cab = cab.Replace("%technicalDetails%", annType);
-    if (!String.IsNullOrEmpty(yab) && yab.Contains("%technicalDetails%"))
-        yab = yab.Replace("%technicalDetails%", annType);
-
-    if (annType != null && !String.IsNullOrEmpty(cab))
-        Chat("all", cab);
-    if (annType != null && !String.IsNullOrEmpty(yab))
-        Yell("all", yab);
+        if (annType != null && !String.IsNullOrEmpty(cab)) {
+            fLastAutoChatTimestamp = DateTime.Now;
+            Chat("all", cab);
+        }
+        if (annType != null && !String.IsNullOrEmpty(yab)) {
+            fLastAutoChatTimestamp = DateTime.Now;
+            Yell("all", yab);
+        }
+    }
 
   } catch (Exception e) {
     ConsoleException(e);
@@ -14724,7 +14779,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 
 <p><b>Max Players</b>: Number greater than or equal to 8 and less than or equal to <b>Maximum Server Size</b>. Some modes might be set up in UMM or Adaptive Server Size or other plugins with a lower maximum than the server maximum. If you set a lower value in your server settings or in a plugin, set the same setting here. This is important for calculating population size correctly.</p>
 
-<p><b>Rout Percentage</b>: Number greater than or equal to 101 and less than or equal to 100000, or 0, default is 0. When one team is so far behind another team (called a 'rout'), it is unfair to move strong or dispersal players to the losing team. Use this setting to define when to stop moving strong or dispersal players. For example, if set to 200 for Conquest, the losing team is routed when the winner has at least twice as many tickets as the loser, e.g., 301 vs 150. Movement of strong players for balance or unstacking will be suspended. In the case of dispersal, the suspension applies to both strong and weak players and <b>Enable Strict Dispersal</b> must be False, or if generally strict except for rank dispersal, <b>Lenient Rank Dispersal</b> must be True.</p>
+<p><b>Rout Percentage</b>: Number greater than or equal to 101 and less than or equal to 100000, or 0, default is 0. When one team is so far behind another team (called a 'rout'), it is unfair to move strong or dispersal players in either direction. Use this setting to define when to stop moving strong or dispersal players. For example, if set to 200 for Conquest, the losing team is routed when the winner has at least twice as many tickets as the loser, e.g., 301 vs 150. Movement of strong players for balance or unstacking will be suspended. In the case of dispersal, the suspension applies to both strong and weak players and <b>Enable Strict Dispersal</b> must be False, or if generally strict except for rank dispersal, <b>Lenient Rank Dispersal</b> must be True.</p>
 
 <p><b>Check Team Stacking After First Minutes</b>: Number greater than or equal to 0. From the start of the round, this setting is the number of minutes to wait before activating unstacking. If set to 0, no unstacking will occur for this mode.</p>
 
