@@ -1676,7 +1676,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.1.4.0";
+    return "1.1.4.1";
 }
 
 public String GetPluginAuthor() {
@@ -12738,12 +12738,16 @@ private void InGameCommand(String msg, ChatScope scope, int team, int squad, Str
         lines = new List<String>();
         if (OnlyByCommand) {
             if (fScrambleByCommand) {
-                lines.Add("Teams WILL be scrambled at end of round");
+                lines.Add("Scrambler is ON: Only By Command required and '@mb scramble on' command given");
             } else {
-                lines.Add("No scrambling of teams at end of round");
+                lines.Add("Scrambler is OFF: Only By Command required and '@mb scramble on' command not given");
             }
         } else {
-            lines.Add("Only By Command setting is False, in-game admin command is disabled");
+            if (fScrambleByCommand) {
+                lines.Add("Teams WILL be scrambled by command at end of round");
+            } else {
+                lines.Add("No command used so far, scramble will be by plugin settings");
+            }
         }
         SayLines(lines, name);
         return;
@@ -12751,10 +12755,12 @@ private void InGameCommand(String msg, ChatScope scope, int team, int squad, Str
 
     if (mbScrambleCmd.Success) {
         lines = new List<String>();
+        /*
         if (!OnlyByCommand) {
             lines.Add("Only By Command setting is False, in-game admin command is disabled");
             return;
         }
+        */
         String which = mbScrambleCmd.Groups[1].Value.ToLower();
         switch (which.ToLower()) {
             case "on":
@@ -14763,6 +14769,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 <tr><td>CTF</td><td>Capture The Flag, uses minutes to define phase instead of tickets</td></tr>
 <tr><td>Defuse</td><td>BF4: standard settings</td></tr>
 <tr><td>Domination</td><td>BF4: same as BF3 Conq Small, Dom, Scav</td></tr>
+<tr><td>DT Chain Link</td><td>BF4: Similar to Domination settings</td></tr>
 <tr><td>Gun Master</td><td>BF3: Only has a few settings</td></tr>
 <tr><td>NS Carrier Large</td><td>Carrier Assault Large, uses minutes to define phase and score to define ratio difference instead of tickets</td></tr>
 <tr><td>NS Carrier Small</td><td>Carrier Assault Small, uses minutes to define phase and score to define ratio difference instead of tickets</td></tr>
