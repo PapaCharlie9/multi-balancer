@@ -10513,7 +10513,7 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] tea
                     grandTotal = grandTotal + 1;
 
                     // Make sure this player hasn't been moved more than any other dispersal player
-                    if (GetMovesThisRound(p) > GetMovesThisRound(player)) {
+                    if (GetMovesThisRound(p) >= GetMovesThisRound(player)) {
                         mostMoves = false;
                     }
                 }
@@ -10594,7 +10594,7 @@ clan:
                 foreach (PlayerModel p in teamListsById[player.Team]) {
                     if (p.Name == player.Name) continue; // don't count this player
                     // Make sure this player hasn't been moved more than any other dispersal player
-                    if (GetMovesThisRound(p) > GetMovesThisRound(player)) {
+                    if (GetMovesThisRound(p) >= GetMovesThisRound(player)) {
                         mostMoves = false;
                         break;
                     }
@@ -10663,7 +10663,7 @@ rank:
                     grandTotal = grandTotal + 1;
 
                     // Make sure this player hasn't been moved more than any other dispersal player
-                    if (GetMovesThisRound(p) > GetMovesThisRound(player)) {
+                    if (GetMovesThisRound(p) >= GetMovesThisRound(player)) {
                         mostMoves = false;
                     }
                 }
