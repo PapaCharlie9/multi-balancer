@@ -2007,7 +2007,7 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
             bool isSQDM = (sm == "Squad Deathmatch");
             bool isConquest = (sm.Contains("Conq"));
             bool isCarrierAssault = (sm.Contains("Carrier"));
-            bool isIsObliteration = (sm.Contains("IsObliteration"));
+            bool isObliteration = (sm.Contains("Obliteration"));
 
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Max Players", oneSet.MaxPlayers.GetType(), oneSet.MaxPlayers));
 
@@ -14018,7 +14018,8 @@ private void LogStatus(bool isFinal, int level) {
     if (IsRush()) tm = tm  + "(" + Math.Max(fTickets[1]/2, fMaxTickets - (fRushMaxTickets - fTickets[2])) + ")";
     bool isCTF = IsCTF();
     bool isCarrierAssault = IsCarrierAssault();
-    if (isCTF || isCarrierAssault) tm = GetTeamPoints(1) + "/" + GetTeamPoints(2);
+    bool isObliteration = IsObliteration();
+    if (isCTF || isCarrierAssault || isObliteration) tm = GetTeamPoints(1) + "/" + GetTeamPoints(2);
 
     double goal = 0;
     bool countDown = true;
@@ -14057,7 +14058,7 @@ private void LogStatus(bool isFinal, int level) {
     int useLevel = (isFinal) ? 2 : 4;
     if (IsRush()) {
         tmsg = "Map = " + this.FriendlyMap + ", mode = " + this.FriendlyMode + ", stage = " + fRushStage + ", time in round = " + rt + ", tickets = " + tm;
-    } else if (isCTF || isCarrierAssault) {
+    } else if (isCTF || isCarrierAssault || isObliteration) {
         tmsg = "Map = " + this.FriendlyMap + ", mode = " + this.FriendlyMode + ", time in round = " + rt + ", score = " + tm;
     } else {
         tmsg = "Map = " + this.FriendlyMap + ", mode = " + this.FriendlyMode + ", time in round = " + rt + ", tickets = " + tm;
@@ -14100,7 +14101,7 @@ private void LogStatus(bool isFinal, int level) {
 
             String cmp = (a1 > a2) ? (a1.ToString("F1") + "/" + a2.ToString("F1")) : (a2.ToString("F1") + "/" + a1.ToString("F1"));
             extra = ", average " + perMode.DetermineStrongPlayersBy + " stats ratio = " + (ratio*100.0).ToString("F0") + "% (" + cmp + ")";
-        } else if ((privIsRush && perMode.EnableAdvancedRushUnstacking) || isCTF || isCarrierAssault) {
+        } else if ((privIsRush && perMode.EnableAdvancedRushUnstacking) || isCTF || isCarrierAssault || isObliteration) {
             // Check team points as well as tickets
             double usPoints = GetTeamPoints(1);
             double ruPoints = GetTeamPoints(2);
