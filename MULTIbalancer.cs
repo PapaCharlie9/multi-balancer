@@ -329,6 +329,18 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     DefinitionOfEarlyPhaseFromStart = 1;
                     DefinitionOfLatePhaseFromEnd = 1;
                     break;
+                case "SquadObliteration0": // BF4
+                    MaxPlayers = 10;
+                    CheckTeamStackingAfterFirstMinutes = 2;
+                    MaxUnstackingSwapsPerRound = 2;
+                    NumberOfSwapsPerGroup = 2;
+                    DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
+                    MaxUnstackingTicketDifference = 0;
+                    DefinitionOfHighPopulationForPlayers = 8;
+                    DefinitionOfLowPopulationForPlayers = 4;
+                    DefinitionOfEarlyPhaseFromStart = 1;
+                    DefinitionOfLatePhaseFromEnd = 1;
+                    break;    
                 case "NS Carrier Large": // BF4
                     MaxPlayers = 64;
                     CheckTeamStackingAfterFirstMinutes = 5;
@@ -2746,7 +2758,7 @@ private void CommandToLog(string cmd) {
             return;
         }
 
-        m = Regex.Match(cmd, @"^gen\s+((?:cs|cl|ctf|gm|r|sqdm|sr|s|tdm|u|dom|ob|def|crl|crs)|[1234569])", RegexOptions.IgnoreCase);
+        m = Regex.Match(cmd, @"^gen\s+((?:cs|cl|ctf|gm|r|sqdm|sr|s|tdm|u|dom|ob|sob|def|crl|crs)|[1234569])", RegexOptions.IgnoreCase);
         if (m.Success) {
             String what = m.Groups[1].Value;
             int section = 8;
@@ -2775,6 +2787,7 @@ private void CommandToLog(string cmd) {
                     case "def": sm = "for Defuse"; break; //bf4
                     case "dom": sm = "for Domination"; break; // bf4
                     case "ob": sm = "for Obliteration"; break; // bf4
+                    case "sob": sm = "for Squad Obliteration"; break; // bf4
                     case "crl": sm = "for NS Carrier Large"; break; // bf4
                     case "crs": sm = "for NS Carrier Small"; break; // bf4
                     default: ConsoleDump("Unknown mode: " + what); return;
@@ -9776,6 +9789,7 @@ private List<String> GetSimplifiedModes() {
                     case "Domination":
                     case "Defuse":
                     case "Obliteration":
+                    case "Squad Obliteration":
                     case "Rush":
                     case "Squad Deathmatch":
                     case "Team Deathmatch":
@@ -10050,6 +10064,11 @@ private bool IsConquest() {
 private bool IsCarrierAssault() {
     if (fServerInfo == null) return false;
     return (fServerInfo.GameMode == "CarrierAssaultLarge0" || fServerInfo.GameMode == "CarrierAssaultSmall0");
+}
+
+private bool IsObliteration() {
+    if (fServerInfo == null) return false;
+    return (fServerInfo.GameMode == "SquadObliteration0" || fServerInfo.GameMode == "Obliteration");
 }
 
 private int MaxDiff() { // maximum difference that is still considered balanced, for normal balancing
