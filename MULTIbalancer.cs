@@ -329,7 +329,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     DefinitionOfEarlyPhaseFromStart = 1;
                     DefinitionOfLatePhaseFromEnd = 1;
                     break;
-                case "SquadObliteration0": // BF4
+                case "Squad Obliteration": // BF4
                     MaxPlayers = 10;
                     CheckTeamStackingAfterFirstMinutes = 2;
                     MaxUnstackingSwapsPerRound = 2;
@@ -2007,6 +2007,7 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
             bool isSQDM = (sm == "Squad Deathmatch");
             bool isConquest = (sm.Contains("Conq"));
             bool isCarrierAssault = (sm.Contains("Carrier"));
+            bool isIsObliteration = (sm.Contains("IsObliteration"));
 
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Max Players", oneSet.MaxPlayers.GetType(), oneSet.MaxPlayers));
 
@@ -2055,7 +2056,7 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Low Population For Players <=", oneSet.DefinitionOfLowPopulationForPlayers.GetType(), oneSet.DefinitionOfLowPopulationForPlayers));
 
-            if (isCTF || isCarrierAssault) {
+            if (isCTF || isCarrierAssault || isObliteration) {
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Early Phase As Minutes From Start", oneSet.DefinitionOfEarlyPhaseFromStart.GetType(), oneSet.DefinitionOfEarlyPhaseFromStart));
 
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Late Phase As Minutes From End", oneSet.DefinitionOfLatePhaseFromEnd.GetType(), oneSet.DefinitionOfLatePhaseFromEnd));
@@ -5224,7 +5225,7 @@ private void BalanceAndUnstack(String name) {
     double ratio = 1;
     double t1Tickets = 0;
     double t2Tickets = 0;
-    if (IsCTF() || IsCarrierAssault()) {
+    if (IsCTF() || IsCarrierAssault() || IsObliteration()) {
         // Use team points, not tickets
         double usPoints = GetTeamPoints(1);
         double ruPoints = GetTeamPoints(2);
@@ -6371,7 +6372,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     double win = 0;
     double lose = 0;
     double margin = 100;
-    if (IsCTF() || IsCarrierAssault()) {
+    if (IsCTF() || IsCarrierAssault() || IsObliteration()) {
         win = GetTeamPoints(winningTeam);
         if (win == 0) win = 1;
         lose = GetTeamPoints(losingTeam);
@@ -6989,7 +6990,8 @@ private Phase GetPhase(PerModeSettings perMode, bool verbose) {
     // Special handling for CTF & Carrier Assault modes
     bool isCTF = IsCTF();
     bool isCarrierAssault = IsCarrierAssault();
-    if (isCTF || isCarrierAssault) {
+    bool isObliteration = IsObliteration();
+    if (isCTF || isCarrierAssault || isObliteration) {
         if (fRoundStartTimestamp == DateTime.MinValue) return Phase.Early;
 
         double earlyMinutes = earlyTickets;
@@ -7365,7 +7367,7 @@ private void Scrambler(List<TeamScore> teamScores) {
         return;
     }
 
-    if (!IsCTF() && !IsCarrierAssault() && !fScrambleByCommand && OnlyOnFinalTicketPercentage > 100) {
+    if (!IsCTF() && !IsCarrierAssault() && !IsObliteration() && !fScrambleByCommand && OnlyOnFinalTicketPercentage > 100) {
         if (teamScores == null || teamScores.Count < 2) {
             DebugScrambler("DEBUG: no final team scores");
             return;
@@ -10267,7 +10269,8 @@ private void AnalyzeTeams(out int maxDiff, out int[] ascendingSize, out int[] de
     if (fServerInfo.TeamScores == null) return;
     bool isCTF = IsCTF();
     bool isCarrierAssault = IsCarrierAssault();
-    if (!isCTF && !isCarrierAssault && fServerInfo.TeamScores.Count < 2) return;
+    bool isObliteration = IsObliteration();
+    if (!isCTF && !isCarrierAssault && !isObliteration && fServerInfo.TeamScores.Count < 2) return;
     if (IsRush()) {
         // Normalize scores
         TeamScore attackers = null;
@@ -10285,7 +10288,7 @@ private void AnalyzeTeams(out int maxDiff, out int[] ascendingSize, out int[] de
         normalized = Math.Max(normalized, Convert.ToDouble(attackers.Score)/2);
         byScore.Add(attackers); // attackers
         byScore.Add(new TeamScore(defenders.TeamID, Convert.ToInt32(normalized), defenders.WinningScore));
-    } else if (isCTF || isCarrierAssault) {
+    } else if (isCTF || isCarrierAssault || isObliteration) {
         // Base sort on team points rather than tickets
         int usPoints = Convert.ToInt32(GetTeamPoints(1));
         int ruPoints = Convert.ToInt32(GetTeamPoints(2));
@@ -12074,6 +12077,7 @@ void ApplyWizardSettings() {
         if (fPerMode.TryGetValue(modeName, out perMode) && perMode != null) {
             bool isCTF = (modeName == "CTF");
             bool isCarrierAssault = modeName.Contains("Carrier");
+            bool isObliteration = modeName.Contains("Obliteration");
 
             // Set the per mode Max Players
             perMode.MaxPlayers = MaximumPlayersForMode;
@@ -12109,7 +12113,7 @@ void ApplyWizardSettings() {
             ConsoleWrite("Set ^bDefinition Of Low Population For Players^n to " + perMode.DefinitionOfLowPopulationForPlayers, 0);
 
             // Set the Phase ranges
-            if (!isCTF && !isCarrierAssault) {
+            if (!isCTF && !isCarrierAssault && !isObliteration) {
                 double high = HighestMaximumTicketsForMode;
                 double low = LowestMaximumTicketsForMode;
                 double late = low/4.0; // late always 25% of low
@@ -12131,6 +12135,9 @@ void ApplyWizardSettings() {
                 ConsoleWrite("CTF Phase definitions cannot be set with the wizard, skipping.", 0);
             } else if (isCarrierAssault) {
                 ConsoleWrite("Carrier Assault Phase definitions cannot be set with the wizard, skipping.", 0);
+            }
+             else if (isObliteration) {
+                ConsoleWrite("Obliteration Phase definitions cannot be set with the wizard, skipping.", 0);
             }
 
             if (MetroIsInMapRotation && modeName.Contains("Conq")) {
@@ -12208,7 +12215,7 @@ void ApplyWizardSettings() {
             }
 
             // Set unstacking maximum ticket gap
-            if (!isCTF && !isCarrierAssault) {
+            if (!isCTF && !isCarrierAssault && !isObliteration) {
                 perMode.MaxUnstackingTicketDifference = (HighestMaximumTicketsForMode / 2); // 50% of max
                 ConsoleWrite("Set ^bMax Unstacking Ticket Difference^n to " + perMode.MaxUnstackingTicketDifference, 0);
             }
