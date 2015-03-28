@@ -14803,6 +14803,7 @@ For each phase, there are three unstacking settings for server population: Low, 
 <tr><td>Obliteration</td><td>BF4: TBD</td></tr>
 <tr><td>Rush</td><td>Has unique settings shared with Squad Rush and no other modes</td></tr>
 <tr><td>Squad Deathmatch</td><td>Standard settings, similar to Conquest, except that unstacking is disabled (default 0)</td></tr>
+<tr><td>Squad Obliteration</td><td>BF4: TBD</td></tr>
 <tr><td>Squad Rush</td><td>BF3: Has unique settings shared with Rush and no other modes</td></tr>
 <tr><td>Superiority</td><td>Air and Tank Superiority</td></tr>
 <tr><td>Team Deathmatch</td><td>TDM and TDM Close Quarters, standard settings, similar to Conquest</td></tr>
