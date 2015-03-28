@@ -7083,7 +7083,7 @@ private Phase GetPhase(PerModeSettings perMode, bool verbose) {
 
     if (fMaxTickets == -1) return Phase.Early;
 
-    if (Regex.Match(fServerInfo.GameMode, @"(?:TeamDeathMatch|SquadDeathMatch)").Success) {
+    if (IsDeathmatch()) {
         countDown = false;
         foreach (TeamScore ts in fServerInfo.TeamScores) {
             if (ts.TeamID == 1) {
@@ -7441,7 +7441,7 @@ private void Scrambler(List<TeamScore> teamScores) {
         }
         */
 
-        if (Regex.Match(fServerInfo.GameMode, @"(?:TeamDeathMatch|SquadDeathMatch)").Success) {
+        if (IsDeathmatch()) {
             countDown = false;
             goal = teamScores[0].WinningScore;
         }
@@ -10279,7 +10279,12 @@ private bool IsCTF() {
 
 private bool IsConquest() {
     if (fServerInfo == null) return false;
-    return Regex.Match(fServerInfo.GameMode, @"(Conquest|Domination|Scavenger|Chain)", RegexOptions.IgnoreCase).Success;
+    return Regex.Match(fServerInfo.GameMode, @"(Conquest|Domination|Scavenger|Chain|TurfWar|Heist|Hotwire|Bloodmoney)", RegexOptions.IgnoreCase).Success;
+}
+
+private bool IsDeathmatch() {
+    if (fServerInfo == null) return false;
+    return Regex.Match(fServerInfo.GameMode, @"(?:TeamDeathMatch|SquadDeathMatch)").Success;
 }
 
 private bool IsCarrierAssault() {
@@ -14265,7 +14270,7 @@ private void LogStatus(bool isFinal, int level) {
 
     double goal = 0;
     bool countDown = true;
-    if (fServerInfo != null && Regex.Match(fServerInfo.GameMode, @"(?:TeamDeathMatch|SquadDeathMatch)").Success) {
+    if (fServerInfo != null && IsDeathmatch()) {
         countDown = false;
         if (fServerInfo.TeamScores != null && fServerInfo.TeamScores.Count > 1) {
             foreach (TeamScore ts in fServerInfo.TeamScores) {
