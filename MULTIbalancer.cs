@@ -1730,7 +1730,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.1.4.1";
+    return "1.1.5.0";
 }
 
 public String GetPluginAuthor() {
@@ -2802,7 +2802,7 @@ private void CommandToLog(string cmd) {
             double backoff = (TotalPlayerCount() / 15) * 5; // scrambler needs about 5 seconds per 15 players
             backoff = Math.Max(5, backoff);
             double advice = total - backoff;
-            advice = Math.Max(50, advice); // never less than 50 seconds
+            advice = Math.Max(((fGameVersion == GameVersion.BFH) ? 10 : 50), advice); // never less than 50 seconds (10 for BFH)
             ConsoleDump("Recommended scrambler delay, based on " + fTotalRoundEndingRounds + " rounds, is " + advice.ToString("F0") + " seconds");
             return;
         }
@@ -3352,6 +3352,31 @@ private void CommandToLog(string cmd) {
                     ConsoleDump("Player ^b" + tn + "^n, TagVerified: " + dummy.TagVerified + ", TagFetchStatus: " + dummy.TagFetchStatus.State + ", PersonaId: " + dummy.PersonaId);
                 }
                 SendBattlelogRequestBF4(dummy.Name, "clanTag", dummy);
+                ConsoleDump("Status = " + dummy.TagFetchStatus.State);
+                dummy.TagVerified = (dummy.TagFetchStatus.State != FetchState.Failed);
+            } catch (Exception e) {
+                ConsoleException(e);
+            }
+            DebugLevel = oldLevel;
+            return;
+        }
+
+        // test BFH fetch
+        Match testFH = Regex.Match(cmd, @"^test fh ([^\s]+)", RegexOptions.IgnoreCase);
+        if (testFH.Success) {
+            int oldLevel = DebugLevel;
+            DebugLevel = 7;
+            try {
+                ConsoleDump("Testing BFH Clantag fetch:");
+                String tn = testFH.Groups[1].Value;
+                PlayerModel dummy = GetPlayer(tn);
+                if (dummy == null) {
+                    ConsoleDump("Player ^b" + tn + "^n seems to have left the server");
+                    dummy = new PlayerModel(tn, 1);
+                } else {
+                    ConsoleDump("Player ^b" + tn + "^n, TagVerified: " + dummy.TagVerified + ", TagFetchStatus: " + dummy.TagFetchStatus.State + ", PersonaId: " + dummy.PersonaId);
+                }
+                SendBattlelogRequestBFH(dummy.Name, "clanTag", dummy);
                 ConsoleDump("Status = " + dummy.TagFetchStatus.State);
                 dummy.TagVerified = (dummy.TagFetchStatus.State != FetchState.Failed);
             } catch (Exception e) {
