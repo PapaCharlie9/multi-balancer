@@ -2035,6 +2035,12 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         /* ===== SECTION 8 - Per-Mode Settings ===== */
 
         foreach (String sm in simpleModes) {
+            // No settings for non-balancing modes
+            if (fGameVersion == GameVersion.BFH && Regex.Match(sm, @"(Rescue|Crosshair)", RegexOptions.IgnoreCase).Success) {
+                continue;
+            }
+
+            // Get settings
             PerModeSettings oneSet = null;
             if (!fPerMode.ContainsKey(sm)) {
                 oneSet = new PerModeSettings(sm, fGameVersion);
@@ -4200,8 +4206,13 @@ public override void OnServerInfo(CServerInfo serverInfo) {
         // Update game state if just enabled (as of R38, CTF TeamScores may be null, does not mean round end)
         if (fGameState == GameState.Unknown && serverInfo.GameMode != "CaptureTheFlag0") {
             if (serverInfo.TeamScores == null || serverInfo.TeamScores.Count < 2) {
-                fGameState = GameState.RoundEnding;
-                DebugWrite("OnServerInfo: ^b^3Game state = " + fGameState, 6);  
+                if (fGameVersion == GameVersion.BFH && Regex.Match(serverInfo.GameMode, @"(Heist|Hotwire|Bloodmoney)", RegexOptions.IgnoreCase).Success) {
+                    // Special handling for BFH until bugs with TeamScores are fixed for these modes
+                    DebugWrite("OnServerInfo: Ignoring null TeamScores for BFH mode: " + serverInfo.GameMode, 8);
+                } else {
+                    fGameState = GameState.RoundEnding;
+                    DebugWrite("OnServerInfo: ^b^3Game state = " + fGameState, 6);  
+                }
             }
         }
 
