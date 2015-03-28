@@ -9443,12 +9443,9 @@ using (var client = new WebClient())
                 DebugFetch("^4Battlelog BFH tag updated: ^b^1" + player.FullName);
             }
         } else if (requestType == "overview") {
-            DebugFetch("Battlelog stats not supported yet in BFH, ^b" + name + "^n will have no Battlelog stats!");
-        /*
-            //DebugFetch("Stats fetch not supported for BF4 yet: " + player.Name);
             status.State = FetchState.Failed;
             if (!fIsEnabled || WhichBattlelogStats == BattlelogStats.ClanTagOnly) return;
-            String furl = "http://battlelog.battlefield.com/bf4/warsawoverviewpopulate/" + player.PersonaId + "/1/";
+            String furl = "http://battlelog.battlefield.com/bfh/warsawoverviewpopulate/" + player.PersonaId + "/1/";
             if (FetchWebPage(ref result, furl)) {
                 if (!fIsEnabled) return;
 
@@ -9469,7 +9466,7 @@ using (var client = new WebClient())
 
                 // verify there is stats structure
                 Hashtable stats = null;
-                if (!data.ContainsKey("overviewStats") || (stats = (Hashtable)data["overviewStats"]) == null) {
+                if (!data.ContainsKey("generalStats") || (stats = (Hashtable)data["generalStats"]) == null) {
                     DebugFetch("Request " + status.RequestType + "(^b" + name + "^n): JSON response data does not contain overviewStats (^4" + furl + "^0)");
                     return;
                 }
@@ -9477,7 +9474,6 @@ using (var client = new WebClient())
                 // extract the fields from the stats
                 SetStats(player, stats); // sets status.State
             }
-        */
         }
     } catch (Exception e) {
         ConsoleException(e);
