@@ -367,15 +367,15 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     break;
                 case "Heist": // BFH
                     MaxPlayers = 32;
-                    CheckTeamStackingAfterFirstMinutes = 10;
+                    CheckTeamStackingAfterFirstMinutes = 2;
                     MaxUnstackingSwapsPerRound = 2;
                     NumberOfSwapsPerGroup = 2;
                     DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
-                    MaxUnstackingTicketDifference = 100;
+                    MaxUnstackingTicketDifference = 40;
                     DefinitionOfHighPopulationForPlayers = 24;
                     DefinitionOfLowPopulationForPlayers = 8;
-                    DefinitionOfEarlyPhaseFromStart = 50; // assuming 200 tickets typical
-                    DefinitionOfLatePhaseFromEnd = 50; // assuming 200 tickets typical
+                    DefinitionOfEarlyPhaseFromStart = 20; // assuming 100 tickets typical
+                    DefinitionOfLatePhaseFromEnd = 20; // assuming 100 tickets typical
                     MetroAdjustedDefinitionOfLatePhase = 100;
                     EnableMetroAdjustments = false;
                     break;
@@ -388,8 +388,8 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxUnstackingTicketDifference = 100;
                     DefinitionOfHighPopulationForPlayers = 24;
                     DefinitionOfLowPopulationForPlayers = 8;
-                    DefinitionOfEarlyPhaseFromStart = 50; // assuming 200 tickets typical
-                    DefinitionOfLatePhaseFromEnd = 50; // assuming 200 tickets typical
+                    DefinitionOfEarlyPhaseFromStart = 100; // assuming 500 tickets typical
+                    DefinitionOfLatePhaseFromEnd = 100; // assuming 500 tickets typical
                     MetroAdjustedDefinitionOfLatePhase = 100;
                     EnableMetroAdjustments = false;
                     break;
@@ -402,8 +402,8 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MaxUnstackingTicketDifference = 100;
                     DefinitionOfHighPopulationForPlayers = 24;
                     DefinitionOfLowPopulationForPlayers = 8;
-                    DefinitionOfEarlyPhaseFromStart = 50; // assuming 200 tickets typical
-                    DefinitionOfLatePhaseFromEnd = 50; // assuming 200 tickets typical
+                    DefinitionOfEarlyPhaseFromStart = 25; // assuming 150 tickets typical
+                    DefinitionOfLatePhaseFromEnd = 25; // assuming 150 tickets typical
                     MetroAdjustedDefinitionOfLatePhase = 100;
                     EnableMetroAdjustments = false;
                     break;
@@ -2807,7 +2807,7 @@ private void CommandToLog(string cmd) {
             return;
         }
 
-        m = Regex.Match(cmd, @"^gen\s+((?:cs|cl|ctf|gm|r|sqdm|sr|s|tdm|u|dom|ob|sob|def|crl|crs)|[1234569])", RegexOptions.IgnoreCase);
+        m = Regex.Match(cmd, @"^gen\s+((?:cs|cl|ctf|gm|r|sqdm|sr|s|tdm|u|dom|ob|sob|def|crl|crs|bm|hs|hot)|[1234569])", RegexOptions.IgnoreCase);
         if (m.Success) {
             String what = m.Groups[1].Value;
             int section = 8;
@@ -2839,6 +2839,9 @@ private void CommandToLog(string cmd) {
                     case "sob": sm = "for Squad Obliteration"; break; // bf4
                     case "crl": sm = "for NS Carrier Large"; break; // bf4
                     case "crs": sm = "for NS Carrier Small"; break; // bf4
+                    case "bm": sm = "for Blood Money"; break; // bfh
+                    case "hs": sm = "for Heist"; break; // bfh
+                    case "hot": sm = "for Hotwire"; break; //bfh
                     default: ConsoleDump("Unknown mode: " + what); return;
                 }
             }
@@ -3481,7 +3484,7 @@ private void CommandToLog(string cmd) {
             ConsoleDump("^1^bbad tags^n^0: Examine list of players whose clan tag fetch failed");
             ConsoleDump("^1^bbad stats^n^0: Examine list of players whose stats fetch failed");
             ConsoleDump("^1^bdelay^n^0: Examine recommended scrambler delay time");
-            ConsoleDump("^1^bgen^n ^imode^n^0: Generate settings listing for ^imode^n (one of: cs, cl, ctf, gm, r, sqdm, sr, s, tdm, dom, ob, def, crl, crs, u)");
+            ConsoleDump("^1^bgen^n ^imode^n^0: Generate settings listing for ^imode^n (one of: cs, cl, ctf, gm, r, sqdm, sr, s, tdm, dom, ob, def, crl, crs, bm, hs, hot, u)");
             ConsoleDump("^1^bgen^n ^isection^n^0: Generate settings listing for ^isection^n (1-6,9)");
             ConsoleDump("^1^bhistogram^n^0: Examine a histogram graph of ticket loss ratios");
             ConsoleDump("^1^blists^n^0: Examine all settings that are lists");
@@ -7119,7 +7122,7 @@ private Phase GetPhase(PerModeSettings perMode, bool verbose) {
 
     if (fMaxTickets == -1) return Phase.Early;
 
-    if (IsDeathmatch()) {
+    if (IsCountUp()) {
         countDown = false;
         foreach (TeamScore ts in fServerInfo.TeamScores) {
             if (ts.TeamID == 1) {
@@ -7477,7 +7480,7 @@ private void Scrambler(List<TeamScore> teamScores) {
         }
         */
 
-        if (IsDeathmatch()) {
+        if (IsCountUp()) {
             countDown = false;
             goal = teamScores[0].WinningScore;
         }
@@ -10332,6 +10335,14 @@ private bool IsObliteration() {
 private bool IsNonBalancingMode() {
     if (fServerInfo == null) return false;
     return (fGameVersion == GameVersion.BFH && (fServerInfo.GameMode == "Hit0" || fServerInfo.GameMode == "Hostage0"));
+}
+
+private bool IsCountUp() {
+    if (fServerInfo == null) return false;
+    return (
+        IsDeathmatch()
+        || (fGameVersion == GameVersion.BFH && fServerInfo.GameMode == "Heist0")
+    );
 }
 
 private int MaxDiff() { // maximum difference that is still considered balanced, for normal balancing
@@ -14302,7 +14313,7 @@ private void LogStatus(bool isFinal, int level) {
 
     double goal = 0;
     bool countDown = true;
-    if (fServerInfo != null && IsDeathmatch()) {
+    if (IsCountUp()) {
         countDown = false;
         if (fServerInfo.TeamScores != null && fServerInfo.TeamScores.Count > 1) {
             foreach (TeamScore ts in fServerInfo.TeamScores) {
