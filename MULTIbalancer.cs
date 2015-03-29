@@ -4919,7 +4919,7 @@ private void BalanceAndUnstack(String name) {
     }
 
     if (fGameVersion == GameVersion.BFH && isNonBalancingMode) {
-        if (DebugLevel >= 4) DebugBalance("Server is in ^b" + simpleMode + "^n mode, which should not be balanced! Deactivating balancer!");
+        DebugWrite("^5(AUTO)^9 Server is in ^b" + simpleMode + "^n mode, which should not be balanced! Deactivating balancer!", 4);
         CheckDeativateBalancer("BFH Competitive Mode");
         return;
     }
