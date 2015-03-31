@@ -59,7 +59,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
 {
     /* Enums */
 
-    public enum GameVersion { BF3, BF4 };
+    public enum GameVersion { BF3, BF4, BFH };
 
     public enum MessageType { Warning, Error, Exception, Normal, Debug };
     
@@ -159,7 +159,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
     public class PerModeSettings {
         public PerModeSettings() {}
         
-        public PerModeSettings(String simplifiedModeName, bool isBF4) {
+        public PerModeSettings(String simplifiedModeName, GameVersion gameVersion) {
             DetermineStrongPlayersBy = DefineStrong.RoundScore;
             PercentOfTopOfTeamIsStrong = 50;
             DisperseEvenlyByRank = 0;
@@ -179,16 +179,16 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
             Stage4And5TicketPercentageToUnstackAdjustment = 0;
             
             switch (simplifiedModeName) {
-                case "Conq Small, Dom, Scav":
-                case "Conquest Small": // BF4
+                case "Conq Small, Dom, Scav": // BF3
+                case "Conquest Small":
                 case "Domination": // BF4
-                    MaxPlayers = (isBF4 && simplifiedModeName == "Domination") ? 20 : 32;
+                    MaxPlayers = (gameVersion == GameVersion.BF4 && simplifiedModeName == "Domination") ? 20 : 32;
                     CheckTeamStackingAfterFirstMinutes = 10;
                     MaxUnstackingSwapsPerRound = 2;
                     NumberOfSwapsPerGroup = 2;
                     DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
                     MaxUnstackingTicketDifference = 100;
-                    DefinitionOfHighPopulationForPlayers = (isBF4 && simplifiedModeName == "Domination") ? 16 :24;
+                    DefinitionOfHighPopulationForPlayers = (gameVersion == GameVersion.BF4 && simplifiedModeName == "Domination") ? 16 :24;
                     DefinitionOfLowPopulationForPlayers = 8;
                     DefinitionOfEarlyPhaseFromStart = 50; // assuming 200 tickets typical
                     DefinitionOfLatePhaseFromEnd = 50; // assuming 200 tickets typical
@@ -240,7 +240,7 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     SecondsToCheckForNewStage = 10;
                     break;
                 case "Squad Deathmatch":
-                    MaxPlayers = (isBF4) ? 20 : 16;
+                    MaxPlayers = (gameVersion == GameVersion.BF4) ? 20 : 16;
                     CheckTeamStackingAfterFirstMinutes = 0;
                     MaxUnstackingSwapsPerRound = 0;
                     NumberOfSwapsPerGroup = 0;
@@ -264,14 +264,14 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     DefinitionOfLatePhaseFromEnd = 25; // assuming 100 tickets typical
                     break;
                 case "Team Deathmatch":
-                    MaxPlayers = (isBF4) ? 20 : 64;
+                    MaxPlayers = (gameVersion == GameVersion.BF4) ? 20 : 64;
                     CheckTeamStackingAfterFirstMinutes = 5;
                     MaxUnstackingSwapsPerRound = 4;
                     NumberOfSwapsPerGroup = 2;
                     DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
                     MaxUnstackingTicketDifference = 50;
-                    DefinitionOfHighPopulationForPlayers = (isBF4) ? 16 : 48;
-                    DefinitionOfLowPopulationForPlayers = (isBF4) ? 8 : 16;
+                    DefinitionOfHighPopulationForPlayers = (gameVersion == GameVersion.BF4) ? 16 : 48;
+                    DefinitionOfLowPopulationForPlayers = (gameVersion == GameVersion.BF4) ? 8 : 16;
                     DefinitionOfEarlyPhaseFromStart = 20; // assuming 100 tickets typical
                     DefinitionOfLatePhaseFromEnd = 20; // assuming 100 tickets typical
                     break;
@@ -329,6 +329,18 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     DefinitionOfEarlyPhaseFromStart = 1;
                     DefinitionOfLatePhaseFromEnd = 1;
                     break;
+                case "Squad Obliteration": // BF4
+                    MaxPlayers = 10;
+                    CheckTeamStackingAfterFirstMinutes = 2;
+                    MaxUnstackingSwapsPerRound = 2;
+                    NumberOfSwapsPerGroup = 2;
+                    DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
+                    MaxUnstackingTicketDifference = 0;
+                    DefinitionOfHighPopulationForPlayers = 8;
+                    DefinitionOfLowPopulationForPlayers = 4;
+                    DefinitionOfEarlyPhaseFromStart = 1;
+                    DefinitionOfLatePhaseFromEnd = 1;
+                    break;    
                 case "NS Carrier Large": // BF4
                     MaxPlayers = 64;
                     CheckTeamStackingAfterFirstMinutes = 5;
@@ -352,6 +364,48 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     DefinitionOfLowPopulationForPlayers = 8;
                     DefinitionOfEarlyPhaseFromStart = 5; // minutes
                     DefinitionOfLatePhaseFromEnd = 15; // minutes
+                    break;
+                case "Heist": // BFH
+                    MaxPlayers = 32;
+                    CheckTeamStackingAfterFirstMinutes = 2;
+                    MaxUnstackingSwapsPerRound = 2;
+                    NumberOfSwapsPerGroup = 2;
+                    DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
+                    MaxUnstackingTicketDifference = 40;
+                    DefinitionOfHighPopulationForPlayers = 24;
+                    DefinitionOfLowPopulationForPlayers = 8;
+                    DefinitionOfEarlyPhaseFromStart = 20; // assuming 100 tickets typical
+                    DefinitionOfLatePhaseFromEnd = 20; // assuming 100 tickets typical
+                    MetroAdjustedDefinitionOfLatePhase = 100;
+                    EnableMetroAdjustments = false;
+                    break;
+                case "Hotwire": // BFH
+                    MaxPlayers = 32;
+                    CheckTeamStackingAfterFirstMinutes = 10;
+                    MaxUnstackingSwapsPerRound = 2;
+                    NumberOfSwapsPerGroup = 2;
+                    DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
+                    MaxUnstackingTicketDifference = 100;
+                    DefinitionOfHighPopulationForPlayers = 24;
+                    DefinitionOfLowPopulationForPlayers = 8;
+                    DefinitionOfEarlyPhaseFromStart = 100; // assuming 500 tickets typical
+                    DefinitionOfLatePhaseFromEnd = 100; // assuming 500 tickets typical
+                    MetroAdjustedDefinitionOfLatePhase = 100;
+                    EnableMetroAdjustments = false;
+                    break;
+                case "Blood Money": // BFH
+                    MaxPlayers = 32;
+                    CheckTeamStackingAfterFirstMinutes = 10;
+                    MaxUnstackingSwapsPerRound = 2;
+                    NumberOfSwapsPerGroup = 2;
+                    DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
+                    MaxUnstackingTicketDifference = 100;
+                    DefinitionOfHighPopulationForPlayers = 24;
+                    DefinitionOfLowPopulationForPlayers = 8;
+                    DefinitionOfEarlyPhaseFromStart = 25; // assuming 150 tickets typical
+                    DefinitionOfLatePhaseFromEnd = 25; // assuming 150 tickets typical
+                    MetroAdjustedDefinitionOfLatePhase = 100;
+                    EnableMetroAdjustments = false;
                     break;
                 case "Unknown or New Mode":
                 default:
@@ -1676,7 +1730,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.1.4.0";
+    return "1.1.5.0";
 }
 
 public String GetPluginAuthor() {
@@ -1981,9 +2035,15 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         /* ===== SECTION 8 - Per-Mode Settings ===== */
 
         foreach (String sm in simpleModes) {
+            // No settings for non-balancing modes
+            if (fGameVersion == GameVersion.BFH && Regex.Match(sm, @"(Rescue|Crosshair)", RegexOptions.IgnoreCase).Success) {
+                continue;
+            }
+
+            // Get settings
             PerModeSettings oneSet = null;
             if (!fPerMode.ContainsKey(sm)) {
-                oneSet = new PerModeSettings(sm, fGameVersion == GameVersion.BF4);
+                oneSet = new PerModeSettings(sm, fGameVersion);
                 fPerMode[sm] = oneSet;
             } else {
                 oneSet = fPerMode[sm];
@@ -1995,6 +2055,7 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
             bool isSQDM = (sm == "Squad Deathmatch");
             bool isConquest = (sm.Contains("Conq"));
             bool isCarrierAssault = (sm.Contains("Carrier"));
+            bool isObliteration = (sm.Contains("Obliteration"));
 
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Max Players", oneSet.MaxPlayers.GetType(), oneSet.MaxPlayers));
 
@@ -2043,7 +2104,7 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
             lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Low Population For Players <=", oneSet.DefinitionOfLowPopulationForPlayers.GetType(), oneSet.DefinitionOfLowPopulationForPlayers));
 
-            if (isCTF || isCarrierAssault) {
+            if (isCTF || isCarrierAssault || isObliteration) {
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Early Phase As Minutes From Start", oneSet.DefinitionOfEarlyPhaseFromStart.GetType(), oneSet.DefinitionOfEarlyPhaseFromStart));
 
                 lstReturn.Add(new CPluginVariable("8 - Settings for " + sm + "|" + sm + ": " + "Definition Of Late Phase As Minutes From End", oneSet.DefinitionOfLatePhaseFromEnd.GetType(), oneSet.DefinitionOfLatePhaseFromEnd));
@@ -2296,7 +2357,7 @@ public void SetPluginVariable(String strVariable, String strValue) {
                 perModeSetting = Regex.Replace(perModeSetting, @"(?:AsTickets|AsMinutes)", String.Empty);
                 
                 if (!fPerMode.ContainsKey(mode)) {
-                    fPerMode[mode] = new PerModeSettings(mode, fGameVersion == GameVersion.BF4);
+                    fPerMode[mode] = new PerModeSettings(mode, fGameVersion);
                 }
                 PerModeSettings pms = fPerMode[mode];
                 
@@ -2469,7 +2530,7 @@ private bool ValidateSettings(String strVariable, String strValue) {
 
         foreach (String mode in fPerMode.Keys) {
             PerModeSettings perMode = fPerMode[mode];
-            PerModeSettings def = new PerModeSettings(mode, fGameVersion == GameVersion.BF4); // defaults for this mode
+            PerModeSettings def = new PerModeSettings(mode, fGameVersion); // defaults for this mode
 
             def.MaxPlayers = Math.Min(def.MaxPlayers, MaximumServerSize);
             def.NumberOfSwapsPerGroup = Math.Min(def.NumberOfSwapsPerGroup, perMode.MaxUnstackingSwapsPerRound);
@@ -2628,7 +2689,7 @@ private void ResetSettings() {
     foreach (String sm in simpleModes) {
         PerModeSettings oneSet = null;
         if (!fPerMode.ContainsKey(sm)) {
-            oneSet = new PerModeSettings(sm, fGameVersion == GameVersion.BF4);
+            oneSet = new PerModeSettings(sm, fGameVersion);
             fPerMode[sm] = oneSet;
         }
     }
@@ -2741,12 +2802,12 @@ private void CommandToLog(string cmd) {
             double backoff = (TotalPlayerCount() / 15) * 5; // scrambler needs about 5 seconds per 15 players
             backoff = Math.Max(5, backoff);
             double advice = total - backoff;
-            advice = Math.Max(50, advice); // never less than 50 seconds
+            advice = Math.Max(((fGameVersion == GameVersion.BFH) ? 10 : 50), advice); // never less than 50 seconds (10 for BFH)
             ConsoleDump("Recommended scrambler delay, based on " + fTotalRoundEndingRounds + " rounds, is " + advice.ToString("F0") + " seconds");
             return;
         }
 
-        m = Regex.Match(cmd, @"^gen\s+((?:cs|cl|ctf|gm|r|sqdm|sr|s|tdm|u|dom|ob|def|crl|crs)|[1234569])", RegexOptions.IgnoreCase);
+        m = Regex.Match(cmd, @"^gen\s+((?:cs|cl|ctf|gm|r|sqdm|sr|s|tdm|u|dom|ob|sob|def|crl|crs|bm|hs|hot)|[1234569])", RegexOptions.IgnoreCase);
         if (m.Success) {
             String what = m.Groups[1].Value;
             int section = 8;
@@ -2758,7 +2819,7 @@ private void CommandToLog(string cmd) {
             if (section == 8) {
                 switch (what) {
                     case "cs": 
-                        if (fGameVersion == GameVersion.BF4)
+                        if (fGameVersion != GameVersion.BF3)
                             sm = "for Conquest Small";
                         else
                             sm = "for Conq Small, Dom, Scav";
@@ -2775,8 +2836,12 @@ private void CommandToLog(string cmd) {
                     case "def": sm = "for Defuse"; break; //bf4
                     case "dom": sm = "for Domination"; break; // bf4
                     case "ob": sm = "for Obliteration"; break; // bf4
+                    case "sob": sm = "for Squad Obliteration"; break; // bf4
                     case "crl": sm = "for NS Carrier Large"; break; // bf4
                     case "crs": sm = "for NS Carrier Small"; break; // bf4
+                    case "bm": sm = "for Blood Money"; break; // bfh
+                    case "hs": sm = "for Heist"; break; // bfh
+                    case "hot": sm = "for Hotwire"; break; //bfh
                     default: ConsoleDump("Unknown mode: " + what); return;
                 }
             }
@@ -3298,6 +3363,31 @@ private void CommandToLog(string cmd) {
             DebugLevel = oldLevel;
             return;
         }
+
+        // test BFH fetch
+        Match testFH = Regex.Match(cmd, @"^test fh ([^\s]+)", RegexOptions.IgnoreCase);
+        if (testFH.Success) {
+            int oldLevel = DebugLevel;
+            DebugLevel = 7;
+            try {
+                ConsoleDump("Testing BFH Clantag fetch:");
+                String tn = testFH.Groups[1].Value;
+                PlayerModel dummy = GetPlayer(tn);
+                if (dummy == null) {
+                    ConsoleDump("Player ^b" + tn + "^n seems to have left the server");
+                    dummy = new PlayerModel(tn, 1);
+                } else {
+                    ConsoleDump("Player ^b" + tn + "^n, TagVerified: " + dummy.TagVerified + ", TagFetchStatus: " + dummy.TagFetchStatus.State + ", PersonaId: " + dummy.PersonaId);
+                }
+                SendBattlelogRequestBFH(dummy.Name, "clanTag", dummy);
+                ConsoleDump("Status = " + dummy.TagFetchStatus.State);
+                dummy.TagVerified = (dummy.TagFetchStatus.State != FetchState.Failed);
+            } catch (Exception e) {
+                ConsoleException(e);
+            }
+            DebugLevel = oldLevel;
+            return;
+        }
         
         // Undocumented command: risky (hide|show)
         Match risky = Regex.Match(cmd, @"^risky (hide|show)", RegexOptions.IgnoreCase);
@@ -3394,7 +3484,7 @@ private void CommandToLog(string cmd) {
             ConsoleDump("^1^bbad tags^n^0: Examine list of players whose clan tag fetch failed");
             ConsoleDump("^1^bbad stats^n^0: Examine list of players whose stats fetch failed");
             ConsoleDump("^1^bdelay^n^0: Examine recommended scrambler delay time");
-            ConsoleDump("^1^bgen^n ^imode^n^0: Generate settings listing for ^imode^n (one of: cs, cl, ctf, gm, r, sqdm, sr, s, tdm, dom, ob, def, crl, crs, u)");
+            ConsoleDump("^1^bgen^n ^imode^n^0: Generate settings listing for ^imode^n (one of: cs, cl, ctf, gm, r, sqdm, sr, s, tdm, dom, ob, def, crl, crs, bm, hs, hot, u)");
             ConsoleDump("^1^bgen^n ^isection^n^0: Generate settings listing for ^isection^n (1-6,9)");
             ConsoleDump("^1^bhistogram^n^0: Examine a histogram graph of ticket loss ratios");
             ConsoleDump("^1^blists^n^0: Examine all settings that are lists");
@@ -3639,7 +3729,7 @@ public void OnPluginEnable() {
     fRoundStartTimestamp = DateTime.Now;
 
     // Determine BF3 vs. BF4
-    fMaxSquadSize = (fGameVersion == GameVersion.BF4) ? 5 : 4;
+    fMaxSquadSize = (fGameVersion == GameVersion.BF3) ? 4 : 5;
 
     ConsoleWrite("^b^2Enabled!^0^n Version = " + GetPluginVersion(), 0);
     DebugWrite("^b^3State = " + fPluginState, 6);
@@ -4037,12 +4127,12 @@ public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subs
         or the refresh command was used,
         or the current list of players is more than CRASH_COUNT_HEURISTIC players less than the last
         recorded count, or the last known player count is greater than the maximum server size 
-        (adjusted for BF4, to allow for 2 commanders above max player count),
+        (adjusted for BF4 and BFH, to allow for 2 commanders above max player count),
         or more than 3 minutes have elapsed since a move/reassign was started.
         Since these detections are not completely reliable, do a minimal  amount of recovery,
         don't do a full reset
         */
-        int adjMaxSize = (fGameVersion == GameVersion.BF4) ? (MaximumServerSize+2) : MaximumServerSize;
+        int adjMaxSize = (fGameVersion == GameVersion.BF3) ? MaximumServerSize : (MaximumServerSize+2); // for commanders
         int totalPlayers = TotalPlayerCount();
         if (fServerCrashed 
         || fGotLogin
@@ -4068,7 +4158,7 @@ public override void OnListPlayers(List<CPlayerInfo> players, CPlayerSubset subs
     
             foreach (CPlayerInfo p in players) {
                 try {
-                    int bf4Type = (fGameVersion == GameVersion.BF4) ? p.Type : ROLE_PLAYER;
+                    int bf4Type = (fGameVersion != GameVersion.BF3) ? p.Type : ROLE_PLAYER;
                     UpdatePlayerModel(p.SoldierName, p.TeamID, p.SquadID, p.GUID, p.Score, p.Kills, p.Deaths, p.Rank, bf4Type);
                 } catch (Exception e) {
                     ConsoleException(e);
@@ -4144,8 +4234,13 @@ public override void OnServerInfo(CServerInfo serverInfo) {
         // Update game state if just enabled (as of R38, CTF TeamScores may be null, does not mean round end)
         if (fGameState == GameState.Unknown && serverInfo.GameMode != "CaptureTheFlag0") {
             if (serverInfo.TeamScores == null || serverInfo.TeamScores.Count < 2) {
-                fGameState = GameState.RoundEnding;
-                DebugWrite("OnServerInfo: ^b^3Game state = " + fGameState, 6);  
+                if (fGameVersion == GameVersion.BFH && Regex.Match(serverInfo.GameMode, @"(Heist|Hotwire|Bloodmoney)", RegexOptions.IgnoreCase).Success) {
+                    // Special handling for BFH until bugs with TeamScores are fixed for these modes
+                    DebugWrite("OnServerInfo: Ignoring null TeamScores for BFH mode: " + serverInfo.GameMode, 8);
+                } else {
+                    fGameState = GameState.RoundEnding;
+                    DebugWrite("OnServerInfo: ^b^3Game state = " + fGameState, 6);  
+                }
             }
         }
 
@@ -4757,6 +4852,7 @@ private void BalanceAndUnstack(String name) {
     bool needsBalancing = false;
     bool loggedStats = false;
     bool isSQDM = IsSQDM();
+    bool isNonBalancingMode = IsNonBalancingMode();
     String log = String.Empty;
 
     /* Sanity checks */
@@ -4789,7 +4885,7 @@ private void BalanceAndUnstack(String name) {
         return;
     }
 
-    if (EnableAdminKillForFastBalance && diff > MaxFastDiff()) {
+    if (EnableAdminKillForFastBalance && !isNonBalancingMode && diff > MaxFastDiff()) {
         DebugBalance("Fast balance is enabled and active, skipping normal balancing and unstacking");
         CheckDeativateBalancer("Fast balance is active");
         return;
@@ -4820,6 +4916,12 @@ private void BalanceAndUnstack(String name) {
     if (perMode == null) {
         DebugBalance("Per-mode settings null for " + simpleMode + ", using defaults");
         perMode = new PerModeSettings();
+    }
+
+    if (fGameVersion == GameVersion.BFH && isNonBalancingMode) {
+        DebugWrite("^5(AUTO)^9 Server is in ^b" + simpleMode + "^n mode, which should not be balanced! Deactivating balancer!", 4);
+        CheckDeativateBalancer("BFH Competitive Mode");
+        return;
     }
 
     /* Per-mode and player info */
@@ -5211,7 +5313,7 @@ private void BalanceAndUnstack(String name) {
     double ratio = 1;
     double t1Tickets = 0;
     double t2Tickets = 0;
-    if (IsCTF() || IsCarrierAssault()) {
+    if (IsCTF() || IsCarrierAssault() || IsObliteration()) {
         // Use team points, not tickets
         double usPoints = GetTeamPoints(1);
         double ruPoints = GetTeamPoints(2);
@@ -5713,6 +5815,10 @@ private void FastBalance(String trigger) {
         return;
     }
 
+    if (IsNonBalancingMode()) {
+        return;
+    }
+
     if (trigger.Contains("Kill")) {
         level = 8;
         adj = 0;
@@ -5780,7 +5886,7 @@ private void FastBalance(String trigger) {
     tmp = new List<PlayerModel>();
     foreach (PlayerModel p in big) {
         if (p == null) continue;
-        if (fGameVersion == GameVersion.BF4 && p.Role >= 0 && p.Role < ROLE_NAMES.Length && p.Role != ROLE_PLAYER) {
+        if (fGameVersion != GameVersion.BF3 && p.Role >= 0 && p.Role < ROLE_NAMES.Length && p.Role != ROLE_PLAYER) {
             if (DebugLevel >= 7) DebugFast("Excluding ^b" + p.Name + "^n, role is " + ROLE_NAMES[p.Role]);
             continue; 
         } else if (OnWhitelist && CheckWhitelist(p, WL_BALANCE)) { // exclude if on whitelist
@@ -6144,7 +6250,7 @@ private void ValidateModel(List<CPlayerInfo> players, String revWhy) {
         // rebuild the data model and cancel any pending moves
         foreach (CPlayerInfo p in players) {
             try {
-                int bf4Type = (fGameVersion == GameVersion.BF4) ? p.Type : ROLE_PLAYER;
+                int bf4Type = (fGameVersion != GameVersion.BF3) ? p.Type : ROLE_PLAYER;
                 UpdatePlayerModel(p.SoldierName, p.TeamID, p.SquadID, p.GUID, p.Score, p.Kills, p.Deaths, p.Rank, bf4Type);
                 CheckAbortMove(p.SoldierName);
             } catch (Exception e) {
@@ -6358,7 +6464,7 @@ private bool CheckTeamSwitch(String name, int toTeam) {
     double win = 0;
     double lose = 0;
     double margin = 100;
-    if (IsCTF() || IsCarrierAssault()) {
+    if (IsCTF() || IsCarrierAssault() || IsObliteration()) {
         win = GetTeamPoints(winningTeam);
         if (win == 0) win = 1;
         lose = GetTeamPoints(losingTeam);
@@ -6976,7 +7082,8 @@ private Phase GetPhase(PerModeSettings perMode, bool verbose) {
     // Special handling for CTF & Carrier Assault modes
     bool isCTF = IsCTF();
     bool isCarrierAssault = IsCarrierAssault();
-    if (isCTF || isCarrierAssault) {
+    bool isObliteration = IsObliteration();
+    if (isCTF || isCarrierAssault || isObliteration) {
         if (fRoundStartTimestamp == DateTime.MinValue) return Phase.Early;
 
         double earlyMinutes = earlyTickets;
@@ -7015,7 +7122,7 @@ private Phase GetPhase(PerModeSettings perMode, bool verbose) {
 
     if (fMaxTickets == -1) return Phase.Early;
 
-    if (Regex.Match(fServerInfo.GameMode, @"(?:TeamDeathMatch|SquadDeathMatch)").Success) {
+    if (IsCountUp()) {
         countDown = false;
         foreach (TeamScore ts in fServerInfo.TeamScores) {
             if (ts.TeamID == 1) {
@@ -7291,7 +7398,7 @@ private void SetStats(PlayerModel player, Hashtable stats) {
     player.StatsFetchStatus.State = FetchState.Succeeded;
     player.StatsVerified = true;
     String msg = type + " [bKDR:" + player.KDR.ToString("F2") + ", bSPM:" + player.SPM.ToString("F0") + ", bKPM:" + player.KPM.ToString("F1") + "]";
-    String ver = (fGameVersion == GameVersion.BF4) ? "BF4" : "BF3";
+    String ver = fGameVersion.ToString();
     DebugFetch("^4Player " + ver + " stats updated ^0^b" + player.Name + "^n, " + msg);
 }
 
@@ -7352,7 +7459,7 @@ private void Scrambler(List<TeamScore> teamScores) {
         return;
     }
 
-    if (!IsCTF() && !IsCarrierAssault() && !fScrambleByCommand && OnlyOnFinalTicketPercentage > 100) {
+    if (!IsCTF() && !IsCarrierAssault() && !IsObliteration() && !fScrambleByCommand && OnlyOnFinalTicketPercentage > 100) {
         if (teamScores == null || teamScores.Count < 2) {
             DebugScrambler("DEBUG: no final team scores");
             return;
@@ -7373,7 +7480,7 @@ private void Scrambler(List<TeamScore> teamScores) {
         }
         */
 
-        if (Regex.Match(fServerInfo.GameMode, @"(?:TeamDeathMatch|SquadDeathMatch)").Success) {
+        if (IsCountUp()) {
             countDown = false;
             goal = teamScores[0].WinningScore;
         }
@@ -9114,10 +9221,17 @@ public void FetchLoop() {
             if (fIsCacheEnabled) {
                 SendCacheRequest(name, requestType);
             } else {
-                if (fGameVersion == GameVersion.BF4) {
-                    SendBattlelogRequestBF4(name, requestType, null);
-                } else {
-                    SendBattlelogRequest(name, requestType, null);
+                switch (fGameVersion) {
+                    case GameVersion.BFH:
+                        SendBattlelogRequestBFH(name, requestType, null);
+                        break;
+                    case GameVersion.BF3:
+                        SendBattlelogRequest(name, requestType, null);
+                        break;
+                    case GameVersion.BF4:
+                    default:
+                        SendBattlelogRequestBF4(name, requestType, null);
+                        break;
                 }
                 PlayerModel pm = GetPlayer(name);
                 if (isTagRequest) {
@@ -9217,6 +9331,145 @@ private void SendBattlelogRequest(String name, String requestType, PlayerModel p
                 // verify there is stats structure
                 Hashtable stats = null;
                 if (!data.ContainsKey("overviewStats") || (stats = (Hashtable)data["overviewStats"]) == null) {
+                    DebugFetch("Request " + status.RequestType + "(^b" + name + "^n): JSON response data does not contain overviewStats (^4" + furl + "^0)");
+                    return;
+                }
+
+                // extract the fields from the stats
+                SetStats(player, stats); // sets status.State
+            }
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+}
+
+private void SendBattlelogRequestBFH(String name, String requestType, PlayerModel player) { // TBD
+    try {
+        String result = String.Empty;
+        String err = String.Empty;
+
+        if (player == null) player = GetPlayer(name);
+        if (player == null) return;
+
+        FetchInfo status = (requestType == "clanTag") ? player.TagFetchStatus : player.StatsFetchStatus;
+        status.State = FetchState.Requesting;
+        status.Since = DateTime.Now;
+        status.RequestType = requestType;
+        DebugFetch("Fetching from Battlelog BF4 " + requestType + "(^b" + name + "^n)");
+
+/*
+using (var client = new WebClient())
+{
+    try
+    {
+        //Get persona
+        DoBattlelogWait();
+        String userResponse = client.DownloadString("http://battlelog.battlefield.com/bfh/user/" + aPlayer.player_name + "?nocacherandom=" + Environment.TickCount);
+        Match pid = Regex.Match(userResponse, @"agent\/" + aPlayer.player_name + @"\/stats\/(\d+)");
+        if (!pid.Success)
+        {
+            Log.Warn("Could not find BFHL persona ID for " + aPlayer.player_name);
+            return;
+        }
+        aPlayer.player_personaID = pid.Groups[1].Value.Trim();
+        Log.Debug("Persona ID fetched for " + aPlayer.player_name + ":" + aPlayer.player_personaID, 4);
+        //Get tag
+        DoBattlelogWait();
+        String soldierResponse = client.DownloadString("http://battlelog.battlefield.com/bfh/agent/" + aPlayer.player_name + "/stats/" + aPlayer.player_personaID + "/pc/" + "?nocacherandom=" + Environment.TickCount);
+        Match tag = Regex.Match(soldierResponse, @"\[\s*([a-zA-Z0-9]+)\s*\]\s*</span>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        if (!tag.Success || String.IsNullOrEmpty(tag.Groups[1].Value.Trim()))
+        {
+            Log.Debug("Could not find BFHL clan tag for " + aPlayer.player_name, 4);
+        }
+        else
+        {
+            aPlayer.player_clanTag = tag.Groups[1].Value.Trim();
+            Log.Debug("Clan tag [" + aPlayer.player_clanTag + "] found for " + aPlayer.player_name, 4);
+        }
+    }
+    catch (Exception e)
+    {
+        Log.Exception("Error fetching BFHL player info", e);
+    }
+}
+*/
+
+        if (String.IsNullOrEmpty(player.PersonaId)) {
+            // Get the main page
+            bool ok = false;
+            status.State = FetchState.Failed;
+            if (!fIsEnabled) return;
+            ok = FetchWebPage(ref result, "http://battlelog.battlefield.com/bfh/user/" + name + "?nocacherandom=" + Environment.TickCount);
+            if (!fIsEnabled) return;
+            if (!ok) return;
+
+            // Extract the personaId
+            Match pid = Regex.Match(result, @"agent\/" + name + @"\/stats\/(\d+)");
+            if (!pid.Success)
+            {
+                DebugFetch("Request for ^b" + name +"^n failed, could not find persona-id!");
+                status.State = FetchState.Failed;
+                return;
+            }
+            player.PersonaId = pid.Groups[1].Value.Trim();
+            DebugFetch("Persona ID fetched for " + name + ":" + player.PersonaId);
+        }
+
+        if (requestType == "clanTag") {
+            // Get the stats page
+            bool ok = false;
+            status.State = FetchState.Failed;
+            if (!fIsEnabled) return;
+            String bfhfurl = "http://battlelog.battlefield.com/bfh/agent/" + name + "/stats/" + player.PersonaId + "/pc/" + "?nocacherandom=" + Environment.TickCount;
+            ok = FetchWebPage(ref result, bfhfurl);
+            if (!fIsEnabled) return;
+            if (!ok) return;
+
+            // Extract the player tag
+            String bfhTag = String.Empty;         
+            Match tag = Regex.Match(result, @"\[\s*([a-zA-Z0-9]+)\s*\]\s*</span>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+            if (tag.Success) {
+                bfhTag = tag.Groups[1].Value.Trim();
+            }
+            if (String.IsNullOrEmpty(bfhTag)) {
+                // No tag
+                player.Tag = String.Empty;
+                player.TagVerified = true;
+                status.State = FetchState.Succeeded;
+                DebugFetch("^4Battlelog says ^b" + player.Name + "^n has no BFH tag");
+            } else {
+                Hashtable tmp = new Hashtable();
+                tmp["clanTag"] = bfhTag;
+                SetTag(player, tmp); // sets status.State
+                DebugFetch("^4Battlelog BFH tag updated: ^b^1" + player.FullName);
+            }
+        } else if (requestType == "overview") {
+            status.State = FetchState.Failed;
+            if (!fIsEnabled || WhichBattlelogStats == BattlelogStats.ClanTagOnly) return;
+            String furl = "http://battlelog.battlefield.com/bfh/warsawoverviewpopulate/" + player.PersonaId + "/1/";
+            if (FetchWebPage(ref result, furl)) {
+                if (!fIsEnabled) return;
+
+                Hashtable json = (Hashtable)JSON.JsonDecode(result);
+
+                // verify we got a success message
+                if (!CheckSuccess(json, out err)) {
+                    DebugFetch("Request " + status.RequestType + "(^b" + name + "^n): " + err);
+                    return;
+                }
+
+                // verify there is data structure
+                Hashtable data = null;
+                if (!json.ContainsKey("data") || (data = (Hashtable)json["data"]) == null) {
+                    DebugFetch("Request " + status.RequestType + "(^b" + name + "^n): JSON response does not contain a data field (^4" + furl + "^0)");
+                    return;
+                }
+
+                // verify there is stats structure
+                Hashtable stats = null;
+                if (!data.ContainsKey("generalStats") || (stats = (Hashtable)data["generalStats"]) == null) {
                     DebugFetch("Request " + status.RequestType + "(^b" + name + "^n): JSON response data does not contain overviewStats (^4" + furl + "^0)");
                     return;
                 }
@@ -9363,8 +9616,8 @@ private void SendBattlelogRequestBF4(String name, String requestType, PlayerMode
 }
 
 public bool IsCacheEnabled(bool verbose) {
-    if (fGameVersion == GameVersion.BF4) {
-        ConsoleWarn("BattlelogCache is not supported for BF4 yet!");
+    if (fGameVersion != GameVersion.BF3) {
+        ConsoleWarn("BattlelogCache only supports BF3!");
         return false;
     }
     List<MatchCommand> registered = this.GetRegisteredCommands();
@@ -9776,6 +10029,7 @@ private List<String> GetSimplifiedModes() {
                     case "Domination":
                     case "Defuse":
                     case "Obliteration":
+                    case "Squad Obliteration":
                     case "Rush":
                     case "Squad Deathmatch":
                     case "Team Deathmatch":
@@ -9793,6 +10047,22 @@ private List<String> GetSimplifiedModes() {
                         break;
                     case "Chain Link":
                         simple = "DT Chain Link";
+                        break;
+                    default:
+                        simple = "Unknown or New Mode";
+                        break;
+                } 
+            } else if (fGameVersion == GameVersion.BFH) {
+                switch (m.GameMode) {
+                    case "Blood Money":
+                    case "Conquest Large":
+                    case "Conquest Small":
+                    case "Crosshair":
+                    case "Heist":
+                    case "Hotwire":
+                    case "Rescue":
+                    case "Team Deathmatch":
+                        simple = m.GameMode;
                         break;
                     default:
                         simple = "Unknown or New Mode";
@@ -10044,12 +10314,35 @@ private bool IsCTF() {
 
 private bool IsConquest() {
     if (fServerInfo == null) return false;
-    return Regex.Match(fServerInfo.GameMode, @"(Conquest|Domination|Scavenger|Chain)", RegexOptions.IgnoreCase).Success;
+    return Regex.Match(fServerInfo.GameMode, @"(Conquest|Domination|Scavenger|Chain|TurfWar|Heist|Hotwire|Bloodmoney)", RegexOptions.IgnoreCase).Success;
+}
+
+private bool IsDeathmatch() {
+    if (fServerInfo == null) return false;
+    return Regex.Match(fServerInfo.GameMode, @"(?:TeamDeathMatch|SquadDeathMatch)").Success;
 }
 
 private bool IsCarrierAssault() {
     if (fServerInfo == null) return false;
     return (fServerInfo.GameMode == "CarrierAssaultLarge0" || fServerInfo.GameMode == "CarrierAssaultSmall0");
+}
+
+private bool IsObliteration() {
+    if (fServerInfo == null) return false;
+    return (fServerInfo.GameMode == "SquadObliteration0" || fServerInfo.GameMode == "Obliteration");
+}
+
+private bool IsNonBalancingMode() {
+    if (fServerInfo == null) return false;
+    return (fGameVersion == GameVersion.BFH && (fServerInfo.GameMode == "Hit0" || fServerInfo.GameMode == "Hostage0"));
+}
+
+private bool IsCountUp() {
+    if (fServerInfo == null) return false;
+    return (
+        IsDeathmatch()
+        || (fGameVersion == GameVersion.BFH && fServerInfo.GameMode == "Heist0")
+    );
 }
 
 private int MaxDiff() { // maximum difference that is still considered balanced, for normal balancing
@@ -10104,7 +10397,7 @@ private void UpdateTeams() {
         foreach (String dude in names) {
             PlayerModel player = null;
             if (fKnownPlayers.TryGetValue(dude, out player) && player != null) {
-                if (fGameVersion == GameVersion.BF4 && player.Role != ROLE_PLAYER) continue; // only count BF4 players
+                if (fGameVersion != GameVersion.BF3 && player.Role != ROLE_PLAYER) continue; // account for role
                 List<PlayerModel> t = GetTeam(player.Team);
                 if (t != null) t.Add(player);
                 // Also update move timer
@@ -10248,7 +10541,8 @@ private void AnalyzeTeams(out int maxDiff, out int[] ascendingSize, out int[] de
     if (fServerInfo.TeamScores == null) return;
     bool isCTF = IsCTF();
     bool isCarrierAssault = IsCarrierAssault();
-    if (!isCTF && !isCarrierAssault && fServerInfo.TeamScores.Count < 2) return;
+    bool isObliteration = IsObliteration();
+    if (!isCTF && !isCarrierAssault && !isObliteration && fServerInfo.TeamScores.Count < 2) return;
     if (IsRush()) {
         // Normalize scores
         TeamScore attackers = null;
@@ -10266,7 +10560,7 @@ private void AnalyzeTeams(out int maxDiff, out int[] ascendingSize, out int[] de
         normalized = Math.Max(normalized, Convert.ToDouble(attackers.Score)/2);
         byScore.Add(attackers); // attackers
         byScore.Add(new TeamScore(defenders.TeamID, Convert.ToInt32(normalized), defenders.WinningScore));
-    } else if (isCTF || isCarrierAssault) {
+    } else if (isCTF || isCarrierAssault || isObliteration) {
         // Base sort on team points rather than tickets
         int usPoints = Convert.ToInt32(GetTeamPoints(1));
         int ruPoints = Convert.ToInt32(GetTeamPoints(2));
@@ -10513,7 +10807,7 @@ private int ToTeamByDispersal(String name, int fromTeam, List<PlayerModel>[] tea
                     grandTotal = grandTotal + 1;
 
                     // Make sure this player hasn't been moved more than any other dispersal player
-                    if (GetMovesThisRound(p) > GetMovesThisRound(player)) {
+                    if (GetMovesThisRound(p) >= GetMovesThisRound(player)) {
                         mostMoves = false;
                     }
                 }
@@ -10594,7 +10888,7 @@ clan:
                 foreach (PlayerModel p in teamListsById[player.Team]) {
                     if (p.Name == player.Name) continue; // don't count this player
                     // Make sure this player hasn't been moved more than any other dispersal player
-                    if (GetMovesThisRound(p) > GetMovesThisRound(player)) {
+                    if (GetMovesThisRound(p) >= GetMovesThisRound(player)) {
                         mostMoves = false;
                         break;
                     }
@@ -10663,7 +10957,7 @@ rank:
                     grandTotal = grandTotal + 1;
 
                     // Make sure this player hasn't been moved more than any other dispersal player
-                    if (GetMovesThisRound(p) > GetMovesThisRound(player)) {
+                    if (GetMovesThisRound(p) >= GetMovesThisRound(player)) {
                         mostMoves = false;
                     }
                 }
@@ -10946,6 +11240,18 @@ public String GetTeamName(int teamId) {
                     return "f" + faction + "." + teamId;
                 }
                 ret = BF4_TEAM_NAMES[faction];
+            }
+        } else if (fGameVersion == GameVersion.BFH) {
+            switch (teamId) {
+                case 1:
+                    ret = "LE";
+                    break;
+                case 2:
+                    ret = "CR";
+                    break;
+                default:
+                    ret = "None";
+                    break;
             }
         } else if (teamId < TEAM_NAMES.Length) {
             ret = TEAM_NAMES[teamId];
@@ -12055,6 +12361,7 @@ void ApplyWizardSettings() {
         if (fPerMode.TryGetValue(modeName, out perMode) && perMode != null) {
             bool isCTF = (modeName == "CTF");
             bool isCarrierAssault = modeName.Contains("Carrier");
+            bool isObliteration = modeName.Contains("Obliteration");
 
             // Set the per mode Max Players
             perMode.MaxPlayers = MaximumPlayersForMode;
@@ -12090,7 +12397,7 @@ void ApplyWizardSettings() {
             ConsoleWrite("Set ^bDefinition Of Low Population For Players^n to " + perMode.DefinitionOfLowPopulationForPlayers, 0);
 
             // Set the Phase ranges
-            if (!isCTF && !isCarrierAssault) {
+            if (!isCTF && !isCarrierAssault && !isObliteration) {
                 double high = HighestMaximumTicketsForMode;
                 double low = LowestMaximumTicketsForMode;
                 double late = low/4.0; // late always 25% of low
@@ -12112,6 +12419,9 @@ void ApplyWizardSettings() {
                 ConsoleWrite("CTF Phase definitions cannot be set with the wizard, skipping.", 0);
             } else if (isCarrierAssault) {
                 ConsoleWrite("Carrier Assault Phase definitions cannot be set with the wizard, skipping.", 0);
+            }
+             else if (isObliteration) {
+                ConsoleWrite("Obliteration Phase definitions cannot be set with the wizard, skipping.", 0);
             }
 
             if (MetroIsInMapRotation && modeName.Contains("Conq")) {
@@ -12189,7 +12499,7 @@ void ApplyWizardSettings() {
             }
 
             // Set unstacking maximum ticket gap
-            if (!isCTF && !isCarrierAssault) {
+            if (!isCTF && !isCarrierAssault && !isObliteration) {
                 perMode.MaxUnstackingTicketDifference = (HighestMaximumTicketsForMode / 2); // 50% of max
                 ConsoleWrite("Set ^bMax Unstacking Ticket Difference^n to " + perMode.MaxUnstackingTicketDifference, 0);
             }
@@ -12217,7 +12527,7 @@ private void UpgradePreV1Settings() {
         foreach (String sm in simpleModes) {
             PerModeSettings oneSet = null;
             if (fPerMode.TryGetValue(sm, out oneSet) && oneSet != null) {
-                PerModeSettings def = new PerModeSettings(sm, fGameVersion == GameVersion.BF4);
+                PerModeSettings def = new PerModeSettings(sm, fGameVersion);
                 oneSet.DelaySecondsBetweenSwapGroups = def.DelaySecondsBetweenSwapGroups;
                 oneSet.MaxUnstackingSwapsPerRound = def.MaxUnstackingSwapsPerRound;
                 oneSet.NumberOfSwapsPerGroup = def.NumberOfSwapsPerGroup;
@@ -12738,12 +13048,16 @@ private void InGameCommand(String msg, ChatScope scope, int team, int squad, Str
         lines = new List<String>();
         if (OnlyByCommand) {
             if (fScrambleByCommand) {
-                lines.Add("Teams WILL be scrambled at end of round");
+                lines.Add("Scrambler is ON: Only By Command required and '@mb scramble on' command given");
             } else {
-                lines.Add("No scrambling of teams at end of round");
+                lines.Add("Scrambler is OFF: Only By Command required and '@mb scramble on' command not given");
             }
         } else {
-            lines.Add("Only By Command setting is False, in-game admin command is disabled");
+            if (fScrambleByCommand) {
+                lines.Add("Teams WILL be scrambled by command at end of round");
+            } else {
+                lines.Add("No command used so far, scramble will be by plugin settings");
+            }
         }
         SayLines(lines, name);
         return;
@@ -12751,10 +13065,12 @@ private void InGameCommand(String msg, ChatScope scope, int team, int squad, Str
 
     if (mbScrambleCmd.Success) {
         lines = new List<String>();
+        /*
         if (!OnlyByCommand) {
             lines.Add("Only By Command setting is False, in-game admin command is disabled");
             return;
         }
+        */
         String which = mbScrambleCmd.Groups[1].Value.ToLower();
         switch (which.ToLower()) {
             case "on":
@@ -13638,7 +13954,7 @@ private int PriorityQueueCount() {
 
 public int TotalPlayerCount() {
     fPlayerCount = 0;
-    if (fGameVersion == GameVersion.BF4) {
+    if (fGameVersion != GameVersion.BF3) { // BF4 and BFH
         fBF4CommanderCount = 0;
         fBF4SpectatorCount = 0;
 
@@ -13992,11 +14308,12 @@ private void LogStatus(bool isFinal, int level) {
     if (IsRush()) tm = tm  + "(" + Math.Max(fTickets[1]/2, fMaxTickets - (fRushMaxTickets - fTickets[2])) + ")";
     bool isCTF = IsCTF();
     bool isCarrierAssault = IsCarrierAssault();
-    if (isCTF || isCarrierAssault) tm = GetTeamPoints(1) + "/" + GetTeamPoints(2);
+    bool isObliteration = IsObliteration();
+    if (isCTF || isCarrierAssault || isObliteration) tm = GetTeamPoints(1) + "/" + GetTeamPoints(2);
 
     double goal = 0;
     bool countDown = true;
-    if (fServerInfo != null && Regex.Match(fServerInfo.GameMode, @"(?:TeamDeathMatch|SquadDeathMatch)").Success) {
+    if (IsCountUp()) {
         countDown = false;
         if (fServerInfo.TeamScores != null && fServerInfo.TeamScores.Count > 1) {
             foreach (TeamScore ts in fServerInfo.TeamScores) {
@@ -14031,7 +14348,7 @@ private void LogStatus(bool isFinal, int level) {
     int useLevel = (isFinal) ? 2 : 4;
     if (IsRush()) {
         tmsg = "Map = " + this.FriendlyMap + ", mode = " + this.FriendlyMode + ", stage = " + fRushStage + ", time in round = " + rt + ", tickets = " + tm;
-    } else if (isCTF || isCarrierAssault) {
+    } else if (isCTF || isCarrierAssault || isObliteration) {
         tmsg = "Map = " + this.FriendlyMap + ", mode = " + this.FriendlyMode + ", time in round = " + rt + ", score = " + tm;
     } else {
         tmsg = "Map = " + this.FriendlyMap + ", mode = " + this.FriendlyMode + ", time in round = " + rt + ", tickets = " + tm;
@@ -14074,7 +14391,7 @@ private void LogStatus(bool isFinal, int level) {
 
             String cmp = (a1 > a2) ? (a1.ToString("F1") + "/" + a2.ToString("F1")) : (a2.ToString("F1") + "/" + a1.ToString("F1"));
             extra = ", average " + perMode.DetermineStrongPlayersBy + " stats ratio = " + (ratio*100.0).ToString("F0") + "% (" + cmp + ")";
-        } else if ((privIsRush && perMode.EnableAdvancedRushUnstacking) || isCTF || isCarrierAssault) {
+        } else if ((privIsRush && perMode.EnableAdvancedRushUnstacking) || isCTF || isCarrierAssault || isObliteration) {
             // Check team points as well as tickets
             double usPoints = GetTeamPoints(1);
             double ruPoints = GetTeamPoints(2);
@@ -14113,7 +14430,7 @@ private void LogStatus(bool isFinal, int level) {
     if (level >= useLevel) DebugWrite("^bStatus^n: " + raged + fReassignedRound + " reassigned, " + fBalancedRound + " balanced, " + fUnstackedRound + " unstacked, " + fUnswitchedRound + " unswitched, " + fExcludedRound + " excluded, " + fExemptRound + " exempted, " + fFailedRound + " failed; of " + fTotalRound + " TOTAL", 0);
     
     useLevel = (isFinal) ? 2 : 4;
-    String bf4Extras = (fGameVersion == GameVersion.BF4) ? ", " + fBF4CommanderCount + " commanders, " + fBF4SpectatorCount + " spectators" : String.Empty;
+    String bf4Extras = (fGameVersion != GameVersion.BF3) ? ", " + fBF4CommanderCount + " commanders, " + fBF4SpectatorCount + " spectators" : String.Empty;
     if (IsSQDM()) {
         if (level >= useLevel) DebugWrite("^bStatus^n: Team counts [" + totalPlayers + "] = " + fTeam1.Count + "(A) vs " + fTeam2.Count + "(B) vs " + fTeam3.Count + "(C) vs " + fTeam4.Count + "(D), with " + fUnassigned.Count + " unassigned" + bf4Extras, 0);
     } else {
@@ -14188,6 +14505,7 @@ public void OnPluginLoadingEnv(List<string> lstPluginEnv) {
     {
         case "BF3": fGameVersion = GameVersion.BF3; break;
         case "BF4": fGameVersion = GameVersion.BF4; break;
+        case "BFHL": fGameVersion = GameVersion.BFH; break;
         default: break;
     }
     ConsoleWrite("^2Game Version = " + lstPluginEnv[1], 0);
@@ -14763,12 +15081,14 @@ For each phase, there are three unstacking settings for server population: Low, 
 <tr><td>CTF</td><td>Capture The Flag, uses minutes to define phase instead of tickets</td></tr>
 <tr><td>Defuse</td><td>BF4: standard settings</td></tr>
 <tr><td>Domination</td><td>BF4: same as BF3 Conq Small, Dom, Scav</td></tr>
+<tr><td>DT Chain Link</td><td>BF4: Similar to Domination settings</td></tr>
 <tr><td>Gun Master</td><td>BF3: Only has a few settings</td></tr>
 <tr><td>NS Carrier Large</td><td>Carrier Assault Large, uses minutes to define phase and score to define ratio difference instead of tickets</td></tr>
 <tr><td>NS Carrier Small</td><td>Carrier Assault Small, uses minutes to define phase and score to define ratio difference instead of tickets</td></tr>
 <tr><td>Obliteration</td><td>BF4: TBD</td></tr>
 <tr><td>Rush</td><td>Has unique settings shared with Squad Rush and no other modes</td></tr>
 <tr><td>Squad Deathmatch</td><td>Standard settings, similar to Conquest, except that unstacking is disabled (default 0)</td></tr>
+<tr><td>Squad Obliteration</td><td>BF4: TBD</td></tr>
 <tr><td>Squad Rush</td><td>BF3: Has unique settings shared with Rush and no other modes</td></tr>
 <tr><td>Superiority</td><td>Air and Tank Superiority</td></tr>
 <tr><td>Team Deathmatch</td><td>TDM and TDM Close Quarters, standard settings, similar to Conquest</td></tr>
