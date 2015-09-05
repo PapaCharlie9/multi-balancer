@@ -407,6 +407,18 @@ public class MULTIbalancer : PRoConPluginAPI, IPRoConPluginInterface
                     MetroAdjustedDefinitionOfLatePhase = 100;
                     EnableMetroAdjustments = false;
                     break;
+                case "Bounty Hunter": // BFH
+                    MaxPlayers = 20;
+                    CheckTeamStackingAfterFirstMinutes = 5;
+                    MaxUnstackingSwapsPerRound = 4;
+                    NumberOfSwapsPerGroup = 2;
+                    DelaySecondsBetweenSwapGroups = SWAP_TIMEOUT;
+                    MaxUnstackingTicketDifference = 50;
+                    DefinitionOfHighPopulationForPlayers = 16;
+                    DefinitionOfLowPopulationForPlayers = 8;
+                    DefinitionOfEarlyPhaseFromStart = 20; // assuming 100 tickets typical
+                    DefinitionOfLatePhaseFromEnd = 20; // assuming 100 tickets typical
+                    break;
                 case "Unknown or New Mode":
                 default:
                     MaxPlayers = 32;
@@ -1730,7 +1742,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.1.5.0";
+    return "1.1.6.0";
 }
 
 public String GetPluginAuthor() {
@@ -2807,7 +2819,7 @@ private void CommandToLog(string cmd) {
             return;
         }
 
-        m = Regex.Match(cmd, @"^gen\s+((?:cs|cl|ctf|gm|r|sqdm|sr|s|tdm|u|dom|ob|sob|def|crl|crs|bm|hs|hot)|[1234569])", RegexOptions.IgnoreCase);
+        m = Regex.Match(cmd, @"^gen\s+((?:cs|cl|ctf|gm|r|sqdm|sr|s|tdm|u|dom|ob|sob|def|crl|crs|bm|hs|hot|bh)|[1234569])", RegexOptions.IgnoreCase);
         if (m.Success) {
             String what = m.Groups[1].Value;
             int section = 8;
@@ -2842,6 +2854,7 @@ private void CommandToLog(string cmd) {
                     case "bm": sm = "for Blood Money"; break; // bfh
                     case "hs": sm = "for Heist"; break; // bfh
                     case "hot": sm = "for Hotwire"; break; //bfh
+                    case "bh": sm = "for Bounty Hunter"; break; //bfh
                     default: ConsoleDump("Unknown mode: " + what); return;
                 }
             }
@@ -3484,7 +3497,7 @@ private void CommandToLog(string cmd) {
             ConsoleDump("^1^bbad tags^n^0: Examine list of players whose clan tag fetch failed");
             ConsoleDump("^1^bbad stats^n^0: Examine list of players whose stats fetch failed");
             ConsoleDump("^1^bdelay^n^0: Examine recommended scrambler delay time");
-            ConsoleDump("^1^bgen^n ^imode^n^0: Generate settings listing for ^imode^n (one of: cs, cl, ctf, gm, r, sqdm, sr, s, tdm, dom, ob, def, crl, crs, bm, hs, hot, u)");
+            ConsoleDump("^1^bgen^n ^imode^n^0: Generate settings listing for ^imode^n (one of: cs, cl, ctf, gm, r, sqdm, sr, s, tdm, dom, ob, def, crl, crs, bm, hs, hot, bh, u)");
             ConsoleDump("^1^bgen^n ^isection^n^0: Generate settings listing for ^isection^n (1-6,9)");
             ConsoleDump("^1^bhistogram^n^0: Examine a histogram graph of ticket loss ratios");
             ConsoleDump("^1^blists^n^0: Examine all settings that are lists");
@@ -10034,6 +10047,7 @@ private List<String> GetSimplifiedModes() {
                     case "Squad Deathmatch":
                     case "Team Deathmatch":
                     case "CTF":
+                    case "Gun Master":
                         simple = m.GameMode;
                         break;
                     case "Air Superiority":
@@ -10062,6 +10076,7 @@ private List<String> GetSimplifiedModes() {
                     case "Hotwire":
                     case "Rescue":
                     case "Team Deathmatch":
+                    case "Bounty Hunter":
                         simple = m.GameMode;
                         break;
                     default:
@@ -10319,7 +10334,7 @@ private bool IsConquest() {
 
 private bool IsDeathmatch() {
     if (fServerInfo == null) return false;
-    return Regex.Match(fServerInfo.GameMode, @"(?:TeamDeathMatch|SquadDeathMatch)").Success;
+    return Regex.Match(fServerInfo.GameMode, @"(?:TeamDeathMatch|SquadDeathMatch|CashGrab)").Success;
 }
 
 private bool IsCarrierAssault() {
@@ -14769,7 +14784,7 @@ static class MULTIbalancerUtils {
 #region HTML_DOC
     public const String HTML_DOC = @"
 <h1>Multi-Balancer &amp; Unstacker, including SQDM</h1>
-<p>For BF3 and BF4, this plugin does live round team balancing and unstacking for all game modes, including Squad Deathmatch (SQDM).</p>
+<p>For BF3, BF4 and BFHL, this plugin does live round team balancing and unstacking for all game modes, including Squad Deathmatch (SQDM).</p>
 
 <h3>Acknowledgments</h3>
 <p>This plugin would not have been possible without the help and support of these individuals and communities:<br></br>
